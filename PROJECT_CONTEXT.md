@@ -64,7 +64,8 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
      ├─ Inventarios (`/inventory`)
      ├─ Corte de Caja (`/cash`)
      ├─ Choferes (`/drivers`)
-     └─ Personal & Roles (`/users`)
+     ├─ Personal & Roles (`/users`)
+     └─ Reportes & Exportar (`/reports`)
              │
              ▼ (Llamadas Fetch internas a Route Handlers)
   [ API Route Handlers (`src/app/api/*`) ]
@@ -74,6 +75,7 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
      ├─ `/api/products`    (catálogo, CRUD y disponibilidad por marca)
      ├─ `/api/tables`      (mesas de salón, capacidad y comensales)
      ├─ `/api/users`       (personal, roles RBAC y asignación de marcas)
+     ├─ `/api/reports`     (reportes financieros, caja, inventario y CSV)
      ├─ `/api/orders/*`    (creación, avance de estado y descuento de stock)
      ├─ `/api/inventory`   (insumos, compras y mapeo de recetas)
      ├─ `/api/cash`        (apertura/cierre de caja y agregados de ventas)
@@ -112,8 +114,8 @@ Los roles soportados y sus permisos son:
 
 | Rol | Alcance de Marcas | Permisos de Navegación |
 | :--- | :--- | :--- |
-| **`SUPER_ADMIN`** | Todas las marcas registradas | Acceso total: Dashboard comparativo, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores, Personal & Roles y selector libre de cualquier marca. |
-| **`BRAND_ADMIN`** | Solo las marcas vinculadas en `UserBrand` | Dashboard de su marca, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores y Personal & Roles. |
+| **`SUPER_ADMIN`** | Todas las marcas registradas | Acceso total: Dashboard comparativo, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores, Personal & Roles, Reportes & Exportar y selector libre de cualquier marca. |
+| **`BRAND_ADMIN`** | Solo las marcas vinculadas en `UserBrand` | Dashboard de su marca, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores, Personal & Roles y Reportes & Exportar. |
 | **`CASHIER`** | Marcas vinculadas | POS Ventas, Salón & Mesas, Corte de Caja, Repartidores. |
 | **`KITCHEN`** | Marcas vinculadas | Pantalla de Cocina (KDS). |
 | **`DELIVERY`** | Marcas vinculadas | Perfil de chofer, asignación de pedidos en `/drivers`. |

@@ -17,7 +17,8 @@ import {
   ChevronDown,
   UtensilsCrossed,
   LayoutGrid,
-  Users
+  Users,
+  FileSpreadsheet
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -145,6 +146,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Corte de Caja', path: '/cash', icon: Coins, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Repartidores', path: '/drivers', icon: Truck, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Personal & Roles', path: '/users', icon: Users, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
+    { name: 'Reportes & Exportar', path: '/reports', icon: FileSpreadsheet, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
   ];
 
   // Filter menu items by user role
