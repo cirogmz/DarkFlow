@@ -159,6 +159,13 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * Al cerrar turno, el sistema suma automáticamente las órdenes en estado `DELIVERED` durante el periodo del turno y calcula el saldo esperado (`openingBalance + cashSales`).
 * Si el cajero introduce un valor distinto, el sistema calcula la **discrepancia** (Faltante o Sobrante) y la almacena en el registro de auditoría.
 
+### 6.5. Impresión Térmica ESC/POS y Comandas
+* El componente [`ThermalTicketModal`](file:///src/components/ThermalTicketModal.tsx) provee generación nativa de tickets térmicos adaptados a mini-impresoras estándar:
+  - **Anchos configurables:** `58mm` (móvil/Bluetooth) y `80mm` (mostrador/USB).
+  - **Modo Comanda de Cocina (KOT):** Folio destacado, mesa/origen, tiempo de espera, lista de platillos en negrita y notas operativas.
+  - **Modo Cuenta / Cliente:** Encabezado con datos fiscales demo, desglose con precio unitario, subtotal, IVA 16% y sugerencia de propinas voluntarias (10%, 15%, 20%).
+  - Estilos de impresión aislados `@media print` para evitar márgenes y cabeceras del navegador.
+
 ---
 
 ## 7. Estructura del Código y Convenciones
@@ -166,7 +173,7 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 ```
 darkflow/
 ├── prisma/
-│   ├── schema.prisma         # Esquema de datos y relaciones
+│   ├── schema.prisma         # Esquema de datos y relaciones (User, Brand, Table, Order, etc.)
 │   ├── seed.ts               # Sembrado de datos demo iniciales
 │   └── dev.db                # Base de datos SQLite local
 ├── public/                   # Activos públicos y logotipos
@@ -174,25 +181,34 @@ darkflow/
 │   ├── app/
 │   │   ├── api/              # Route Handlers (Backend REST)
 │   │   │   ├── auth/         # Login, logout, me
-│   │   │   ├── brands/       # Consulta de marcas por rol
+│   │   │   ├── brands/       # Consulta y creación de marcas
 │   │   │   ├── cash/         # Sesiones y cortes de caja
+│   │   │   ├── categories/   # Secciones de menú
 │   │   │   ├── dashboard/    # KPIs y datos de gráficas
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── inventory/    # Insumos, compras y recetas
-│   │   │   ├── orders/       # Listado, creación y actualización de pedidos
-│   │   │   └── products/     # Catálogo de productos por marca
+│   │   │   ├── orders/       # Listado, creación y ciclo de vida de pedidos
+│   │   │   ├── products/     # Catálogo de platillos por marca
+│   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
+│   │   │   ├── tables/       # Mesas físicas, estados y comensales
+│   │   │   └── users/        # Gestión de personal, credenciales y RBAC
 │   │   ├── cash/page.tsx     # Vista de Corte de Caja
 │   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
-│   │   ├── kitchen/page.tsx  # Vista KDS de Cocina
+│   │   ├── kitchen/page.tsx  # Vista KDS de Cocina con impresión de comandas
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
+│   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital
 │   │   ├── page.tsx          # Vista de Dashboard Principal
-│   │   ├── pos/page.tsx      # Vista de Punto de Venta Delivery
+│   │   ├── pos/page.tsx      # Vista de Punto de Venta con Recibo Térmico
+│   │   ├── reports/page.tsx  # Vista de Reportes con Exportación a Excel/CSV
+│   │   ├── tables/page.tsx   # Vista de Salón y Mesas con Pre-cuenta Térmica
+│   │   ├── users/page.tsx    # Vista de Administración de Personal & Roles
 │   │   ├── globals.css       # Estilos globales y tokens de Tailwind v4
 │   │   └── layout.tsx        # Layout raíz con BrandThemeProvider
 │   ├── components/
 │   │   ├── BrandThemeProvider.tsx # Inyector de variables CSS de marca
-│   │   └── DashboardContainer.tsx # Layout con Sidebar, Topbar y Selector
+│   │   ├── DashboardContainer.tsx # Layout con Sidebar, Topbar y Selector
+│   │   └── ThermalTicketModal.tsx # Generador universal de tickets térmicos ESC/POS
 │   ├── lib/
 │   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
 │   │   ├── db.ts             # Instancia singleton de Prisma Client

@@ -8,9 +8,11 @@ import {
   Flame, 
   CheckCircle, 
   Play, 
-  PackageCheck,
-  AlertTriangle
+  PackageCheck, 
+  AlertTriangle,
+  Printer
 } from 'lucide-react';
+import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 
 interface OrderItem {
   id: string;
@@ -42,6 +44,8 @@ interface Order {
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isThermalOpen, setIsThermalOpen] = useState(false);
+  const [selectedOrderForPrint, setSelectedOrderForPrint] = useState<ThermalOrderData | null>(null);
   const { addNotification } = useAppStore();
 
   const fetchActiveOrders = React.useCallback(async () => {
@@ -202,12 +206,25 @@ export default function KitchenPage() {
                           {isLate && <AlertTriangle className="h-3.5 w-3.5" />}
                         </span>
 
-                        <button
-                          onClick={() => advanceOrderStatus(order.id, order.status)}
-                          className="flex items-center gap-1 py-1.5 px-3 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold rounded-lg cursor-pointer"
-                        >
-                          <Play className="h-3 w-3 stroke-[3px]" /> Preparar
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedOrderForPrint(order as unknown as ThermalOrderData);
+                              setIsThermalOpen(true);
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 cursor-pointer"
+                            title="Imprimir Comanda Térmica"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => advanceOrderStatus(order.id, order.status)}
+                            className="flex items-center gap-1 py-1.5 px-3 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold rounded-lg cursor-pointer"
+                          >
+                            <Play className="h-3 w-3 stroke-[3px]" /> Preparar
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -277,12 +294,25 @@ export default function KitchenPage() {
                           {isLate && <AlertTriangle className="h-3.5 w-3.5" />}
                         </span>
 
-                        <button
-                          onClick={() => advanceOrderStatus(order.id, order.status)}
-                          className="flex items-center gap-1 py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg cursor-pointer"
-                        >
-                          <CheckCircle className="h-3 w-3 stroke-[3px]" /> Terminar
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedOrderForPrint(order as unknown as ThermalOrderData);
+                              setIsThermalOpen(true);
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 cursor-pointer"
+                            title="Imprimir Comanda Térmica"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => advanceOrderStatus(order.id, order.status)}
+                            className="flex items-center gap-1 py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg cursor-pointer"
+                          >
+                            <CheckCircle className="h-3 w-3 stroke-[3px]" /> Terminar
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -338,11 +368,24 @@ export default function KitchenPage() {
                       {/* Footer */}
                       <div className="flex items-center justify-between text-xs pt-1">
                         <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                          <PackageCheck className="h-4 w-4 text-emerald-500" /> Listo para despacho
+                          <PackageCheck className="h-4 w-4 text-emerald-500" /> Listo
                         </span>
-                        <span className="text-[10px] text-slate-500">
-                          Espera: {waitTime}m
-                        </span>
+                        
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">
+                            {waitTime}m
+                          </span>
+                          <button
+                            onClick={() => {
+                              setSelectedOrderForPrint(order as unknown as ThermalOrderData);
+                              setIsThermalOpen(true);
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 cursor-pointer"
+                            title="Imprimir Comanda Térmica"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -352,6 +395,16 @@ export default function KitchenPage() {
           </div>
         </div>
       </div>
+
+      {/* ESC/POS Kitchen Thermal Printing Dialog */}
+      {selectedOrderForPrint && (
+        <ThermalTicketModal
+          isOpen={isThermalOpen}
+          onClose={() => setIsThermalOpen(false)}
+          order={selectedOrderForPrint}
+          initialMode="KITCHEN"
+        />
+      )}
     </DashboardContainer>
   );
 }

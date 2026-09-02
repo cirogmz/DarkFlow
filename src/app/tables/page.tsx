@@ -13,8 +13,10 @@ import {
   ShoppingBag, 
   Utensils,
   CreditCard,
-  Trash2
+  Trash2,
+  Printer
 } from 'lucide-react';
+import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import { useRouter } from 'next/navigation';
 
 interface TableOrderItem {
@@ -67,6 +69,9 @@ export default function TablesPage() {
 
   // Modal: View Table Bill / Order Detail
   const [selectedTableForBill, setSelectedTableForBill] = useState<RestaurantTable | null>(null);
+  const [isThermalOpen, setIsThermalOpen] = useState(false);
+  const [thermalOrderData, setThermalOrderData] = useState<ThermalOrderData | null>(null);
+  const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
 
   const { activeBrand, addNotification } = useAppStore();
 
@@ -603,7 +608,54 @@ export default function TablesPage() {
                 </div>
               </div>
 
-              <div className="space-y-2 pt-2">
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    const ord = selectedTableForBill.orders![0];
+                    setThermalOrderData({
+                      orderNumber: ord.orderNumber,
+                      source: 'DINE_IN',
+                      createdAt: ord.createdAt,
+                      subtotal: ord.subtotal,
+                      tax: ord.tax,
+                      tip: 0,
+                      total: ord.total,
+                      diners: ord.diners,
+                      table: { name: selectedTableForBill.name, number: selectedTableForBill.number, zone: selectedTableForBill.zone },
+                      items: ord.items,
+                    });
+                    setThermalInitialMode('CUSTOMER');
+                    setIsThermalOpen(true);
+                  }}
+                  className="py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-xs rounded-lg shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Pre-cuenta (58/80)
+                </button>
+                <button
+                  onClick={() => {
+                    const ord = selectedTableForBill.orders![0];
+                    setThermalOrderData({
+                      orderNumber: ord.orderNumber,
+                      source: 'DINE_IN',
+                      createdAt: ord.createdAt,
+                      subtotal: ord.subtotal,
+                      tax: ord.tax,
+                      tip: 0,
+                      total: ord.total,
+                      diners: ord.diners,
+                      table: { name: selectedTableForBill.name, number: selectedTableForBill.number, zone: selectedTableForBill.zone },
+                      items: ord.items,
+                    });
+                    setThermalInitialMode('KITCHEN');
+                    setIsThermalOpen(true);
+                  }}
+                  className="py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Comanda Cocina
+                </button>
+              </div>
+
+              <div className="space-y-2 pt-1 border-t border-slate-800">
                 <button
                   onClick={() => handleReleaseTable(selectedTableForBill.id)}
                   className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-lg shadow-lg flex items-center justify-center gap-2 cursor-pointer"
@@ -619,6 +671,16 @@ export default function TablesPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ESC/POS Thermal Printing Dialog */}
+        {thermalOrderData && (
+          <ThermalTicketModal
+            isOpen={isThermalOpen}
+            onClose={() => setIsThermalOpen(false)}
+            order={thermalOrderData}
+            initialMode={thermalInitialMode}
+          />
         )}
       </div>
     </DashboardContainer>

@@ -12,8 +12,10 @@ import {
   FileText, 
   CheckCircle2, 
   AlertTriangle,
-  Coins
+  Coins,
+  Printer
 } from 'lucide-react';
+import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 
 interface Ingredient {
   id: string;
@@ -102,6 +104,8 @@ export default function POSPage() {
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
+  const [isThermalOpen, setIsThermalOpen] = useState(false);
+  const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
   const [loading, setLoading] = useState(false);
 
   const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, clearCart, addNotification } = useAppStore();
@@ -220,10 +224,6 @@ export default function POSPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   return (
@@ -642,22 +642,45 @@ export default function POSPage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 pt-2">
               <button
-                onClick={handlePrint}
-                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={() => {
+                  setThermalInitialMode('CUSTOMER');
+                  setIsThermalOpen(true);
+                }}
+                className="py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow"
               >
-                <FileText className="h-4 w-4" /> Imprimir Comanda
+                <Printer className="h-4 w-4" /> Recibo Cliente
               </button>
               <button
-                onClick={() => setPlacedOrder(null)}
-                className="flex-1 py-2 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-sm rounded-lg cursor-pointer"
+                onClick={() => {
+                  setThermalInitialMode('KITCHEN');
+                  setIsThermalOpen(true);
+                }}
+                className="py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer border border-slate-700"
               >
-                Listo / Cerrar
+                <FileText className="h-4 w-4" /> Comanda Cocina
               </button>
             </div>
+
+            <button
+              onClick={() => setPlacedOrder(null)}
+              className="w-full py-2 bg-slate-950 hover:bg-slate-850 text-slate-300 hover:text-white font-bold text-xs rounded-lg border border-slate-800 cursor-pointer"
+            >
+              Listo / Finalizar
+            </button>
           </div>
         </div>
+      )}
+
+      {/* ESC/POS Thermal Printing Dialog */}
+      {placedOrder && (
+        <ThermalTicketModal
+          isOpen={isThermalOpen}
+          onClose={() => setIsThermalOpen(false)}
+          order={placedOrder as ThermalOrderData}
+          initialMode={thermalInitialMode}
+        />
       )}
     </DashboardContainer>
   );
