@@ -63,7 +63,8 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
      ├─ Menú & Catálogo (`/menu`)
      ├─ Inventarios (`/inventory`)
      ├─ Corte de Caja (`/cash`)
-     └─ Choferes (`/drivers`)
+     ├─ Choferes (`/drivers`)
+     └─ Personal & Roles (`/users`)
              │
              ▼ (Llamadas Fetch internas a Route Handlers)
   [ API Route Handlers (`src/app/api/*`) ]
@@ -72,6 +73,7 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
      ├─ `/api/categories`  (secciones del menú por marca)
      ├─ `/api/products`    (catálogo, CRUD y disponibilidad por marca)
      ├─ `/api/tables`      (mesas de salón, capacidad y comensales)
+     ├─ `/api/users`       (personal, roles RBAC y asignación de marcas)
      ├─ `/api/orders/*`    (creación, avance de estado y descuento de stock)
      ├─ `/api/inventory`   (insumos, compras y mapeo de recetas)
      ├─ `/api/cash`        (apertura/cierre de caja y agregados de ventas)
@@ -110,11 +112,11 @@ Los roles soportados y sus permisos son:
 
 | Rol | Alcance de Marcas | Permisos de Navegación |
 | :--- | :--- | :--- |
-| **`SUPER_ADMIN`** | Todas las marcas registradas | Acceso total: Dashboard comparativo, POS, KDS, Inventario, Caja, Repartidores y selector libre de cualquier marca. |
-| **`BRAND_ADMIN`** | Solo las marcas vinculadas en `UserBrand` | Dashboard de su marca, POS, KDS, Inventario, Caja, Repartidores. |
-| **`CASHIER`** | Marcas vinculadas | POS Ventas, Corte de Caja, Repartidores. |
+| **`SUPER_ADMIN`** | Todas las marcas registradas | Acceso total: Dashboard comparativo, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores, Personal & Roles y selector libre de cualquier marca. |
+| **`BRAND_ADMIN`** | Solo las marcas vinculadas en `UserBrand` | Dashboard de su marca, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores y Personal & Roles. |
+| **`CASHIER`** | Marcas vinculadas | POS Ventas, Salón & Mesas, Corte de Caja, Repartidores. |
 | **`KITCHEN`** | Marcas vinculadas | Pantalla de Cocina (KDS). |
-| **`DELIVERY`** | No accede a panel administrativo | Perfil de chofer, estado de entrega. |
+| **`DELIVERY`** | Marcas vinculadas | Perfil de chofer, asignación de pedidos en `/drivers`. |
 
 ---
 
