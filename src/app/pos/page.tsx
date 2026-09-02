@@ -68,11 +68,24 @@ interface PlacedOrder {
   total: number;
   createdAt: string;
   items: PlacedOrderItem[];
+  table?: {
+    number: string;
+    name: string;
+  } | null;
+}
+
+interface TableOption {
+  id: string;
+  number: string;
+  name: string;
+  status: string;
+  capacity: number;
 }
 
 export default function POSPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [tables, setTables] = useState<TableOption[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -80,7 +93,9 @@ export default function POSPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
-  const [orderSource, setOrderSource] = useState<'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE'>('WEB');
+  const [orderSource, setOrderSource] = useState<'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE' | 'DINE_IN' | 'TAKEAWAY'>('WEB');
+  const [selectedTableId, setSelectedTableId] = useState('');
+  const [diners, setDiners] = useState<number>(2);
   const [tip, setTip] = useState<number>(0);
   const [orderNotes, setOrderNotes] = useState('');
   
@@ -91,22 +106,31 @@ export default function POSPage() {
 
   const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, clearCart, addNotification } = useAppStore();
 
-  const fetchProducts = React.useCallback(async () => {
+  const fetchInitialData = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/products');
-      if (res.ok) {
-        const data = await res.json();
+      const [prodRes, tablesRes] = await Promise.all([
+        fetch('/api/products'),
+        fetch('/api/tables'),
+      ]);
+
+      if (prodRes.ok) {
+        const data = await prodRes.json();
         setCategories(data.categories);
         setProducts(data.products);
       }
+
+      if (tablesRes.ok) {
+        const tablesData = await tablesRes.json();
+        setTables(tablesData.tables || []);
+      }
     } catch (err) {
-      console.error('Failed to fetch POS products', err);
+      console.error('Failed to fetch POS initial data', err);
     }
   }, []);
 
   useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   // Helper: check if product has enough ingredients stock
   const checkStockStatus = (product: Product) => {
@@ -136,8 +160,15 @@ export default function POSPage() {
   const cartTotal = parseFloat((cartSubtotal + cartTax + tip).toFixed(2));
 
   const handlePlaceOrder = async () => {
-    if (!customerName) {
-      alert('Por favor introduce el nombre del cliente');
+    const finalCustomerName = customerName || (orderSource === 'DINE_IN' && selectedTableId ? `Mesa ${tables.find(t => t.id === selectedTableId)?.number}` : '');
+    
+    if (!finalCustomerName) {
+      alert('Por favor introduce el nombre del cliente o selecciona una mesa');
+      return;
+    }
+
+    if (orderSource === 'DINE_IN' && !selectedTableId) {
+      alert('Por favor selecciona la mesa para el comensal');
       return;
     }
 
@@ -147,12 +178,14 @@ export default function POSPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerName,
+          customerName: finalCustomerName,
           customerPhone,
           customerAddress,
           source: orderSource,
           notes: orderNotes,
           tip,
+          tableId: orderSource === 'DINE_IN' ? selectedTableId : null,
+          diners: orderSource === 'DINE_IN' ? diners : 1,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -172,10 +205,12 @@ export default function POSPage() {
         setCustomerName('');
         setCustomerPhone('');
         setCustomerAddress('');
+        setSelectedTableId('');
+        setDiners(2);
         setTip(0);
         setOrderNotes('');
-        // Refresh products list to update local ingredients stock
-        fetchProducts();
+        // Refresh products and tables list
+        fetchInitialData();
       } else {
         const err = await res.json();
         alert(`Error: ${err.error}`);
@@ -410,30 +445,36 @@ export default function POSPage() {
             </button>
             <div className="border-b border-slate-800 pb-2 flex items-center gap-2">
               <Coins className="h-5 w-5 text-brand-primary" />
-              <h3 className="text-lg font-bold text-white">Detalles del Pedido Delivery</h3>
+              <h3 className="text-lg font-bold text-white">
+                {orderSource === 'DINE_IN' ? 'Comanda de Salón / Mesa' : 'Detalles del Pedido'}
+              </h3>
             </div>
 
             <div className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-400">Origen de Venta</label>
+                  <label className="font-semibold text-slate-400">Tipo / Origen *</label>
                   <select
                     value={orderSource}
-                    onChange={(e) => setOrderSource(e.target.value as 'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE')}
+                    onChange={(e) => setOrderSource(e.target.value as 'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE' | 'DINE_IN' | 'TAKEAWAY')}
                     className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
                   >
-                    <option value="WEB">Sitio Web Propio</option>
-                    <option value="PHONE">Teléfono / WhatsApp</option>
-                    <option value="UBER_EATS">Uber Eats App</option>
-                    <option value="RAPPI">Rappi App</option>
+                    <option value="DINE_IN">🍽️ Comer en Salón (Mesa)</option>
+                    <option value="TAKEAWAY">🛍️ Para Llevar (Mostrador)</option>
+                    <option value="WEB">🌐 Sitio Web Propio</option>
+                    <option value="PHONE">📞 Teléfono / WhatsApp</option>
+                    <option value="UBER_EATS">🛵 Uber Eats App</option>
+                    <option value="RAPPI">🛵 Rappi App</option>
                   </select>
                 </div>
+                
                 <div className="space-y-1">
-                  <label className="font-semibold text-slate-400">Nombre Cliente *</label>
+                  <label className="font-semibold text-slate-400">
+                    {orderSource === 'DINE_IN' ? 'Nombre / Referencia' : 'Nombre Cliente *'}
+                  </label>
                   <input
                     type="text"
-                    required
-                    placeholder="Juan Pérez"
+                    placeholder={orderSource === 'DINE_IN' ? 'Opcional (Ej. Familia López)' : 'Juan Pérez'}
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
@@ -441,33 +482,71 @@ export default function POSPage() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-400">Teléfono</label>
-                <input
-                  type="text"
-                  placeholder="555-0129"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
-                />
-              </div>
+              {/* Dine-In specific options */}
+              {orderSource === 'DINE_IN' && (
+                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950/80 border border-slate-800 rounded-lg">
+                  <div className="space-y-1">
+                    <label className="font-semibold text-brand-primary">Seleccionar Mesa *</label>
+                    <select
+                      required
+                      value={selectedTableId}
+                      onChange={(e) => setSelectedTableId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-750 rounded px-2.5 py-2 text-white focus:border-brand-primary outline-none font-bold"
+                    >
+                      <option value="">-- Elegir Mesa --</option>
+                      {tables.map((t) => (
+                        <option key={t.id} value={t.id} disabled={t.status !== 'AVAILABLE' && t.id !== selectedTableId}>
+                          {t.name} ({t.zone} - {t.capacity}p) {t.status !== 'AVAILABLE' ? '[Ocupada]' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400">Comensales</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={diners}
+                      onChange={(e) => setDiners(parseInt(e.target.value, 10) || 1)}
+                      className="w-full bg-slate-900 border border-slate-750 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none font-bold"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Delivery specific fields */}
+              {orderSource !== 'DINE_IN' && orderSource !== 'TAKEAWAY' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400">Teléfono</label>
+                    <input
+                      type="text"
+                      placeholder="555-0129"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400">Dirección de Entrega</label>
+                    <textarea
+                      placeholder="Calle Reforma #102, Col. Centro"
+                      rows={2}
+                      value={customerAddress}
+                      onChange={(e) => setCustomerAddress(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none resize-none"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="space-y-1">
-                <label className="font-semibold text-slate-400">Dirección de Entrega</label>
-                <textarea
-                  placeholder="Calle Reforma #102, Col. Centro"
-                  rows={2}
-                  value={customerAddress}
-                  onChange={(e) => setCustomerAddress(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none resize-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-400">Notas Adicionales del Reparto</label>
+                <label className="font-semibold text-slate-400">Notas Especiales / Comanda</label>
                 <input
                   type="text"
-                  placeholder="Tocar el timbre verde, apto 4B"
+                  placeholder={orderSource === 'DINE_IN' ? 'Servir todo junto, cubiertos extra...' : 'Tocar el timbre verde, apto 4B'}
                   value={orderNotes}
                   onChange={(e) => setOrderNotes(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
@@ -523,7 +602,7 @@ export default function POSPage() {
 
               <div className="py-2 border-b border-dashed border-slate-300 space-y-1 text-[10px]">
                 <p><strong>Ticket:</strong> {placedOrder.orderNumber}</p>
-                <p><strong>Origen:</strong> {placedOrder.source}</p>
+                <p><strong>Origen:</strong> {placedOrder.source} {placedOrder.table ? `[${placedOrder.table.name}]` : ''}</p>
                 <p><strong>Cliente:</strong> {placedOrder.customerName}</p>
                 {placedOrder.customerPhone && <p><strong>Tel:</strong> {placedOrder.customerPhone}</p>}
                 {placedOrder.customerAddress && (

@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
           },
         },
         driver: true,
+        table: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -69,9 +70,11 @@ export async function POST(req: NextRequest) {
       customerName, 
       customerPhone, 
       customerAddress, 
-      source, // UBER_EATS, RAPPI, WEB, PHONE
+      source = 'WEB', // UBER_EATS, RAPPI, WEB, PHONE, DINE_IN, TAKEAWAY
       notes, 
       tip = 0, 
+      tableId,
+      diners = 1,
       items // Array of { productId, quantity, price, notes }
     } = await req.json();
 
@@ -95,37 +98,52 @@ export async function POST(req: NextRequest) {
     const totalOrdersCount = await prisma.order.count();
     const orderNumber = `DF-${1000 + totalOrdersCount + 1}`;
 
-    // Create Order in transaction
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        brandId: activeBrandId,
-        source,
-        status: 'RECEIVED',
-        customerName,
-        customerPhone,
-        customerAddress,
-        notes,
-        subtotal,
-        tax,
-        tip: parseFloat(String(tip)),
-        total,
-        items: {
-          create: typedItems.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            price: item.price,
-            notes: item.notes || null,
-          })),
-        },
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
+    // Create Order in transaction and update table status if dine-in
+    const order = await prisma.$transaction(async (tx) => {
+      const newOrder = await tx.order.create({
+        data: {
+          orderNumber,
+          brandId: activeBrandId,
+          source,
+          status: 'RECEIVED',
+          customerName,
+          customerPhone: customerPhone || null,
+          customerAddress: customerAddress || null,
+          notes: notes || null,
+          subtotal,
+          tax,
+          tip: parseFloat(String(tip)),
+          total,
+          tableId: tableId || null,
+          diners: diners ? parseInt(String(diners), 10) : 1,
+          items: {
+            create: typedItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price,
+              notes: item.notes || null,
+            })),
           },
         },
-      },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          table: true,
+        },
+      });
+
+      // If attached to a physical table, mark the table as OCCUPIED
+      if (tableId) {
+        await tx.table.update({
+          where: { id: tableId },
+          data: { status: 'OCCUPIED' },
+        });
+      }
+
+      return newOrder;
     });
 
     return NextResponse.json({ success: true, order });

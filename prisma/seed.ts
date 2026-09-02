@@ -464,6 +464,30 @@ async function main() {
     ],
   });
 
+  console.log('Seeding physical restaurant tables...');
+  // Seed sample tables for each brand/hall
+  const tableData = [
+    { number: '1', name: 'Mesa 1 - Salón Central', capacity: 4, zone: 'Salón', brandId: b1.id },
+    { number: '2', name: 'Mesa 2 - Salón Central', capacity: 4, zone: 'Salón', brandId: b1.id },
+    { number: '3', name: 'Mesa 3 - Ventanal', capacity: 2, zone: 'Salón', brandId: b1.id },
+    { number: '4', name: 'Mesa 4 - Familiar', capacity: 8, zone: 'Salón', brandId: b1.id },
+    { number: 'T-1', name: 'Terraza 1', capacity: 4, zone: 'Terraza', brandId: b1.id },
+    { number: 'T-2', name: 'Terraza 2', capacity: 6, zone: 'Terraza', brandId: b1.id },
+    { number: 'B-1', name: 'Barra 1', capacity: 2, zone: 'Barra', brandId: b1.id },
+    // Taco Express tables
+    { number: '1', name: 'Mesa 1 - Principal', capacity: 4, zone: 'Salón', brandId: b2.id },
+    { number: '2', name: 'Mesa 2 - Principal', capacity: 4, zone: 'Salón', brandId: b2.id },
+    { number: '3', name: 'Mesa 3 - Rincón', capacity: 2, zone: 'Salón', brandId: b2.id },
+    { number: 'T-1', name: 'Terraza Jardín', capacity: 6, zone: 'Terraza', brandId: b2.id },
+    // Green Bowl tables
+    { number: '1', name: 'Mesa Verde 1', capacity: 2, zone: 'Salón', brandId: b3.id },
+    { number: '2', name: 'Mesa Verde 2', capacity: 4, zone: 'Salón', brandId: b3.id },
+  ];
+
+  for (const t of tableData) {
+    await prisma.table.create({ data: t });
+  }
+
   console.log('Seeding completed successfully!');
 }
 

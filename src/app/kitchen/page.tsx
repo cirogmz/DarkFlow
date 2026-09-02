@@ -30,6 +30,11 @@ interface Order {
   customerName: string;
   notes?: string | null;
   items: OrderItem[];
+  table?: {
+    number: string;
+    name: string;
+  } | null;
+  diners?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -161,7 +166,14 @@ export default function KitchenPage() {
                     >
                       {/* Top status */}
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-mono font-bold bg-slate-800 px-2 py-0.5 rounded text-white">{order.orderNumber}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold bg-slate-800 px-2 py-0.5 rounded text-white">{order.orderNumber}</span>
+                          {order.table && (
+                            <span className="font-bold text-[10px] bg-brand-primary text-slate-950 px-1.5 py-0.5 rounded">
+                              🍽️ {order.table.name}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
                           {order.source}
                         </span>
@@ -229,7 +241,14 @@ export default function KitchenPage() {
                     >
                       {/* Top status */}
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-mono font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded">{order.orderNumber}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded">{order.orderNumber}</span>
+                          {order.table && (
+                            <span className="font-bold text-[10px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded">
+                              🍽️ {order.table.name}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
                           {order.source}
                         </span>
@@ -294,7 +313,14 @@ export default function KitchenPage() {
                     >
                       {/* Top status */}
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-mono font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded">{order.orderNumber}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded">{order.orderNumber}</span>
+                          {order.table && (
+                            <span className="font-bold text-[10px] bg-emerald-500 text-slate-950 px-1.5 py-0.5 rounded">
+                              🍽️ {order.table.name}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
                           {order.source}
                         </span>

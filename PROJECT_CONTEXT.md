@@ -57,7 +57,8 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
              ▼
   [ Páginas Autenticadas (App Router) ]
      ├─ Dashboard (`/`)
-     ├─ POS Delivery (`/pos`)
+     ├─ POS Ventas & Salón (`/pos`)
+     ├─ Salón & Mesas (`/tables`)
      ├─ Kitchen KDS (`/kitchen`)
      ├─ Menú & Catálogo (`/menu`)
      ├─ Inventarios (`/inventory`)
@@ -70,6 +71,7 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
      ├─ `/api/brands`      (marcas asignadas, creación y edición)
      ├─ `/api/categories`  (secciones del menú por marca)
      ├─ `/api/products`    (catálogo, CRUD y disponibilidad por marca)
+     ├─ `/api/tables`      (mesas de salón, capacidad y comensales)
      ├─ `/api/orders/*`    (creación, avance de estado y descuento de stock)
      ├─ `/api/inventory`   (insumos, compras y mapeo de recetas)
      ├─ `/api/cash`        (apertura/cierre de caja y agregados de ventas)
@@ -89,15 +91,16 @@ El esquema relacional en [`prisma/schema.prisma`](file:///prisma/schema.prisma) 
 1. **`User`**: Usuarios del sistema (`id`, `email`, `passwordHash`, `name`, `role`, `createdAt`, `updatedAt`).
 2. **`Brand`**: Marcas virtuales de cocina (`id`, `name`, `slug`, `logoUrl`, `primaryColor`, `secondaryColor`, `isActive`).
 3. **`UserBrand`**: Tabla intermedia de pertenencia de usuarios a marcas (N:M).
-4. **`Category`**: Categorías de productos agrupadas por marca.
-5. **`Product`**: Platillos en el menú pertenecientes a una categoría y marca (`id`, `name`, `description`, `price`, `imageUrl`, `isActive`).
-6. **`Ingredient`**: Insumos o materias primas (`id`, `name`, `stock`, `unit`, `cost`, `minStock`, `brandId`).
-7. **`RecipeItem`**: Ficha técnica que vincula `Product` con `Ingredient` indicando `quantity` utilizada por unidad vendida.
-8. **`Order`**: Comandas de pedidos (`id`, `orderNumber`, `source`, `status`, `customerName`, `customerPhone`, `customerAddress`, `notes`, `subtotal`, `tax`, `tip`, `total`, `driverId`, `brandId`).
-9. **`OrderItem`**: Líneas de producto dentro de una comanda (`orderId`, `productId`, `quantity`, `price`, `notes`).
-10. **`Purchase`**: Registro histórico de compras de mercancía (`ingredientId`, `quantity`, `cost`, `supplier`, `purchaseDate`, `brandId`).
-11. **`CashSession`**: Turnos de caja / arqueos (`brandId`, `userId`, `openedAt`, `closedAt`, `openingBalance`, `closingBalance`, `expectedBalance`, `actualBalance`, `cashSales`, `cardSales`, `appsSales`, `status`, `notes`).
-12. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
+4. **`Table`**: Mesas del salón físico (`id`, `number`, `name`, `capacity`, `status`, `zone`, `brandId`). Estados: `AVAILABLE`, `OCCUPIED`, `BILL_REQUESTED`, `RESERVED`.
+5. **`Category`**: Categorías de productos agrupadas por marca.
+6. **`Product`**: Platillos en el menú pertenecientes a una categoría y marca (`id`, `name`, `description`, `price`, `imageUrl`, `isActive`).
+7. **`Ingredient`**: Insumos o materias primas (`id`, `name`, `stock`, `unit`, `cost`, `minStock`, `brandId`).
+8. **`RecipeItem`**: Ficha técnica que vincula `Product` con `Ingredient` indicando `quantity` utilizada por unidad vendida.
+9. **`Order`**: Comandas de pedidos (`id`, `orderNumber`, `source`, `status`, `customerName`, `customerPhone`, `customerAddress`, `notes`, `subtotal`, `tax`, `tip`, `total`, `driverId`, `brandId`, `tableId`, `diners`). Orígenes: `WEB`, `PHONE`, `UBER_EATS`, `RAPPI`, `DINE_IN`, `TAKEAWAY`.
+10. **`OrderItem`**: Líneas de producto dentro de una comanda (`orderId`, `productId`, `quantity`, `price`, `notes`).
+11. **`Purchase`**: Registro histórico de compras de mercancía (`ingredientId`, `quantity`, `cost`, `supplier`, `purchaseDate`, `brandId`).
+12. **`CashSession`**: Turnos de caja / arqueos (`brandId`, `userId`, `openedAt`, `closedAt`, `openingBalance`, `closingBalance`, `expectedBalance`, `actualBalance`, `cashSales`, `cardSales`, `appsSales`, `status`, `notes`).
+13. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
 
 ---
 

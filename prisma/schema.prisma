@@ -36,6 +36,7 @@ model Brand {
   orders         Order[]
   purchases      Purchase[]
   cashSessions   CashSession[]
+  tables         Table[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -47,6 +48,22 @@ model UserBrand {
   brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
   @@id([userId, brandId])
+}
+
+model Table {
+  id        String    @id @default(uuid())
+  number    String    // e.g. "1", "Mesa 4", "Terraza A"
+  name      String    // e.g. "Mesa 1 - Salón Principal"
+  capacity  Int       @default(4)
+  status    String    @default("AVAILABLE") // AVAILABLE, OCCUPIED, BILL_REQUESTED, RESERVED
+  zone      String    @default("Salón") // Salón, Terraza, Barra, VIP
+  brandId   String
+  brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orders    Order[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([number, brandId])
 }
 
 model Category {
@@ -113,7 +130,7 @@ model Order {
   orderNumber  String       @unique // e.g. DF-1001
   brandId      String
   brand        Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  source       String       @default("WEB") // UBER_EATS, RAPPI, WEB, PHONE
+  source       String       @default("WEB") // UBER_EATS, RAPPI, WEB, PHONE, DINE_IN, TAKEAWAY
   status       String       @default("RECEIVED") // RECEIVED, PREPARING, READY, ON_THE_WAY, DELIVERED, CANCELLED
   customerName String
   customerPhone String?
@@ -125,6 +142,9 @@ model Order {
   total        Float
   driverId     String?      // Optional assigned driver
   driver       User?        @relation("DeliveryDriver", fields: [driverId], references: [id])
+  tableId      String?      // Optional for Dine-in
+  table        Table?       @relation(fields: [tableId], references: [id])
+  diners       Int?         @default(1)
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

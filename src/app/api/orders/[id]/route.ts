@@ -76,7 +76,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // 2. Update order fields
+      // 2. If this was a dine-in order and is DELIVERED or CANCELLED, release the table
+      if (order.tableId && (status === 'DELIVERED' || status === 'CANCELLED')) {
+        await tx.table.update({
+          where: { id: order.tableId },
+          data: { status: 'AVAILABLE' },
+        });
+      }
+
+      // 3. Update order fields
       return await tx.order.update({
         where: { id: orderId },
         data: updateData,
@@ -87,6 +95,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             },
           },
           driver: true,
+          table: true,
         },
       });
     });
