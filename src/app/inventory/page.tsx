@@ -67,18 +67,13 @@ export default function InventoryPage() {
   const [purchaseQty, setPurchaseQty] = useState<number>(0);
   const [purchaseCost, setPurchaseCost] = useState<number>(0);
   const [purchaseSupplier, setPurchaseSupplier] = useState('');
-  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
 
   // Recipe mapping state
   const [selectedProductId, setSelectedProductId] = useState('');
   const [mapIngId, setMapIngId] = useState('');
   const [mapQty, setMapQty] = useState<number>(0);
 
-  useEffect(() => {
-    fetchInventoryData();
-  }, []);
-
-  const fetchInventoryData = async () => {
+  const fetchInventoryData = React.useCallback(async () => {
     try {
       // Fetch ingredients and purchases
       const invRes = await fetch('/api/inventory');
@@ -102,7 +97,11 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedProductId]);
+
+  useEffect(() => {
+    fetchInventoryData();
+  }, [fetchInventoryData]);
 
   const handleAddIngredient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,7 +131,7 @@ export default function InventoryPage() {
         const data = await res.json();
         alert(`Error: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       alert('Error al agregar insumo');
     }
   };
@@ -155,7 +154,6 @@ export default function InventoryPage() {
       });
 
       if (res.ok) {
-        setShowPurchaseModal(false);
         setPurchaseQty(0);
         setPurchaseCost(0);
         setPurchaseSupplier('');
@@ -164,7 +162,7 @@ export default function InventoryPage() {
         const data = await res.json();
         alert(`Error: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       alert('Error al registrar compra');
     }
   };
@@ -192,7 +190,7 @@ export default function InventoryPage() {
         const data = await res.json();
         alert(`Error: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       alert('Error al actualizar ficha técnica');
     }
   };
@@ -202,6 +200,17 @@ export default function InventoryPage() {
   const totalValuation = ingredients.reduce((sum, i) => sum + (i.stock * i.cost), 0);
 
   const activeProduct = products.find(p => p.id === selectedProductId);
+
+  if (loading) {
+    return (
+      <DashboardContainer>
+        <div className="flex h-[calc(100vh-200px)] items-center justify-center flex-col gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-800 border-t-brand-primary"></div>
+          <p className="text-sm text-slate-400">Cargando inventarios y recetas...</p>
+        </div>
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>

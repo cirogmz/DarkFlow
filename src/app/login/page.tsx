@@ -33,7 +33,7 @@ export default function LoginPage() {
       } else {
         setError(data.error || 'Credenciales inválidas');
       }
-    } catch (err) {
+    } catch {
       setError('Error al conectar con el servidor');
     } finally {
       setLoading(false);

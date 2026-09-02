@@ -54,11 +54,7 @@ export default function CashPage() {
   const [actualBalance, setActualBalance] = useState<number>(0);
   const [closeNotes, setCloseNotes] = useState('');
 
-  useEffect(() => {
-    fetchCashSessions();
-  }, []);
-
-  const fetchCashSessions = async () => {
+  const fetchCashSessions = React.useCallback(async () => {
     try {
       const res = await fetch('/api/cash');
       if (res.ok) {
@@ -77,7 +73,11 @@ export default function CashPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchCashSessions();
+  }, [fetchCashSessions]);
 
   const handleOpenSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +100,7 @@ export default function CashPage() {
         const data = await res.json();
         alert(`Error: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       alert('Error de red al abrir caja');
     }
   };
@@ -131,7 +131,7 @@ export default function CashPage() {
         const data = await res.json();
         alert(`Error: ${data.error}`);
       }
-    } catch (err) {
+    } catch {
       alert('Error de red al cerrar caja');
     }
   };
@@ -142,6 +142,17 @@ export default function CashPage() {
   };
 
   const discrepancy = calculateDiscrepancy();
+
+  if (loading) {
+    return (
+      <DashboardContainer>
+        <div className="flex h-[calc(100vh-200px)] items-center justify-center flex-col gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-800 border-t-brand-primary"></div>
+          <p className="text-sm text-slate-400">Cargando turnos de caja...</p>
+        </div>
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>

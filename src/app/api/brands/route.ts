@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ brands });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching brands:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }

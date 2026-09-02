@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { verifyPassword } from '@/lib/hash';
-import { encryptSession } from '@/lib/auth';
+import { encryptSession, SessionData } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       email: user.email,
       name: user.name,
-      role: user.role as any,
+      role: user.role as SessionData['role'],
       brandIds,
       activeBrandId,
     });
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in login API:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }

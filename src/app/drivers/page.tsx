@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import DashboardContainer from '@/components/DashboardContainer';
 import { useAppStore } from '@/lib/store';
 import { 
@@ -9,7 +9,6 @@ import {
   MapPin, 
   Smartphone,
   Navigation,
-  CheckCircle,
   Clock,
   Play,
   Check
@@ -62,13 +61,7 @@ export default function DriversPage() {
 
   const { addNotification } = useAppStore();
 
-  useEffect(() => {
-    fetchDriverData();
-    const interval = setInterval(fetchDriverData, 10000); // Poll every 10s
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchDriverData = async () => {
+  const fetchDriverData = useCallback(async () => {
     try {
       // 1. Fetch drivers list
       const driversRes = await fetch('/api/drivers');
@@ -86,7 +79,7 @@ export default function DriversPage() {
         setReadyOrders(ready);
         setActiveDeliveries(otw);
         
-        // Auto pre-select first order and first driver if available
+        // Auto pre-select first order if none selected
         if (ready.length > 0 && !selectedOrderId) {
           setSelectedOrderId(ready[0].id);
         }
@@ -96,7 +89,13 @@ export default function DriversPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedOrderId]);
+
+  useEffect(() => {
+    fetchDriverData();
+    const interval = setInterval(fetchDriverData, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, [fetchDriverData]);
 
   const handleAssignOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,7 +130,7 @@ export default function DriversPage() {
       } else {
         alert('Error al asignar el pedido');
       }
-    } catch (err) {
+    } catch {
       alert('Error de red al despachar pedido');
     }
   };
@@ -163,14 +162,21 @@ export default function DriversPage() {
       } else {
         alert('Error al completar pedido');
       }
-    } catch (err) {
+    } catch {
       alert('Error de red');
     }
   };
 
-  const getDriverName = (driverId: string) => {
-    return drivers.find(d => d.id === driverId)?.name || 'Repartidor';
-  };
+  if (loading) {
+    return (
+      <DashboardContainer>
+        <div className="flex h-[calc(100vh-200px)] items-center justify-center flex-col gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-800 border-t-brand-primary"></div>
+          <p className="text-sm text-slate-400">Cargando logística de repartidores...</p>
+        </div>
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>
@@ -192,7 +198,7 @@ export default function DriversPage() {
 
             {readyOrders.length === 0 ? (
               <div className="p-4 text-center border border-slate-800 border-dashed rounded text-slate-500 text-xs">
-                No hay pedidos en estado "Listo" esperando despacho.
+                No hay pedidos en estado &quot;Listo&quot; esperando despacho.
               </div>
             ) : (
               <form onSubmit={handleAssignOrder} className="space-y-4 text-xs">

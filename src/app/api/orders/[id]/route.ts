@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -44,9 +45,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'No tienes acceso a este pedido' }, { status: 403 });
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.OrderUpdateInput = {};
     if (status) updateData.status = status;
-    if (driverId !== undefined) updateData.driverId = driverId;
+    if (driverId !== undefined) {
+      updateData.driver = driverId ? { connect: { id: driverId } } : { disconnect: true };
+    }
 
     // Core requirement check: Deduct inventory stock if status is changing to DELIVERED
     const isTransitioningToDelivered = status === 'DELIVERED' && order.status !== 'DELIVERED';
@@ -89,7 +92,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     return NextResponse.json({ success: true, order: updatedOrder });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating order:', error);
     return NextResponse.json({ error: 'Error al actualizar el pedido' }, { status: 500 });
   }

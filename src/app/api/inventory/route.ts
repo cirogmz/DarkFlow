@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ ingredients, purchases });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching inventory:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Acción no válida' }, { status: 400 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error modifying inventory:', error);
     return NextResponse.json({ error: 'Error al procesar la solicitud' }, { status: 500 });
   }
@@ -160,7 +160,7 @@ export async function PUT(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, recipeItem });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating recipe:', error);
     return NextResponse.json({ error: 'Error al actualizar receta' }, { status: 500 });
   }

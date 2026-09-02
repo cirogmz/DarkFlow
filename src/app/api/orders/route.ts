@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
+
+interface OrderItemInput {
+  productId: string;
+  quantity: number;
+  price: number;
+  notes?: string | null;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,7 +23,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const driverId = searchParams.get('driverId');
 
-    const whereClause: any = {
+    const whereClause: Prisma.OrderWhereInput = {
       brandId: session.activeBrandId,
     };
 
@@ -41,7 +49,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ orders });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching orders:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
@@ -67,19 +75,21 @@ export async function POST(req: NextRequest) {
       items // Array of { productId, quantity, price, notes }
     } = await req.json();
 
-    if (!customerName || !items || items.length === 0) {
+    if (!customerName || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 });
     }
 
+    const typedItems = items as OrderItemInput[];
+
     // Calculate subtotal
     let subtotal = 0;
-    for (const item of items) {
+    for (const item of typedItems) {
       subtotal += item.price * item.quantity;
     }
 
     // 16% Tax (IVA)
     const tax = parseFloat((subtotal * 0.16).toFixed(2));
-    const total = parseFloat((subtotal + tax + parseFloat(tip)).toFixed(2));
+    const total = parseFloat((subtotal + tax + parseFloat(String(tip))).toFixed(2));
 
     // Generate unique order number
     const totalOrdersCount = await prisma.order.count();
@@ -98,10 +108,10 @@ export async function POST(req: NextRequest) {
         notes,
         subtotal,
         tax,
-        tip: parseFloat(tip),
+        tip: parseFloat(String(tip)),
         total,
         items: {
-          create: items.map((item: any) => ({
+          create: typedItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
             price: item.price,
@@ -119,7 +129,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, order });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating order:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }

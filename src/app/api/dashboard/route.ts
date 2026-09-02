@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
       },
       brandComparison,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating dashboard stats:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }

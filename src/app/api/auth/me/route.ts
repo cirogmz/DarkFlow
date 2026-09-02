@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating active brand:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }

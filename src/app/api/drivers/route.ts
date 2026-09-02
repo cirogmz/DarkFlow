@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ drivers });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching drivers:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, profile });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating driver profile:', error);
     return NextResponse.json({ error: 'Error al actualizar chofer' }, { status: 500 });
   }

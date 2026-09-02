@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useAppStore } from '@/lib/store';
 
 export default function BrandThemeProvider({ children }: { children: React.ReactNode }) {

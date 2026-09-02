@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import DashboardContainer from '@/components/DashboardContainer';
 import { 
   TrendingUp, 
   ShoppingBag, 
   DollarSign, 
   Clock, 
-  ChevronRight, 
   Smartphone,
   Info
 } from 'lucide-react';
@@ -24,8 +23,6 @@ import {
   Cell,
   LineChart,
   Line,
-  BarChart,
-  Bar,
   Legend
 } from 'recharts';
 
@@ -57,11 +54,7 @@ export default function DashboardPage() {
   const [comparison, setComparison] = useState<BrandComparison[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const res = await fetch('/api/dashboard');
       if (res.ok) {
@@ -75,9 +68,24 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const COLORS = ['#F59E0B', '#10B981', '#EF4444', '#3B82F6'];
+
+  if (loading) {
+    return (
+      <DashboardContainer>
+        <div className="flex h-[calc(100vh-200px)] items-center justify-center flex-col gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-800 border-t-brand-primary"></div>
+          <p className="text-sm text-slate-400">Cargando métricas de la cocina...</p>
+        </div>
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>
@@ -240,7 +248,7 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-4 py-2">
               {charts.topProducts.length > 0 ? (
-                charts.topProducts.map((prod, idx) => (
+                charts.topProducts.map((prod) => (
                   <div key={prod.name} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-semibold text-slate-200 truncate max-w-[200px]">{prod.name}</span>

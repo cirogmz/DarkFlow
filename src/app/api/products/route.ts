@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ categories, products });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching products:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }

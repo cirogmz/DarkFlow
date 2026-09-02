@@ -45,11 +45,7 @@ export default function DashboardContainer({ children }: { children: React.React
   
   const { activeBrand, setActiveBrand, notifications, addNotification } = useAppStore();
 
-  useEffect(() => {
-    fetchSession();
-  }, []);
-
-  const fetchSession = async () => {
+  const fetchSession = React.useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me');
       if (!res.ok) {
@@ -69,7 +65,7 @@ export default function DashboardContainer({ children }: { children: React.React
           
           // Set active brand in Zustand
           const currentBrand = brandsData.brands.find(
-            (b: any) => b.id === (data.user.activeBrandId || data.user.brandIds[0])
+            (b: { id: string }) => b.id === (data.user.activeBrandId || data.user.brandIds[0])
           );
           if (currentBrand) {
             setActiveBrand(currentBrand);
@@ -84,7 +80,11 @@ export default function DashboardContainer({ children }: { children: React.React
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, setActiveBrand]);
+
+  useEffect(() => {
+    fetchSession();
+  }, [fetchSession]);
 
   const handleBrandChange = async (brandId: string) => {
     try {
@@ -96,7 +96,6 @@ export default function DashboardContainer({ children }: { children: React.React
         body: JSON.stringify({ brandId }),
       });
       if (res.ok) {
-        const data = await res.json();
         const selectedBrand = brands.find((b) => b.id === brandId) || null;
         setActiveBrand(selectedBrand);
         addNotification(`Cambiado a marca: ${selectedBrand?.name}`, 'success');

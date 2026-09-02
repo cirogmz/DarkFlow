@@ -39,14 +39,7 @@ export default function KitchenPage() {
   const [loading, setLoading] = useState(true);
   const { addNotification } = useAppStore();
 
-  useEffect(() => {
-    fetchActiveOrders();
-    // Auto refresh kitchen display every 15 seconds
-    const interval = setInterval(fetchActiveOrders, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchActiveOrders = async () => {
+  const fetchActiveOrders = React.useCallback(async () => {
     try {
       const res = await fetch('/api/orders');
       if (res.ok) {
@@ -62,7 +55,14 @@ export default function KitchenPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchActiveOrders();
+    // Auto refresh kitchen display every 15 seconds
+    const interval = setInterval(fetchActiveOrders, 15000);
+    return () => clearInterval(interval);
+  }, [fetchActiveOrders]);
 
   const advanceOrderStatus = async (orderId: string, currentStatus: string) => {
     let nextStatus = '';
@@ -84,7 +84,7 @@ export default function KitchenPage() {
       } else {
         alert('Error al avanzar el pedido');
       }
-    } catch (err) {
+    } catch {
       alert('Error de red al actualizar estado');
     }
   };
@@ -100,6 +100,17 @@ export default function KitchenPage() {
   const receivedOrders = orders.filter((o) => o.status === 'RECEIVED');
   const preparingOrders = orders.filter((o) => o.status === 'PREPARING');
   const readyOrders = orders.filter((o) => o.status === 'READY');
+
+  if (loading) {
+    return (
+      <DashboardContainer>
+        <div className="flex h-[calc(100vh-200px)] items-center justify-center flex-col gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-800 border-t-brand-primary"></div>
+          <p className="text-sm text-slate-400">Cargando comandas de cocina...</p>
+        </div>
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>

@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ activeSession, activeAggregates, pastSessions });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching cash sessions:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Acción no soportada' }, { status: 400 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error modifying cash session:', error);
     return NextResponse.json({ error: 'Error al procesar turno de caja' }, { status: 500 });
   }

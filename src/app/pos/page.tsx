@@ -45,6 +45,31 @@ interface Category {
   products: Product[];
 }
 
+interface PlacedOrderItem {
+  id: string;
+  quantity: number;
+  price: number;
+  product: {
+    name: string;
+  };
+}
+
+interface PlacedOrder {
+  id: string;
+  orderNumber: string;
+  source: string;
+  customerName: string;
+  customerPhone?: string | null;
+  customerAddress?: string | null;
+  notes?: string | null;
+  subtotal: number;
+  tax: number;
+  tip: number;
+  total: number;
+  createdAt: string;
+  items: PlacedOrderItem[];
+}
+
 export default function POSPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -61,16 +86,12 @@ export default function POSPage() {
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [placedOrder, setPlacedOrder] = useState<any | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [loading, setLoading] = useState(false);
 
   const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, clearCart, addNotification } = useAppStore();
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
+  const fetchProducts = React.useCallback(async () => {
     try {
       const res = await fetch('/api/products');
       if (res.ok) {
@@ -81,7 +102,11 @@ export default function POSPage() {
     } catch (err) {
       console.error('Failed to fetch POS products', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   // Helper: check if product has enough ingredients stock
   const checkStockStatus = (product: Product) => {
@@ -155,7 +180,7 @@ export default function POSPage() {
         const err = await res.json();
         alert(`Error: ${err.error}`);
       }
-    } catch (e) {
+    } catch {
       alert('Error de red al colocar pedido');
     } finally {
       setLoading(false);
@@ -394,7 +419,7 @@ export default function POSPage() {
                   <label className="font-semibold text-slate-400">Origen de Venta</label>
                   <select
                     value={orderSource}
-                    onChange={(e: any) => setOrderSource(e.target.value)}
+                    onChange={(e) => setOrderSource(e.target.value as 'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE')}
                     className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
                   >
                     <option value="WEB">Sitio Web Propio</option>
@@ -516,7 +541,7 @@ export default function POSPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {placedOrder.items.map((item: any) => (
+                  {placedOrder.items.map((item) => (
                     <tr key={item.id}>
                       <td className="py-1 font-bold">{item.quantity}x</td>
                       <td className="py-1 truncate max-w-[150px]">{item.product.name}</td>

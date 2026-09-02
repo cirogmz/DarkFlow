@@ -5,7 +5,6 @@ const SECRET = process.env.AUTH_SECRET || 'darkflow-secret-key-32-chars-long!!';
 // Derive a 32-byte key from the secret
 const KEY = crypto.scryptSync(SECRET, 'salt-for-darkflow', 32);
 const IV_LENGTH = 12; // Standard for GCM
-const AUTH_TAG_LENGTH = 16;
 
 export interface SessionData {
   userId: string;
