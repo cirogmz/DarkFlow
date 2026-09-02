@@ -1,0 +1,182 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  passwordHash  String
+  name          String
+  role          String          @default("CASHIER") // Stored as String for SQLite enum flexibility
+  brands        UserBrand[]
+  orders        Order[]         @relation("DeliveryDriver")
+  cashSessions  CashSession[]
+  deliveryProfile DeliveryProfile?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model Brand {
+  id             String        @id @default(uuid())
+  name           String        @unique
+  slug           String        @unique
+  logoUrl        String?
+  primaryColor   String        @default("#E2E8F0") // Accent color (Hex)
+  secondaryColor String        @default("#0F172A")
+  isActive       Boolean       @default(true)
+  users          UserBrand[]
+  categories     Category[]
+  products       Product[]
+  ingredients    Ingredient[]
+  orders         Order[]
+  purchases      Purchase[]
+  cashSessions   CashSession[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model UserBrand {
+  userId  String
+  brandId String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@id([userId, brandId])
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  brandId   String
+  brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([name, brandId])
+}
+
+model Product {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  imageUrl    String?
+  categoryId  String
+  category    Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  brandId     String
+  brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  isActive    Boolean      @default(true)
+  recipeItems RecipeItem[]
+  orderItems  OrderItem[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Ingredient {
+  id          String       @id @default(uuid())
+  name        String
+  stock       Float        @default(0)
+  unit        String       // e.g., "g", "kg", "ml", "unit"
+  cost        Float        @default(0)
+  minStock    Float        @default(0)
+  brandId     String
+  brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  recipeItems RecipeItem[]
+  purchases   Purchase[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([name, brandId])
+}
+
+model RecipeItem {
+  id           String     @id @default(uuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float      // Quantity of ingredient used per product unit
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([productId, ingredientId])
+}
+
+model Order {
+  id           String       @id @default(uuid())
+  orderNumber  String       @unique // e.g. DF-1001
+  brandId      String
+  brand        Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  source       String       @default("WEB") // UBER_EATS, RAPPI, WEB, PHONE
+  status       String       @default("RECEIVED") // RECEIVED, PREPARING, READY, ON_THE_WAY, DELIVERED, CANCELLED
+  customerName String
+  customerPhone String?
+  customerAddress String?
+  notes        String?
+  subtotal     Float
+  tax          Float
+  tip          Float        @default(0)
+  total        Float
+  driverId     String?      // Optional assigned driver
+  driver       User?        @relation("DeliveryDriver", fields: [driverId], references: [id])
+  items        OrderItem[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+  notes     String?
+}
+
+model Purchase {
+  id           String     @id @default(uuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float
+  cost         Float
+  supplier     String?
+  purchaseDate DateTime   @default(now())
+  brandId      String
+  brand        Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+model CashSession {
+  id             String            @id @default(uuid())
+  brandId        String
+  brand          Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User              @relation(fields: [userId], references: [id])
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  openingBalance Float
+  closingBalance Float?
+  expectedBalance Float?
+  actualBalance  Float?
+  status         String            @default("OPEN") // OPEN, CLOSED
+  cashSales      Float             @default(0)
+  cardSales      Float             @default(0)
+  appsSales      Float             @default(0)
+  notes          String?
+}
+
+model DeliveryProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleType String   // e.g., "MOTO", "BICI", "AUTO"
+  plateNumber String?
+  status      String   @default("AVAILABLE") // AVAILABLE, DELIVERING, OFFLINE
+}
