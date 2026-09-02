@@ -14,7 +14,8 @@ import {
   Menu, 
   X, 
   User as UserIcon,
-  ChevronDown
+  ChevronDown,
+  UtensilsCrossed
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -136,6 +137,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'POS Ventas', path: '/pos', icon: ShoppingBag, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'KDS Cocina', path: '/kitchen', icon: Flame, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'KITCHEN'] },
+    { name: 'Menú & Catálogo', path: '/menu', icon: UtensilsCrossed, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Inventario', path: '/inventory', icon: Package, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Corte de Caja', path: '/cash', icon: Coins, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Repartidores', path: '/drivers', icon: Truck, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
