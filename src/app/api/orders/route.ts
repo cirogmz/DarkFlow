@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
         driver: true,
         table: true,
         customer: true,
+        coupon: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
       diners = 1,
       redeemedPoints = 0,
       discount = 0,
+      couponCode,
       items // Array of { productId, quantity, price, notes }
     } = await req.json();
 
@@ -94,9 +96,42 @@ export async function POST(req: NextRequest) {
       subtotal += item.price * item.quantity;
     }
 
-    // Apply discount if any
-    const discountAmount = Math.min(subtotal, Math.max(0, parseFloat(String(discount)) || 0));
-    const subtotalAfterDiscount = Math.max(0, subtotal - discountAmount);
+    // Process coupon validation if code provided
+    let appliedCouponId: string | null = null;
+    let appliedCouponCode: string | null = null;
+    let calculatedCouponDiscount = 0;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
+      const cleanCode = couponCode.trim().toUpperCase();
+      const couponRecord = await prisma.coupon.findUnique({
+        where: { code: cleanCode },
+      });
+
+      if (couponRecord && couponRecord.isActive) {
+        const brandMatch = !couponRecord.brandId || couponRecord.brandId === activeBrandId;
+        const limitNotReached = couponRecord.usageLimit === null || couponRecord.usedCount < couponRecord.usageLimit;
+        const minOrderMet = subtotal >= couponRecord.minOrderAmount;
+        const now = new Date();
+        const dateValid = (!couponRecord.startDate || now >= new Date(couponRecord.startDate)) &&
+                          (!couponRecord.endDate || now <= new Date(couponRecord.endDate));
+
+        if (brandMatch && limitNotReached && minOrderMet && dateValid) {
+          appliedCouponId = couponRecord.id;
+          appliedCouponCode = couponRecord.code;
+
+          if (couponRecord.discountType === 'PERCENTAGE') {
+            const raw = (subtotal * couponRecord.discountValue) / 100;
+            calculatedCouponDiscount = couponRecord.maxDiscount ? Math.min(raw, couponRecord.maxDiscount) : raw;
+          } else {
+            calculatedCouponDiscount = Math.min(subtotal, couponRecord.discountValue);
+          }
+        }
+      }
+    }
+
+    // Apply combined discount: coupon discount + any manual/loyalty discount passed
+    const totalDiscount = Math.min(subtotal, Math.max(0, calculatedCouponDiscount + (parseFloat(String(discount)) || 0)));
+    const subtotalAfterDiscount = Math.max(0, subtotal - totalDiscount);
 
     // 16% Tax (IVA)
     const tax = parseFloat((subtotalAfterDiscount * 0.16).toFixed(2));
@@ -150,6 +185,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Increment coupon usage count if applied
+      if (appliedCouponId) {
+        await tx.coupon.update({
+          where: { id: appliedCouponId },
+          data: {
+            usedCount: { increment: 1 },
+          },
+        });
+      }
+
       const newOrder = await tx.order.create({
         data: {
           orderNumber,
@@ -160,6 +205,9 @@ export async function POST(req: NextRequest) {
           customerPhone: customerPhone ? customerPhone.trim() : null,
           customerAddress: customerAddress ? customerAddress.trim() : null,
           customerId: linkedCustomerId,
+          couponId: appliedCouponId,
+          couponCode: appliedCouponCode,
+          discountAmount: totalDiscount,
           notes: notes || null,
           subtotal: subtotalAfterDiscount,
           tax,
@@ -184,6 +232,7 @@ export async function POST(req: NextRequest) {
           },
           table: true,
           customer: true,
+          coupon: true,
         },
       });
 

@@ -16,7 +16,9 @@ import {
   Printer,
   Crown,
   Sparkles,
-  UserCheck
+  UserCheck,
+  Tag,
+  Layers
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 
@@ -61,6 +63,29 @@ interface Category {
   products: Product[];
 }
 
+interface PosComboItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  product: {
+    id: string;
+    name: string;
+    price: number;
+  };
+}
+
+interface PosCombo {
+  id: string;
+  name: string;
+  description?: string | null;
+  price: number;
+  imageUrl?: string | null;
+  originalPrice: number;
+  savings: number;
+  savingsPercent: number;
+  items: PosComboItem[];
+}
+
 interface PlacedOrderItem {
   id: string;
   quantity: number;
@@ -82,6 +107,8 @@ interface PlacedOrder {
   tax: number;
   tip: number;
   total: number;
+  couponCode?: string | null;
+  discountAmount?: number;
   createdAt: string;
   items: PlacedOrderItem[];
   table?: {
@@ -105,6 +132,7 @@ interface TableOption {
 export default function POSPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [combos, setCombos] = useState<PosCombo[]>([]);
   const [tables, setTables] = useState<TableOption[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,6 +152,17 @@ export default function POSPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSuggestion | null>(null);
   const [redeemPoints, setRedeemPoints] = useState(false);
+
+  // Coupon state
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+    discountValue: number;
+    discountAmount: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -136,9 +175,10 @@ export default function POSPage() {
 
   const fetchInitialData = React.useCallback(async () => {
     try {
-      const [prodRes, tablesRes] = await Promise.all([
+      const [prodRes, tablesRes, combosRes] = await Promise.all([
         fetch('/api/products'),
         fetch('/api/tables'),
+        fetch('/api/combos?active=true'),
       ]);
 
       if (prodRes.ok) {
@@ -150,6 +190,11 @@ export default function POSPage() {
       if (tablesRes.ok) {
         const tablesData = await tablesRes.json();
         setTables(tablesData.tables || []);
+      }
+
+      if (combosRes.ok) {
+        const combosData = await combosRes.json();
+        setCombos(combosData.combos || []);
       }
     } catch (err) {
       console.error('Failed to fetch POS initial data', err);
@@ -183,15 +228,97 @@ export default function POSPage() {
     return matchesCategory && matchesSearch;
   });
 
-  // Financial and Loyalty Calculations
+  // Financial, Coupon and Loyalty Calculations
   const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  // Recalculate coupon discount live against current cart subtotal
+  let liveCouponDiscount = 0;
+  if (appliedCoupon && cartSubtotal > 0) {
+    if (appliedCoupon.discountType === 'PERCENTAGE') {
+      liveCouponDiscount = (cartSubtotal * appliedCoupon.discountValue) / 100;
+    } else {
+      liveCouponDiscount = Math.min(cartSubtotal, appliedCoupon.discountValue);
+    }
+    liveCouponDiscount = parseFloat(liveCouponDiscount.toFixed(2));
+  }
+
+  const subtotalAfterCoupon = Math.max(0, cartSubtotal - liveCouponDiscount);
   const maxPointsDiscount = selectedCustomer ? Math.floor(selectedCustomer.loyaltyPoints / 10) : 0;
-  const loyaltyDiscount = (selectedCustomer && redeemPoints) ? Math.min(cartSubtotal, maxPointsDiscount) : 0;
+  const loyaltyDiscount = (selectedCustomer && redeemPoints) ? Math.min(subtotalAfterCoupon, maxPointsDiscount) : 0;
   const redeemedPointsCount = loyaltyDiscount * 10;
-  const cartSubtotalAfterDiscount = Math.max(0, cartSubtotal - loyaltyDiscount);
+  const cartSubtotalAfterDiscount = Math.max(0, subtotalAfterCoupon - loyaltyDiscount);
   const cartTax = parseFloat((cartSubtotalAfterDiscount * 0.16).toFixed(2));
   const cartTotal = parseFloat((cartSubtotalAfterDiscount + cartTax + tip).toFixed(2));
   const earnedPoints = Math.floor(cartTotal / 10);
+
+  // Handle live coupon validation
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setCouponError(null);
+    setValidatingCoupon(true);
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: couponInput.trim(),
+          subtotal: cartSubtotal,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setAppliedCoupon({
+          code: data.coupon.code,
+          discountType: data.coupon.discountType,
+          discountValue: data.coupon.discountValue,
+          discountAmount: data.discountAmount,
+        });
+        addNotification(data.message, 'success');
+        setCouponError(null);
+      } else {
+        setCouponError(data.error || 'Cupón inválido');
+        addNotification(data.error || 'Cupón inválido', 'warning');
+      }
+    } catch {
+      setCouponError('Error de red al validar cupón');
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError(null);
+    addNotification('Cupón removido del pedido', 'info');
+  };
+
+  // Handle adding combo items to cart
+  const handleAddComboToCart = (combo: PosCombo) => {
+    const ratio = combo.originalPrice > 0 ? (combo.price / combo.originalPrice) : 1;
+    let runningSum = 0;
+
+    combo.items.forEach((item, index) => {
+      const isLast = index === combo.items.length - 1;
+      let unitPrice = parseFloat((item.product.price * ratio).toFixed(2));
+      if (isLast) {
+        const currentTotal = runningSum + (unitPrice * item.quantity);
+        const diff = parseFloat((combo.price - currentTotal).toFixed(2));
+        unitPrice = parseFloat((unitPrice + diff / item.quantity).toFixed(2));
+      }
+      runningSum += unitPrice * item.quantity;
+
+      for (let q = 0; q < item.quantity; q++) {
+        addToCart({
+          id: item.productId,
+          name: `${item.product.name}`,
+          price: unitPrice,
+        });
+      }
+    });
+
+    addNotification(`Combo "${combo.name}" agregado (Ahorro: $${combo.savings.toFixed(2)})`, 'success');
+  };
 
   // Live customer search
   const handleCustomerSearch = async (query: string) => {
@@ -259,7 +386,8 @@ export default function POSPage() {
           tableId: orderSource === 'DINE_IN' ? selectedTableId : null,
           diners: orderSource === 'DINE_IN' ? diners : 1,
           redeemedPoints: redeemPoints ? redeemedPointsCount : 0,
-          discount: loyaltyDiscount,
+          discount: liveCouponDiscount + loyaltyDiscount,
+          couponCode: appliedCoupon ? appliedCoupon.code : null,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -275,8 +403,9 @@ export default function POSPage() {
         addNotification(`Pedido ${data.order.orderNumber} creado con éxito`, 'success');
         clearCart();
         setIsCheckoutOpen(false);
-        // Clear checkout form
+        // Clear checkout form and coupon
         handleClearCustomer();
+        handleRemoveCoupon();
         setSelectedTableId('');
         setDiners(2);
         setTip(0);
@@ -325,6 +454,19 @@ export default function POSPage() {
               >
                 Todos
               </button>
+              {combos.length > 0 && (
+                <button
+                  onClick={() => setSelectedCategory('combos')}
+                  className={`px-4 py-2 text-xs font-bold rounded-lg border shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedCategory === 'combos'
+                      ? 'bg-purple-600 border-purple-500 text-white shadow-md'
+                      : 'bg-slate-900 border-purple-900/40 text-purple-300 hover:text-white hover:bg-purple-950/20'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Combos ({combos.length})
+                </button>
+              )}
               {categories.map((cat) => (
                 <button
                   key={cat.id}
@@ -341,54 +483,114 @@ export default function POSPage() {
             </div>
           </div>
 
-          {/* Product Grid */}
+          {/* Product & Combo Grid */}
           <div className="flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-6">
-              {filteredProducts.map((prod) => {
-                const stock = checkStockStatus(prod);
-                return (
-                  <div 
-                    key={prod.id} 
-                    className={`glass-panel border rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 ${
-                      stock.ok ? 'border-slate-800' : 'border-red-950/50 bg-red-950/5'
-                    }`}
+            {selectedCategory === 'combos' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-6">
+                {combos.map((combo) => (
+                  <div
+                    key={combo.id}
+                    className="glass-panel border border-purple-900/50 bg-purple-950/10 rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 shadow-lg"
                   >
                     <div className="space-y-2.5">
                       <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-bold text-white text-sm leading-snug">{prod.name}</h4>
-                        <span className="font-black text-brand-primary text-sm">${prod.price.toFixed(2)}</span>
+                        <div>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 mb-1">
+                            <Sparkles className="w-2.5 h-2.5" /> Combo Especial
+                          </span>
+                          <h4 className="font-bold text-white text-sm leading-snug">{combo.name}</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-black text-purple-300 text-base font-mono">${combo.price.toFixed(2)}</span>
+                          {combo.savings > 0 && (
+                            <p className="text-[10px] line-through text-slate-500 font-mono">${combo.originalPrice.toFixed(2)}</p>
+                          )}
+                        </div>
                       </div>
-                      
-                      {prod.imageUrl && (
-                        <img src={prod.imageUrl} alt={prod.name} className="w-full h-24 object-cover rounded-lg" />
+
+                      {combo.description && (
+                        <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{combo.description}</p>
                       )}
-                      
-                      <p className="text-xs text-slate-400 leading-relaxed truncate-3-lines">{prod.description}</p>
+
+                      <div className="bg-slate-950/70 border border-slate-800/80 rounded-lg p-2.5 space-y-1 text-xs">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Incluye:</p>
+                        {combo.items.map((it) => (
+                          <div key={it.id} className="flex justify-between text-slate-300 text-[11px]">
+                            <span>{it.quantity}x {it.product.name}</span>
+                            <span className="text-slate-500 font-mono">${(it.product.price * it.quantity).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between">
-                      {stock.ok ? (
-                        <span className="text-[10px] bg-emerald-950/50 border border-emerald-900/50 text-emerald-400 font-bold px-2 py-0.5 rounded">
-                          {stock.msg}
+                    <div className="mt-4 pt-3 border-t border-purple-900/40 flex items-center justify-between">
+                      {combo.savings > 0 ? (
+                        <span className="text-[11px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                          Ahorras ${combo.savings.toFixed(2)} ({combo.savingsPercent}%)
                         </span>
                       ) : (
-                        <span className="text-[10px] bg-red-950/50 border border-red-900/50 text-red-400 font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3" /> {stock.msg}
-                        </span>
+                        <span></span>
                       )}
 
                       <button
-                        onClick={() => addToCart({ id: prod.id, name: prod.name, price: prod.price, imageUrl: prod.imageUrl })}
-                        className="p-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-slate-950 transition-colors cursor-pointer"
-                        title="Agregar al Carrito"
+                        onClick={() => handleAddComboToCart(combo)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md"
                       >
-                        <Plus className="h-4 w-4 stroke-[3px]" />
+                        <Plus className="h-3.5 w-3.5 stroke-[3px]" />
+                        Agregar Combo
                       </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-6">
+                {filteredProducts.map((prod) => {
+                  const stock = checkStockStatus(prod);
+                  return (
+                    <div 
+                      key={prod.id} 
+                      className={`glass-panel border rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 ${
+                        stock.ok ? 'border-slate-800' : 'border-red-950/50 bg-red-950/5'
+                      }`}
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex justify-between items-start gap-2">
+                          <h4 className="font-bold text-white text-sm leading-snug">{prod.name}</h4>
+                          <span className="font-black text-brand-primary text-sm">${prod.price.toFixed(2)}</span>
+                        </div>
+                        
+                        {prod.imageUrl && (
+                          <img src={prod.imageUrl} alt={prod.name} className="w-full h-24 object-cover rounded-lg" />
+                        )}
+                        
+                        <p className="text-xs text-slate-400 leading-relaxed truncate-3-lines">{prod.description}</p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between">
+                        {stock.ok ? (
+                          <span className="text-[10px] bg-emerald-950/50 border border-emerald-900/50 text-emerald-400 font-bold px-2 py-0.5 rounded">
+                            {stock.msg}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-red-950/50 border border-red-900/50 text-red-400 font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> {stock.msg}
+                          </span>
+                        )}
+
+                        <button
+                          onClick={() => addToCart({ id: prod.id, name: prod.name, price: prod.price, imageUrl: prod.imageUrl })}
+                          className="p-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-slate-950 transition-colors cursor-pointer"
+                          title="Agregar al Carrito"
+                        >
+                          <Plus className="h-4 w-4 stroke-[3px]" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -464,6 +666,15 @@ export default function POSPage() {
               <span>Subtotal</span>
               <span className="font-semibold text-slate-200">${cartSubtotal.toFixed(2)}</span>
             </div>
+
+            {liveCouponDiscount > 0 && appliedCoupon && (
+              <div className="flex justify-between text-emerald-400 font-bold">
+                <span className="flex items-center gap-1">
+                  <Tag className="h-3 w-3" /> Cupón [{appliedCoupon.code}]
+                </span>
+                <span>-${liveCouponDiscount.toFixed(2)}</span>
+              </div>
+            )}
 
             {loyaltyDiscount > 0 && (
               <div className="flex justify-between text-purple-400 font-bold">
@@ -749,12 +960,75 @@ export default function POSPage() {
                 />
               </div>
 
+              {/* Coupon Code Section */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                    <Tag className="h-3.5 w-3.5 text-purple-400" /> Cupón de Descuento
+                  </label>
+                  {appliedCoupon && (
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      ¡Aplicado (-${liveCouponDiscount.toFixed(2)})!
+                    </span>
+                  )}
+                </div>
+
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between bg-slate-900 border border-purple-800/40 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-white text-xs">{appliedCoupon.code}</span>
+                      <span className="text-[10px] text-purple-300">
+                        ({appliedCoupon.discountType === 'PERCENTAGE' ? `${appliedCoupon.discountValue}% off` : `$${appliedCoupon.discountValue} off`})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-[10px] text-slate-400 hover:text-red-400 underline font-bold cursor-pointer"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Ej. BURGER20, VERANO15..."
+                      value={couponInput}
+                      onChange={(e) => {
+                        setCouponInput(e.target.value.toUpperCase());
+                        setCouponError(null);
+                      }}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono uppercase focus:border-purple-400 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={validatingCoupon || !couponInput.trim()}
+                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg disabled:opacity-50 transition-all cursor-pointer"
+                    >
+                      {validatingCoupon ? '...' : 'Aplicar'}
+                    </button>
+                  </div>
+                )}
+
+                {couponError && (
+                  <p className="text-[10px] text-red-400 font-semibold">{couponError}</p>
+                )}
+              </div>
+
               {/* Financial Breakdown Preview */}
               <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1.5 text-slate-300">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
                   <span>${cartSubtotal.toFixed(2)}</span>
                 </div>
+                {liveCouponDiscount > 0 && appliedCoupon && (
+                  <div className="flex justify-between text-emerald-400 font-bold">
+                    <span>Cupón [{appliedCoupon.code}]:</span>
+                    <span>-${liveCouponDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 {loyaltyDiscount > 0 && (
                   <div className="flex justify-between text-purple-400 font-bold">
                     <span>Descuento de Puntos (-{redeemedPointsCount} pts):</span>
@@ -856,6 +1130,9 @@ export default function POSPage() {
 
               <div className="pt-2 text-right space-y-1 text-[10px]">
                 <p>Subtotal: ${placedOrder.subtotal.toFixed(2)}</p>
+                {placedOrder.couponCode && (placedOrder.discountAmount ?? 0) > 0 && (
+                  <p className="text-emerald-600 font-bold">Cupón [{placedOrder.couponCode}]: -${placedOrder.discountAmount?.toFixed(2)}</p>
+                )}
                 <p>IVA (16%): ${placedOrder.tax.toFixed(2)}</p>
                 {placedOrder.tip > 0 && <p>Propina: ${placedOrder.tip.toFixed(2)}</p>}
                 <p className="font-bold text-xs border-t border-dashed border-slate-200 pt-1">Total: ${placedOrder.total.toFixed(2)}</p>

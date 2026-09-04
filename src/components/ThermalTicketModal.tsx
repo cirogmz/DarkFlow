@@ -16,6 +16,8 @@ export interface ThermalOrderData {
   tip?: number;
   total?: number;
   diners?: number | null;
+  couponCode?: string | null;
+  discountAmount?: number;
   createdAt: string | Date;
   brand?: {
     name: string;
@@ -268,6 +270,12 @@ export default function ThermalTicketModal({
                     <span>SUBTOTAL:</span>
                     <span className="font-mono">${subtotal.toFixed(2)}</span>
                   </div>
+                  {order.couponCode && (order.discountAmount ?? 0) > 0 && (
+                    <div className="flex justify-between text-slate-800 font-bold">
+                      <span>CUPÓN [{order.couponCode}]:</span>
+                      <span className="font-mono">-${order.discountAmount?.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-600">
                     <span>I.V.A. (16% INCLUIDO):</span>
                     <span className="font-mono">${tax.toFixed(2)}</span>

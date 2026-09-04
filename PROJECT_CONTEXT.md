@@ -107,6 +107,9 @@ El esquema relacional en [`prisma/schema.prisma`](file:///prisma/schema.prisma) 
 12. **`Purchase`**: Registro histórico de compras de mercancía (`ingredientId`, `quantity`, `cost`, `supplier`, `purchaseDate`, `brandId`).
 13. **`CashSession`**: Turnos de caja / arqueos (`brandId`, `userId`, `openedAt`, `closedAt`, `openingBalance`, `closingBalance`, `expectedBalance`, `actualBalance`, `cashSales`, `cardSales`, `appsSales`, `status`, `notes`).
 14. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
+15. **`Coupon`**: Cupones de descuento configurables (`id`, `code`, `description`, `discountType`, `discountValue`, `minOrderAmount`, `maxDiscount`, `usageLimit`, `usedCount`, `startDate`, `endDate`, `isActive`, `brandId`).
+16. **`Combo`**: Paquetes de platillos promocionales (`id`, `name`, `description`, `price`, `imageUrl`, `isActive`, `brandId`, `items`).
+17. **`ComboItem`**: Detalle de productos y cantidades que componen un `Combo` (`comboId`, `productId`, `quantity`).
 
 ---
 
@@ -265,7 +268,8 @@ darkflow/
 * ✅ **Fase 5 (Completada):** Impresión Térmica ESC/POS de Comandas y Recibos (58mm/80mm).
 * ✅ **Fase 6 (Completada):** Módulo de Clientes & Programa de Puntos de Lealtad (CRM).
 * ✅ **Fase 7 (Completada):** Sincronización en Tiempo Real (SSE + Campana Sonora) para KDS y Despacho.
-* 🔄 **Fase 8 (Siguiente):**
-  - Simulador e Ingesta de Delivery Apps Externas (Uber Eats, Rappi, Didi Food con comisiones).
-  - Módulo de Cupones, Promociones y Combos Multi-Marca.
-  - Migración a PostgreSQL en producción (Supabase / Neon).
+* ✅ **Fase 8 (Completada):** Promociones Comerciales, Cupones de Descuento y Combos Dinámicos.
+* 🔄 **Fase 9 (Siguiente):**
+  - Webhooks y Simulador de Delivery Apps Externas (Uber Eats, Rappi, Didi Food con comisiones).
+  - Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL).
+  - Exportaciones PDF avanzadas y facturación CFDI.

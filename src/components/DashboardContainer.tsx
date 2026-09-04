@@ -19,7 +19,8 @@ import {
   LayoutGrid,
   Users,
   FileSpreadsheet,
-  HeartHandshake
+  HeartHandshake,
+  Tag
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -146,6 +147,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Inventario', path: '/inventory', icon: Package, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Corte de Caja', path: '/cash', icon: Coins, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Clientes & Puntos', path: '/customers', icon: HeartHandshake, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
+    { name: 'Promociones & Combos', path: '/promotions', icon: Tag, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Repartidores', path: '/drivers', icon: Truck, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Personal & Roles', path: '/users', icon: Users, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Reportes & Exportar', path: '/reports', icon: FileSpreadsheet, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
