@@ -201,6 +201,14 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Orquestación Completa**: `docker-compose.yml` con servicio `darkflow-postgres` (PostgreSQL 16 Alpine con healthcheck y volumen persistente) y `darkflow-app` (Next.js con script de auto-migración `docker-entrypoint.sh`).
 * **Sonda de Salud Operativa**: Endpoint GET `/api/health` con test activo de consulta SQL y medición de latencia para Kubernetes / Cloud Run.
 
+### 6.12. Menú Digital QR y Auto-Pedido Móvil para Comensales
+* **Experiencia de Auto-Servicio sin Registro**: Ruta pública `/m/[slug]` accesible mediante escaneo de código QR en mesa o enlace web directo.
+* **Tematización Dinámica de Marca**: Personalización en vivo de logotipo, paleta de colores (`primaryColor`), categorías, platillos y paquetes de combos promocionales.
+* **Carrito y Notas de Cocina**: Comanda personalizada con especificaciones por platillo ("sin cebolla", "término medio"), cupones de descuento y asignación de mesa física.
+* **Integración Instantánea con Cocina KDS**: Los pedidos colocados emiten el evento reactivo SSE `orderEvents.emit('order_event', { action: 'CREATED' })`, disparando la campana sonora del KDS y actualizando el estado de la mesa a `OCCUPIED`.
+* **Pantalla de Seguimiento en Vivo**: Ruta `/order-tracking/[id]` con stepper de 4 etapas (`RECEIVED` ➔ `PREPARING` ➔ `READY` ➔ `DELIVERED`), refresco automático y desglose de ticket.
+* **Generador de QR en Salón**: En `/tables`, cada mesa cuenta con un botón para desplegar e imprimir la tarjeta QR con el enlace directo `http://<host>/m/[slug]?table=[number]`.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -233,6 +241,7 @@ darkflow/
 │   │   │   ├── inventory/    # Insumos, compras y recetas
 │   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
 │   │   │   ├── products/     # Catálogo de platillos por marca
+│   │   │   ├── public/       # APIs públicas para clientes (menú, órdenes, tracking)
 │   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
 │   │   │   ├── tables/       # Mesas físicas, estados y comensales
 │   │   │   └── users/        # Gestión de personal, credenciales y RBAC
@@ -243,12 +252,14 @@ darkflow/
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
 │   │   ├── kitchen/page.tsx  # Vista KDS de Cocina en Tiempo Real (SSE + Campana)
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
-│   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital
+│   │   ├── m/[slug]/page.tsx # Menú Digital y Auto-Pedido Móvil para Comensales
+│   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital (Administrador)
+│   │   ├── order-tracking/[id]/page.tsx # Rastreo en vivo del estado de la comanda
 │   │   ├── page.tsx          # Vista de Dashboard Principal
 │   │   ├── pos/page.tsx      # Vista de Punto de Venta con CRM, Tickets y Facturas
 │   │   ├── promotions/page.tsx# Vista de Gestión de Cupones y Combos
 │   │   ├── reports/page.tsx  # Vista de Reportes con Facturación PDF y Exportación Excel/CSV
-│   │   ├── tables/page.tsx   # Vista de Salón y Mesas con Pre-cuenta Térmica
+│   │   ├── tables/page.tsx   # Vista de Salón y Mesas con QR y Pre-cuenta Térmica
 │   │   ├── users/page.tsx    # Vista de Administración de Personal & Roles
 │   │   ├── globals.css       # Estilos globales y tokens de Tailwind v4
 │   │   └── layout.tsx        # Layout raíz con BrandThemeProvider
@@ -264,7 +275,7 @@ darkflow/
 │   │   ├── hash.ts           # Hash y verificación PBKDF2 de contraseñas
 │   │   ├── sound.ts          # Sintetizador Web Audio API de campanas KDS
 │   │   └── store.ts          # Estado global Zustand (Carrito, Brand, Toasts)
-│   └── middleware.ts         # Protección perimetral de rutas privadas
+│   └── middleware.ts         # Protección perimetral de rutas privadas y acceso a rutas públicas
 ├── .dockerignore             # Exclusiones de contexto para imagen Docker
 ├── .env.example              # Plantilla documentada de variables de entorno
 ├── Dockerfile                # Imagen multi-etapa (<180MB) optimizada para producción
@@ -301,3 +312,4 @@ darkflow/
 * ✅ **Fase 9 (Completada):** Webhooks y Simulador de Delivery Apps (Uber Eats, Rappi, DiDi Food con comisiones y payout neto).
 * ✅ **Fase 10 (Completada):** Exportaciones Avanzadas en PDF (Comprobante de Venta y Factura Comercial CFDI con motor de impresión Carta/A4).
 * ✅ **Fase 11 (Completada):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.
+* ✅ **Fase 12 (Completada):** Menú Digital QR y Auto-Pedido Móvil para Comensales con Rastreo en Vivo.

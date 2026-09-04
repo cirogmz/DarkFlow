@@ -14,7 +14,10 @@ import {
   Utensils,
   CreditCard,
   Trash2,
-  Printer
+  Printer,
+  QrCode,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import { useRouter } from 'next/navigation';
@@ -70,8 +73,12 @@ export default function TablesPage() {
   // Modal: View Table Bill / Order Detail
   const [selectedTableForBill, setSelectedTableForBill] = useState<RestaurantTable | null>(null);
   const [isThermalOpen, setIsThermalOpen] = useState(false);
-  const [thermalOrderData, setThermalOrderData] = useState<ThermalOrderData | null>(null);
   const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
+  const [thermalOrderData, setThermalOrderData] = useState<ThermalOrderData | null>(null);
+
+  // Modal: Table QR Code for Diner Self-Ordering
+  const [selectedTableForQr, setSelectedTableForQr] = useState<RestaurantTable | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const { activeBrand, addNotification } = useAppStore();
 
@@ -386,18 +393,32 @@ export default function TablesPage() {
                         </div>
                       </div>
 
-                      {/* Status Badge */}
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                          isBillRequested
-                            ? 'bg-blue-950/80 border-blue-800 text-blue-300 animate-pulse'
-                            : isOccupied
-                            ? 'bg-amber-950/80 border-amber-800 text-amber-300'
-                            : 'bg-emerald-950/60 border-emerald-900 text-emerald-400'
-                        }`}
-                      >
-                        {isBillRequested ? 'Cuenta Pedida' : isOccupied ? 'Ocupada' : 'Disponible'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTableForQr(table);
+                            setCopiedLink(false);
+                          }}
+                          className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-400 border border-slate-800 transition-colors cursor-pointer"
+                          title="Ver / Imprimir Código QR de Mesa para Auto-Pedido"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Status Badge */}
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            isBillRequested
+                              ? 'bg-blue-950/80 border-blue-800 text-blue-300 animate-pulse'
+                              : isOccupied
+                              ? 'bg-amber-950/80 border-amber-800 text-amber-300'
+                              : 'bg-emerald-950/60 border-emerald-900 text-emerald-400'
+                          }`}
+                        >
+                          {isBillRequested ? 'Cuenta Pedida' : isOccupied ? 'Ocupada' : 'Disponible'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Occupied State Info */}
@@ -681,6 +702,93 @@ export default function TablesPage() {
             order={thermalOrderData}
             initialMode={thermalInitialMode}
           />
+        )}
+
+        {/* MODAL: Table QR Code Stand for Diner Self-Ordering */}
+        {selectedTableForQr && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+              <button
+                onClick={() => setSelectedTableForQr(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white p-1"
+              >
+                ✕
+              </button>
+
+              <div className="text-center space-y-1 border-b border-slate-800 pb-3">
+                <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
+                  Código QR de Mesa para Comensales
+                </span>
+                <h3 className="text-lg font-black text-white flex items-center justify-center gap-2">
+                  <Utensils className="w-4 h-4 text-amber-400" />
+                  Mesa {selectedTableForQr.number}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {selectedTableForQr.name} • {selectedTableForQr.zone}
+                </p>
+              </div>
+
+              {/* Printable Table QR Stand Preview */}
+              <div className="p-5 bg-white rounded-xl text-slate-950 flex flex-col items-center justify-center text-center space-y-3 shadow-inner border border-slate-300" id="qr-stand-print">
+                <div className="space-y-0.5">
+                  <p className="font-black text-xs uppercase tracking-wider text-slate-800">
+                    {activeBrand?.name || 'DARKFLOW RESTAURANT'}
+                  </p>
+                  <p className="text-[10px] text-slate-500">Escanea para ordenar y pedir la cuenta</p>
+                </div>
+
+                {/* SVG Visual QR representation */}
+                <div className="w-36 h-36 bg-slate-950 p-2 rounded-xl flex items-center justify-center shadow-md">
+                  <QrCode className="w-28 h-28 text-white" />
+                </div>
+
+                <div className="bg-amber-100 border border-amber-300 text-amber-900 px-3 py-1 rounded-full font-black text-xs">
+                  MESA #{selectedTableForQr.number}
+                </div>
+
+                <p className="text-[9px] text-slate-400 font-mono break-all max-w-[220px]">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/m/${activeBrand?.slug}?table=${selectedTableForQr.number}` : ''}
+                </p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="space-y-2 pt-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        const url = `${window.location.origin}/m/${activeBrand?.slug}?table=${selectedTableForQr.number}`;
+                        navigator.clipboard.writeText(url);
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 2000);
+                      }
+                    }}
+                    className="py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedLink ? '¡Copiado!' : 'Copiar Link'}</span>
+                  </button>
+
+                  <a
+                    href={`/m/${activeBrand?.slug}?table=${selectedTableForQr.number}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow cursor-pointer transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Probar Menú</span>
+                  </a>
+                </div>
+
+                <button
+                  onClick={() => setSelectedTableForQr(null)}
+                  className="w-full py-2 bg-slate-950 hover:bg-slate-850 text-slate-400 hover:text-white font-bold text-xs rounded-xl border border-slate-800 cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </DashboardContainer>
