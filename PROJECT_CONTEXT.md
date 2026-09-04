@@ -63,6 +63,7 @@ Las cocinas multimarca tradicionales sufren de fragmentación: múltiples tablet
      ├─ Menú & Catálogo (`/menu`)
      ├─ Inventarios (`/inventory`)
      ├─ Corte de Caja (`/cash`)
+     ├─ Clientes & Puntos CRM (`/customers`)
      ├─ Choferes (`/drivers`)
      ├─ Personal & Roles (`/users`)
      └─ Reportes & Exportar (`/reports`)
@@ -101,10 +102,11 @@ El esquema relacional en [`prisma/schema.prisma`](file:///prisma/schema.prisma) 
 7. **`Ingredient`**: Insumos o materias primas (`id`, `name`, `stock`, `unit`, `cost`, `minStock`, `brandId`).
 8. **`RecipeItem`**: Ficha técnica que vincula `Product` con `Ingredient` indicando `quantity` utilizada por unidad vendida.
 9. **`Order`**: Comandas de pedidos (`id`, `orderNumber`, `source`, `status`, `customerName`, `customerPhone`, `customerAddress`, `notes`, `subtotal`, `tax`, `tip`, `total`, `driverId`, `brandId`, `tableId`, `diners`). Orígenes: `WEB`, `PHONE`, `UBER_EATS`, `RAPPI`, `DINE_IN`, `TAKEAWAY`.
-10. **`OrderItem`**: Líneas de producto dentro de una comanda (`orderId`, `productId`, `quantity`, `price`, `notes`).
-11. **`Purchase`**: Registro histórico de compras de mercancía (`ingredientId`, `quantity`, `cost`, `supplier`, `purchaseDate`, `brandId`).
-12. **`CashSession`**: Turnos de caja / arqueos (`brandId`, `userId`, `openedAt`, `closedAt`, `openingBalance`, `closingBalance`, `expectedBalance`, `actualBalance`, `cashSales`, `cardSales`, `appsSales`, `status`, `notes`).
-13. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
+10. **`Customer`**: Clientes y CRM de fidelización (`id`, `name`, `phone`, `email`, `address`, `notes`, `totalOrders`, `totalSpent`, `loyaltyPoints`, `brandId`).
+11. **`OrderItem`**: Líneas de producto dentro de una comanda (`orderId`, `productId`, `quantity`, `price`, `notes`).
+12. **`Purchase`**: Registro histórico de compras de mercancía (`ingredientId`, `quantity`, `cost`, `supplier`, `purchaseDate`, `brandId`).
+13. **`CashSession`**: Turnos de caja / arqueos (`brandId`, `userId`, `openedAt`, `closedAt`, `openingBalance`, `closingBalance`, `expectedBalance`, `actualBalance`, `cashSales`, `cardSales`, `appsSales`, `status`, `notes`).
+14. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
 
 ---
 
@@ -114,9 +116,9 @@ Los roles soportados y sus permisos son:
 
 | Rol | Alcance de Marcas | Permisos de Navegación |
 | :--- | :--- | :--- |
-| **`SUPER_ADMIN`** | Todas las marcas registradas | Acceso total: Dashboard comparativo, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores, Personal & Roles, Reportes & Exportar y selector libre de cualquier marca. |
-| **`BRAND_ADMIN`** | Solo las marcas vinculadas en `UserBrand` | Dashboard de su marca, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Repartidores, Personal & Roles y Reportes & Exportar. |
-| **`CASHIER`** | Marcas vinculadas | POS Ventas, Salón & Mesas, Corte de Caja, Repartidores. |
+| **`SUPER_ADMIN`** | Todas las marcas registradas | Acceso total: Dashboard comparativo, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Clientes & Puntos CRM, Repartidores, Personal & Roles, Reportes & Exportar y selector libre de cualquier marca. |
+| **`BRAND_ADMIN`** | Solo las marcas vinculadas en `UserBrand` | Dashboard de su marca, POS, Salón & Mesas, KDS, Menú & Catálogo, Inventario, Caja, Clientes & Puntos CRM, Repartidores, Personal & Roles y Reportes & Exportar. |
+| **`CASHIER`** | Marcas vinculadas | POS Ventas, Salón & Mesas, Corte de Caja, Clientes & Puntos CRM, Repartidores. |
 | **`KITCHEN`** | Marcas vinculadas | Pantalla de Cocina (KDS). |
 | **`DELIVERY`** | Marcas vinculadas | Perfil de chofer, asignación de pedidos en `/drivers`. |
 
@@ -163,8 +165,15 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * El componente [`ThermalTicketModal`](file:///src/components/ThermalTicketModal.tsx) provee generación nativa de tickets térmicos adaptados a mini-impresoras estándar:
   - **Anchos configurables:** `58mm` (móvil/Bluetooth) y `80mm` (mostrador/USB).
   - **Modo Comanda de Cocina (KOT):** Folio destacado, mesa/origen, tiempo de espera, lista de platillos en negrita y notas operativas.
-  - **Modo Cuenta / Cliente:** Encabezado con datos fiscales demo, desglose con precio unitario, subtotal, IVA 16% y sugerencia de propinas voluntarias (10%, 15%, 20%).
+  - **Modo Cuenta / Cliente:** Encabezado con datos fiscales demo, desglose con precio unitario, subtotal, IVA 16%, saldo de puntos de lealtad y sugerencia de propinas voluntarias (10%, 15%, 20%).
   - Estilos de impresión aislados `@media print` para evitar márgenes y cabeceras del navegador.
+
+### 6.6. Clientes & Fidelización CRM (`/customers`)
+* **Base de Clientes Unificada:** Registro de clientes con número telefónico único, nombre, correo, dirección habitual de entrega y notas de preferencias/alergias.
+* **Programa de Puntos de Lealtad:** Acumulación automática de 1 punto por cada $10 MXN de consumo en pedidos finalizados (`Math.floor(total / 10)`).
+* **Auto-completado Inteligente en POS:** Búsqueda en tiempo real por teléfono o nombre durante el checkout para auto-llenar datos de entrega y notas.
+* **Canje de Puntos:** Descuento directo en el carrito de compras a razón de 10 puntos = $1 MXN de descuento.
+* **Clasificación VIP:** Clientes con 3 o más pedidos reciben automáticamente el distintivo `VIP` con métricas de LTV y ticket promedio.
 
 ---
 
@@ -173,7 +182,7 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 ```
 darkflow/
 ├── prisma/
-│   ├── schema.prisma         # Esquema de datos y relaciones (User, Brand, Table, Order, etc.)
+│   ├── schema.prisma         # Esquema de datos y relaciones (User, Brand, Table, Customer, Order, etc.)
 │   ├── seed.ts               # Sembrado de datos demo iniciales
 │   └── dev.db                # Base de datos SQLite local
 ├── public/                   # Activos públicos y logotipos
@@ -184,6 +193,7 @@ darkflow/
 │   │   │   ├── brands/       # Consulta y creación de marcas
 │   │   │   ├── cash/         # Sesiones y cortes de caja
 │   │   │   ├── categories/   # Secciones de menú
+│   │   │   ├── customers/    # CRM de clientes y puntos de fidelidad
 │   │   │   ├── dashboard/    # KPIs y datos de gráficas
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── inventory/    # Insumos, compras y recetas
@@ -193,13 +203,14 @@ darkflow/
 │   │   │   ├── tables/       # Mesas físicas, estados y comensales
 │   │   │   └── users/        # Gestión de personal, credenciales y RBAC
 │   │   ├── cash/page.tsx     # Vista de Corte de Caja
+│   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
 │   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
 │   │   ├── kitchen/page.tsx  # Vista KDS de Cocina con impresión de comandas
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
 │   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital
 │   │   ├── page.tsx          # Vista de Dashboard Principal
-│   │   ├── pos/page.tsx      # Vista de Punto de Venta con Recibo Térmico
+│   │   ├── pos/page.tsx      # Vista de Punto de Venta con CRM y Recibo Térmico
 │   │   ├── reports/page.tsx  # Vista de Reportes con Exportación a Excel/CSV
 │   │   ├── tables/page.tsx   # Vista de Salón y Mesas con Pre-cuenta Térmica
 │   │   ├── users/page.tsx    # Vista de Administración de Personal & Roles
@@ -233,12 +244,15 @@ darkflow/
 
 ---
 
-## 9. Roadmap de Fases Posteriores
+## 9. Estado Actual y Roadmap de Fases
 
-* **Fase 2 (Próxima):**
-  - CRUD administrativo completo en UI para Marcas, Categorías y Productos.
-  - Soporte de Restaurante Físico (Entidad `Table`, asignación de meseros y flujo `ORDERED` ➔ `PREPARING` ➔ `READY` ➔ `SERVED`).
-* **Fase 3:**
-  - Migración oficial a PostgreSQL en la nube (Supabase / Neon).
-  - Comunicación en tiempo real mediante Server-Sent Events (SSE) o WebSockets para el KDS de cocina.
-  - Suite de pruebas automatizadas (Playwright / Vitest).
+* ✅ **Fase 1 (Completada):** Core Foundations & Multi-Brand Hub.
+* ✅ **Fase 2 (Completada):** Salón Físico, Mapa de Mesas y Pre-cuentas.
+* ✅ **Fase 3 (Completada):** Personal, Roles y Control de Acceso (RBAC).
+* ✅ **Fase 4 (Completada):** Reportes Financieros y Exportación a Excel/CSV.
+* ✅ **Fase 5 (Completada):** Impresión Térmica ESC/POS de Comandas y Recibos (58mm/80mm).
+* ✅ **Fase 6 (Completada):** Módulo de Clientes & Programa de Puntos de Lealtad (CRM).
+* 🔄 **Fase 7 (Siguiente):**
+  - Migración a PostgreSQL en producción (Supabase / Neon).
+  - Conexión en tiempo real con WebSockets / SSE para el KDS de cocina.
+  - Integración de API de Delivery Externa (Uber Eats & Rappi Webhooks).

@@ -37,6 +37,7 @@ model Brand {
   purchases      Purchase[]
   cashSessions   CashSession[]
   tables         Table[]
+  customers      Customer[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -145,6 +146,8 @@ model Order {
   tableId      String?      // Optional for Dine-in
   table        Table?       @relation(fields: [tableId], references: [id])
   diners       Int?         @default(1)
+  customerId   String?      // Optional linked customer
+  customer     Customer?    @relation(fields: [customerId], references: [id])
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -199,4 +202,21 @@ model DeliveryProfile {
   vehicleType String   // e.g., "MOTO", "BICI", "AUTO"
   plateNumber String?
   status      String   @default("AVAILABLE") // AVAILABLE, DELIVERING, OFFLINE
+}
+
+model Customer {
+  id            String    @id @default(uuid())
+  name          String
+  phone         String    @unique
+  email         String?
+  address       String?
+  notes         String?
+  totalOrders   Int       @default(0)
+  totalSpent    Float     @default(0.0)
+  loyaltyPoints Int       @default(0)
+  brandId       String?
+  brand         Brand?    @relation(fields: [brandId], references: [id])
+  orders        Order[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }

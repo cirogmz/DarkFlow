@@ -13,9 +13,23 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Coins,
-  Printer
+  Printer,
+  Crown,
+  Sparkles,
+  UserCheck
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
+
+interface CustomerSuggestion {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  loyaltyPoints: number;
+  totalOrders: number;
+}
 
 interface Ingredient {
   id: string;
@@ -74,6 +88,10 @@ interface PlacedOrder {
     number: string;
     name: string;
   } | null;
+  customer?: {
+    loyaltyPoints?: number;
+    totalOrders?: number;
+  } | null;
 }
 
 interface TableOption {
@@ -100,6 +118,12 @@ export default function POSPage() {
   const [diners, setDiners] = useState<number>(2);
   const [tip, setTip] = useState<number>(0);
   const [orderNotes, setOrderNotes] = useState('');
+
+  // Customer CRM & Loyalty search state
+  const [customerSuggestions, setCustomerSuggestions] = useState<CustomerSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSuggestion | null>(null);
+  const [redeemPoints, setRedeemPoints] = useState(false);
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -159,9 +183,53 @@ export default function POSPage() {
     return matchesCategory && matchesSearch;
   });
 
+  // Financial and Loyalty Calculations
   const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartTax = parseFloat((cartSubtotal * 0.16).toFixed(2));
-  const cartTotal = parseFloat((cartSubtotal + cartTax + tip).toFixed(2));
+  const maxPointsDiscount = selectedCustomer ? Math.floor(selectedCustomer.loyaltyPoints / 10) : 0;
+  const loyaltyDiscount = (selectedCustomer && redeemPoints) ? Math.min(cartSubtotal, maxPointsDiscount) : 0;
+  const redeemedPointsCount = loyaltyDiscount * 10;
+  const cartSubtotalAfterDiscount = Math.max(0, cartSubtotal - loyaltyDiscount);
+  const cartTax = parseFloat((cartSubtotalAfterDiscount * 0.16).toFixed(2));
+  const cartTotal = parseFloat((cartSubtotalAfterDiscount + cartTax + tip).toFixed(2));
+  const earnedPoints = Math.floor(cartTotal / 10);
+
+  // Live customer search
+  const handleCustomerSearch = async (query: string) => {
+    if (!query || query.trim().length < 2) {
+      setCustomerSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(query.trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerSuggestions(data.customers || []);
+        setShowSuggestions((data.customers || []).length > 0);
+      }
+    } catch (err) {
+      console.error('Error searching customer:', err);
+    }
+  };
+
+  const handleSelectCustomer = (cust: CustomerSuggestion) => {
+    setSelectedCustomer(cust);
+    setCustomerName(cust.name);
+    setCustomerPhone(cust.phone);
+    if (cust.address) setCustomerAddress(cust.address);
+    if (cust.notes) setOrderNotes(cust.notes);
+    setShowSuggestions(false);
+    setCustomerSuggestions([]);
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    setRedeemPoints(false);
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerAddress('');
+    setOrderNotes('');
+  };
 
   const handlePlaceOrder = async () => {
     const finalCustomerName = customerName || (orderSource === 'DINE_IN' && selectedTableId ? `Mesa ${tables.find(t => t.id === selectedTableId)?.number}` : '');
@@ -183,13 +251,15 @@ export default function POSPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerName: finalCustomerName,
-          customerPhone,
+          customerPhone: customerPhone || (selectedCustomer ? selectedCustomer.phone : null),
           customerAddress,
           source: orderSource,
           notes: orderNotes,
           tip,
           tableId: orderSource === 'DINE_IN' ? selectedTableId : null,
           diners: orderSource === 'DINE_IN' ? diners : 1,
+          redeemedPoints: redeemPoints ? redeemedPointsCount : 0,
+          discount: loyaltyDiscount,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -206,13 +276,10 @@ export default function POSPage() {
         clearCart();
         setIsCheckoutOpen(false);
         // Clear checkout form
-        setCustomerName('');
-        setCustomerPhone('');
-        setCustomerAddress('');
+        handleClearCustomer();
         setSelectedTableId('');
         setDiners(2);
         setTip(0);
-        setOrderNotes('');
         // Refresh products and tables list
         fetchInitialData();
       } else {
@@ -397,6 +464,16 @@ export default function POSPage() {
               <span>Subtotal</span>
               <span className="font-semibold text-slate-200">${cartSubtotal.toFixed(2)}</span>
             </div>
+
+            {loyaltyDiscount > 0 && (
+              <div className="flex justify-between text-purple-400 font-bold">
+                <span className="flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> Descuento Puntos ({redeemedPointsCount} pts)
+                </span>
+                <span>-${loyaltyDiscount.toFixed(2)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between">
               <span>IVA (16%)</span>
               <span className="font-semibold text-slate-200">${cartTax.toFixed(2)}</span>
@@ -418,8 +495,13 @@ export default function POSPage() {
             </div>
 
             <div className="flex justify-between border-t border-slate-800 pt-2 text-sm">
-              <span className="font-bold text-white">Total</span>
-              <span className="font-black text-brand-primary">${cartTotal.toFixed(2)}</span>
+              <div>
+                <span className="font-bold text-white block">Total</span>
+                <span className="text-[10px] text-purple-400 font-medium flex items-center gap-0.5 mt-0.5">
+                  <Sparkles className="h-2.5 w-2.5" /> +{earnedPoints} pts a ganar
+                </span>
+              </div>
+              <span className="font-black text-brand-primary text-base">${cartTotal.toFixed(2)}</span>
             </div>
 
             <button
@@ -435,63 +517,57 @@ export default function POSPage() {
 
       {/* Checkout Form Modal */}
       {isCheckoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative my-6">
             <button 
               onClick={() => setIsCheckoutOpen(false)}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white"
+              className="absolute top-4 right-4 text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800"
             >
               ✕
             </button>
-            <div className="border-b border-slate-800 pb-2 flex items-center gap-2">
-              <Coins className="h-5 w-5 text-brand-primary" />
-              <h3 className="text-lg font-bold text-white">
-                {orderSource === 'DINE_IN' ? 'Comanda de Salón / Mesa' : 'Detalles del Pedido'}
-              </h3>
+            <div className="border-b border-slate-800 pb-3 flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Coins className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {orderSource === 'DINE_IN' ? 'Comanda de Salón / Mesa' : 'Detalles de Venta y Cliente'}
+                </h3>
+                <p className="text-[11px] text-slate-400">Completa los datos de la comanda y fidelización</p>
+              </div>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-400">Tipo / Origen *</label>
-                  <select
-                    value={orderSource}
-                    onChange={(e) => setOrderSource(e.target.value as 'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE' | 'DINE_IN' | 'TAKEAWAY')}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
-                  >
-                    <option value="DINE_IN">🍽️ Comer en Salón (Mesa)</option>
-                    <option value="TAKEAWAY">🛍️ Para Llevar (Mostrador)</option>
-                    <option value="WEB">🌐 Sitio Web Propio</option>
-                    <option value="PHONE">📞 Teléfono / WhatsApp</option>
-                    <option value="UBER_EATS">🛵 Uber Eats App</option>
-                    <option value="RAPPI">🛵 Rappi App</option>
-                  </select>
-                </div>
-                
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-400">
-                    {orderSource === 'DINE_IN' ? 'Nombre / Referencia' : 'Nombre Cliente *'}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={orderSource === 'DINE_IN' ? 'Opcional (Ej. Familia López)' : 'Juan Pérez'}
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
-                  />
-                </div>
+            <div className="space-y-4 text-xs">
+              {/* Order Source */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[10px]">Tipo / Origen *</label>
+                <select
+                  value={orderSource}
+                  onChange={(e) => {
+                    setOrderSource(e.target.value as 'UBER_EATS' | 'RAPPI' | 'WEB' | 'PHONE' | 'DINE_IN' | 'TAKEAWAY');
+                    if (e.target.value === 'DINE_IN') handleClearCustomer();
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 focus:border-brand-primary outline-none"
+                >
+                  <option value="DINE_IN">🍽️ Comer en Salón (Mesa)</option>
+                  <option value="TAKEAWAY">🛍️ Para Llevar (Mostrador)</option>
+                  <option value="WEB">🌐 Sitio Web Propio</option>
+                  <option value="PHONE">📞 Teléfono / WhatsApp</option>
+                  <option value="UBER_EATS">🛵 Uber Eats App</option>
+                  <option value="RAPPI">🛵 Rappi App</option>
+                </select>
               </div>
 
               {/* Dine-In specific options */}
               {orderSource === 'DINE_IN' && (
-                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950/80 border border-slate-800 rounded-lg">
+                <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl">
                   <div className="space-y-1">
-                    <label className="font-semibold text-brand-primary">Seleccionar Mesa *</label>
+                    <label className="font-bold text-brand-primary uppercase text-[10px]">Seleccionar Mesa *</label>
                     <select
                       required
                       value={selectedTableId}
                       onChange={(e) => setSelectedTableId(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded px-2.5 py-2 text-white focus:border-brand-primary outline-none font-bold"
+                      className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-2 text-white focus:border-brand-primary outline-none font-bold"
                     >
                       <option value="">-- Elegir Mesa --</option>
                       {tables.map((t) => (
@@ -502,55 +578,203 @@ export default function POSPage() {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-400">Comensales</label>
+                    <label className="font-bold text-slate-400 uppercase text-[10px]">Comensales</label>
                     <input
                       type="number"
                       min="1"
                       max="50"
                       value={diners}
                       onChange={(e) => setDiners(parseInt(e.target.value, 10) || 1)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none font-bold"
+                      className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none font-bold"
                     />
                   </div>
                 </div>
               )}
 
-              {/* Delivery specific fields */}
-              {orderSource !== 'DINE_IN' && orderSource !== 'TAKEAWAY' && (
-                <>
-                  <div className="space-y-1">
-                    <label className="font-semibold text-slate-400">Teléfono</label>
-                    <input
-                      type="text"
-                      placeholder="555-0129"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
-                    />
-                  </div>
+              {/* Customer Recognition & Autocomplete (For Delivery, Takeaway, Phone, Web) */}
+              {orderSource !== 'DINE_IN' && (
+                <div className="space-y-3 p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+                  {selectedCustomer ? (
+                    <div className="bg-slate-900 border border-purple-500/40 rounded-xl p-3 relative">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-8 w-8 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-black text-xs border border-purple-500/30">
+                            <UserCheck className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-white text-sm">{selectedCustomer.name}</span>
+                              {selectedCustomer.totalOrders >= 3 && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-0.5">
+                                  <Crown className="h-2.5 w-2.5" /> VIP
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-slate-400">Tel: {selectedCustomer.phone}</span>
+                          </div>
+                        </div>
 
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 font-bold text-[11px] border border-purple-500/20 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-purple-400" /> {selectedCustomer.loyaltyPoints} pts
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleClearCustomer}
+                            className="text-[10px] text-slate-500 hover:text-red-400 underline"
+                          >
+                            Cambiar
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Points Redemption Toggle */}
+                      {selectedCustomer.loyaltyPoints >= 10 && (
+                        <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-slate-200 block text-xs">Canjear Puntos de Fidelidad</span>
+                            <span className="text-[10px] text-slate-400">
+                              Disponibles: {selectedCustomer.loyaltyPoints} pts (Hasta ${maxPointsDiscount.toFixed(2)} MXN desc.)
+                            </span>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={redeemPoints}
+                              onChange={(e) => setRedeemPoints(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-300 uppercase tracking-wider text-[10px] flex items-center gap-1">
+                          <Search className="h-3 w-3 text-amber-400" /> Buscar Cliente Existente o Registrar
+                        </span>
+                        <span className="text-[10px] text-slate-500">Auto-completado por Teléfono / Nombre</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 relative">
+                        {/* Phone input with autocomplete */}
+                        <div className="space-y-1 relative">
+                          <label className="text-slate-400 font-semibold text-[11px]">Teléfono *</label>
+                          <input
+                            type="tel"
+                            placeholder="ej. 5512345678"
+                            value={customerPhone}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomerPhone(val);
+                              handleCustomerSearch(val);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-amber-500 outline-none"
+                          />
+                        </div>
+
+                        {/* Name input */}
+                        <div className="space-y-1">
+                          <label className="text-slate-400 font-semibold text-[11px]">Nombre Cliente *</label>
+                          <input
+                            type="text"
+                            placeholder="ej. Mariana López"
+                            value={customerName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomerName(val);
+                              handleCustomerSearch(val);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-amber-500 outline-none"
+                          />
+                        </div>
+
+                        {/* Suggestions Dropdown */}
+                        {showSuggestions && customerSuggestions.length > 0 && (
+                          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-750 rounded-xl shadow-2xl max-h-48 overflow-y-auto divide-y divide-slate-800">
+                            {customerSuggestions.map((cust) => (
+                              <button
+                                key={cust.id}
+                                type="button"
+                                onClick={() => handleSelectCustomer(cust)}
+                                className="w-full text-left p-2.5 hover:bg-slate-800 flex items-center justify-between transition-colors group cursor-pointer"
+                              >
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-white group-hover:text-amber-400">{cust.name}</span>
+                                    {cust.totalOrders >= 3 && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 flex items-center gap-0.5">
+                                        <Crown className="h-2 w-2" /> VIP
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">{cust.phone} {cust.address ? `• ${cust.address}` : ''}</span>
+                                </div>
+                                <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 font-bold text-[10px] border border-purple-500/20 flex items-center gap-1">
+                                  <Sparkles className="h-2.5 w-2.5 text-purple-400" /> {cust.loyaltyPoints} pts
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Address input */}
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-400">Dirección de Entrega</label>
+                    <label className="font-semibold text-slate-400 text-[11px]">Dirección de Entrega</label>
                     <textarea
-                      placeholder="Calle Reforma #102, Col. Centro"
+                      placeholder="Calle, Número, Colonia, Referencias..."
                       rows={2}
                       value={customerAddress}
                       onChange={(e) => setCustomerAddress(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none resize-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-primary outline-none resize-none"
                     />
                   </div>
-                </>
+                </div>
               )}
 
+              {/* Order Notes */}
               <div className="space-y-1">
-                <label className="font-semibold text-slate-400">Notas Especiales / Comanda</label>
+                <label className="font-semibold text-slate-400 text-[11px]">Notas Especiales / Comanda</label>
                 <input
                   type="text"
-                  placeholder={orderSource === 'DINE_IN' ? 'Servir todo junto, cubiertos extra...' : 'Tocar el timbre verde, apto 4B'}
+                  placeholder={orderSource === 'DINE_IN' ? 'Servir todo junto, cubiertos extra...' : 'Tocar timbre, sin cebolla, salsa aparte...'}
                   value={orderNotes}
                   onChange={(e) => setOrderNotes(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-primary outline-none"
                 />
+              </div>
+
+              {/* Financial Breakdown Preview */}
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1.5 text-slate-300">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>${cartSubtotal.toFixed(2)}</span>
+                </div>
+                {loyaltyDiscount > 0 && (
+                  <div className="flex justify-between text-purple-400 font-bold">
+                    <span>Descuento de Puntos (-{redeemedPointsCount} pts):</span>
+                    <span>-${loyaltyDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-400">
+                  <span>IVA (16%):</span>
+                  <span>${cartTax.toFixed(2)}</span>
+                </div>
+                {tip > 0 && (
+                  <div className="flex justify-between text-slate-400">
+                    <span>Propina:</span>
+                    <span>${tip.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-white font-black text-sm pt-1 border-t border-slate-800">
+                  <span>Total a Pagar:</span>
+                  <span className="text-amber-400 font-mono">${cartTotal.toFixed(2)} MXN</span>
+                </div>
               </div>
             </div>
 
@@ -558,7 +782,7 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => setIsCheckoutOpen(false)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 cursor-pointer"
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl border border-slate-700 cursor-pointer transition-colors"
               >
                 Cancelar
               </button>
@@ -566,7 +790,7 @@ export default function POSPage() {
                 type="button"
                 onClick={handlePlaceOrder}
                 disabled={loading}
-                className="flex-1 py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold rounded-lg shadow-lg cursor-pointer disabled:opacity-50"
+                className="flex-1 py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold rounded-xl shadow-lg cursor-pointer disabled:opacity-50 transition-all active:scale-98"
               >
                 {loading ? 'Procesando...' : 'Confirmar Pedido'}
               </button>

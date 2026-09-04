@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         },
         driver: true,
         table: true,
+        customer: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
       tip = 0, 
       tableId,
       diners = 1,
+      redeemedPoints = 0,
+      discount = 0,
       items // Array of { productId, quantity, price, notes }
     } = await req.json();
 
@@ -90,27 +93,74 @@ export async function POST(req: NextRequest) {
       subtotal += item.price * item.quantity;
     }
 
+    // Apply discount if any
+    const discountAmount = Math.min(subtotal, Math.max(0, parseFloat(String(discount)) || 0));
+    const subtotalAfterDiscount = Math.max(0, subtotal - discountAmount);
+
     // 16% Tax (IVA)
-    const tax = parseFloat((subtotal * 0.16).toFixed(2));
-    const total = parseFloat((subtotal + tax + parseFloat(String(tip))).toFixed(2));
+    const tax = parseFloat((subtotalAfterDiscount * 0.16).toFixed(2));
+    const total = parseFloat((subtotalAfterDiscount + tax + parseFloat(String(tip))).toFixed(2));
+
+    // Points earned: 1 pt per $10 MXN total spent
+    const pointsEarned = Math.floor(total / 10);
+    const numRedeemedPoints = Math.max(0, parseInt(String(redeemedPoints), 10) || 0);
 
     // Generate unique order number
     const totalOrdersCount = await prisma.order.count();
     const orderNumber = `DF-${1000 + totalOrdersCount + 1}`;
 
-    // Create Order in transaction and update table status if dine-in
+    // Create Order in transaction and update table/customer status
     const order = await prisma.$transaction(async (tx) => {
+      let linkedCustomerId: string | null = null;
+
+      if (customerPhone && customerPhone.trim()) {
+        const cleanPhone = customerPhone.trim();
+        const existingCustomer = await tx.customer.findUnique({
+          where: { phone: cleanPhone },
+        });
+
+        if (existingCustomer) {
+          linkedCustomerId = existingCustomer.id;
+          const newPoints = Math.max(0, existingCustomer.loyaltyPoints - numRedeemedPoints + pointsEarned);
+
+          await tx.customer.update({
+            where: { id: existingCustomer.id },
+            data: {
+              name: customerName.trim(),
+              address: customerAddress ? customerAddress.trim() : existingCustomer.address,
+              totalOrders: { increment: 1 },
+              totalSpent: { increment: total },
+              loyaltyPoints: newPoints,
+            },
+          });
+        } else {
+          const newCustomer = await tx.customer.create({
+            data: {
+              name: customerName.trim(),
+              phone: cleanPhone,
+              address: customerAddress ? customerAddress.trim() : null,
+              brandId: activeBrandId,
+              totalOrders: 1,
+              totalSpent: total,
+              loyaltyPoints: Math.max(0, pointsEarned - numRedeemedPoints),
+            },
+          });
+          linkedCustomerId = newCustomer.id;
+        }
+      }
+
       const newOrder = await tx.order.create({
         data: {
           orderNumber,
           brandId: activeBrandId,
           source,
           status: 'RECEIVED',
-          customerName,
-          customerPhone: customerPhone || null,
-          customerAddress: customerAddress || null,
+          customerName: customerName.trim(),
+          customerPhone: customerPhone ? customerPhone.trim() : null,
+          customerAddress: customerAddress ? customerAddress.trim() : null,
+          customerId: linkedCustomerId,
           notes: notes || null,
-          subtotal,
+          subtotal: subtotalAfterDiscount,
           tax,
           tip: parseFloat(String(tip)),
           total,
@@ -132,6 +182,7 @@ export async function POST(req: NextRequest) {
             },
           },
           table: true,
+          customer: true,
         },
       });
 

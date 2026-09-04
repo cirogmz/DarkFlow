@@ -27,6 +27,10 @@ export interface ThermalOrderData {
     number?: string;
     zone?: string;
   } | null;
+  customer?: {
+    loyaltyPoints?: number;
+    totalOrders?: number;
+  } | null;
   items: Array<{
     id?: string;
     quantity: number;
@@ -279,6 +283,15 @@ export default function ThermalTicketModal({
                     <span className="font-mono text-base">${total.toFixed(2)} MXN</span>
                   </div>
                 </div>
+
+                {/* Loyalty Points Section */}
+                {order.customer && typeof order.customer.loyaltyPoints === 'number' && (
+                  <div className="py-2 border-b border-dashed border-slate-400 text-center space-y-0.5 text-[10px] bg-slate-50 rounded">
+                    <p className="font-bold text-slate-800">★ PROGRAMA DE LEALTAD ★</p>
+                    <p>SALDO DE PUNTOS: <strong>{order.customer.loyaltyPoints} PTS</strong></p>
+                    <p className="text-[9px] text-slate-600">Equivalente a ${(order.customer.loyaltyPoints * 0.1).toFixed(2)} MXN en recompensas</p>
+                  </div>
+                )}
 
                 {/* Tip Suggestions */}
                 <div className="py-2 border-b border-dashed border-slate-400 text-center space-y-1 text-[10px]">
