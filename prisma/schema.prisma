@@ -155,6 +155,11 @@ model Order {
   coupon       Coupon?      @relation(fields: [couponId], references: [id])
   couponCode   String?      // Snapshot of code used
   discountAmount Float      @default(0)
+  externalOrderId String?   // e.g. "UBER-8941", "RAPPI-2231", "DIDI-5542"
+  platformCommissionRate Float? @default(0) // e.g. 25.0 (%)
+  platformCommission Float? @default(0)     // Commission retained by app ($)
+  netPayout    Float?       // Net payout to dark kitchen ($)
+  deliveryService String?   // "PLATFORM_DRIVER" | "INTERNAL_DRIVER"
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

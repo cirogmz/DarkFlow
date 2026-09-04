@@ -269,7 +269,7 @@ darkflow/
 * ✅ **Fase 6 (Completada):** Módulo de Clientes & Programa de Puntos de Lealtad (CRM).
 * ✅ **Fase 7 (Completada):** Sincronización en Tiempo Real (SSE + Campana Sonora) para KDS y Despacho.
 * ✅ **Fase 8 (Completada):** Promociones Comerciales, Cupones de Descuento y Combos Dinámicos.
-* 🔄 **Fase 9 (Siguiente):**
-  - Webhooks y Simulador de Delivery Apps Externas (Uber Eats, Rappi, Didi Food con comisiones).
+* ✅ **Fase 9 (Completada):** Webhooks y Simulador de Delivery Apps (Uber Eats, Rappi, DiDi Food con comisiones y payout neto).
+* 🔄 **Fase 10 (Siguiente):**
+  - Exportaciones avanzadas en PDF (comprobantes de venta y facturas).
   - Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL).
-  - Exportaciones PDF avanzadas y facturación CFDI.

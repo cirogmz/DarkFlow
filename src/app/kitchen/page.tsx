@@ -35,6 +35,8 @@ interface Order {
   customerName: string;
   notes?: string | null;
   items: OrderItem[];
+  externalOrderId?: string | null;
+  deliveryService?: string | null;
   table?: {
     number: string;
     name: string;
@@ -160,6 +162,39 @@ export default function KitchenPage() {
       }
     } catch {
       alert('Error de red al actualizar estado');
+    }
+  };
+
+  // Helper for platform badge styling
+  const renderPlatformBadge = (order: Order) => {
+    switch (order.source) {
+      case 'UBER_EATS':
+        return (
+          <span className="text-[10px] font-black px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-md uppercase tracking-wider flex items-center gap-1 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Uber Eats {order.externalOrderId ? `• ${order.externalOrderId}` : ''}
+          </span>
+        );
+      case 'RAPPI':
+        return (
+          <span className="text-[10px] font-black px-2 py-0.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-md uppercase tracking-wider flex items-center gap-1 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse"></span>
+            Rappi {order.externalOrderId ? `• ${order.externalOrderId}` : ''}
+          </span>
+        );
+      case 'DIDI_FOOD':
+        return (
+          <span className="text-[10px] font-black px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-md uppercase tracking-wider flex items-center gap-1 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+            DiDi Food {order.externalOrderId ? `• ${order.externalOrderId}` : ''}
+          </span>
+        );
+      default:
+        return (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
+            {order.source}
+          </span>
+        );
     }
   };
 
@@ -305,9 +340,7 @@ export default function KitchenPage() {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
-                          {order.source}
-                        </span>
+                        {renderPlatformBadge(order)}
                       </div>
 
                       {/* Items */}
@@ -402,9 +435,7 @@ export default function KitchenPage() {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
-                          {order.source}
-                        </span>
+                        {renderPlatformBadge(order)}
                       </div>
 
                       {/* Items */}
@@ -493,9 +524,7 @@ export default function KitchenPage() {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-950 border border-slate-800 text-slate-300 rounded uppercase">
-                          {order.source}
-                        </span>
+                        {renderPlatformBadge(order)}
                       </div>
 
                       {/* Items */}
