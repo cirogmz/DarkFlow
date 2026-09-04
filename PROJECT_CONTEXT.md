@@ -194,6 +194,13 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * Impresión vectorial y descarga nativa a PDF mediante CSS Paged Media `@media print { size: letter portrait; }` sin dependencias de servidor pesadas.
 * Acceso directo desde la tabla de ventas de `/reports` (botón de factura por comanda) y desde la confirmación de pedido en `/pos`.
 
+### 6.11. Producción, PostgreSQL y Contenerización Docker
+* **Soporte Dual de Base de Datos**: SQLite nativo local (`prisma/schema.sqlite.prisma`) y PostgreSQL para producción (`prisma/schema.postgresql.prisma`) compatible con Supabase, Neon, AWS RDS, Cloud SQL o Docker Compose.
+* **Script de Conmutación Transparente**: `npm run db:use:pg` y `npm run db:use:sqlite` mediante `scripts/switch-db.js`.
+* **Empaquetado Standalone**: Configuración de `next.config.ts` con `output: 'standalone'` que reduce el tamaño del contenedor a <180MB.
+* **Orquestación Completa**: `docker-compose.yml` con servicio `darkflow-postgres` (PostgreSQL 16 Alpine con healthcheck y volumen persistente) y `darkflow-app` (Next.js con script de auto-migración `docker-entrypoint.sh`).
+* **Sonda de Salud Operativa**: Endpoint GET `/api/health` con test activo de consulta SQL y medición de latencia para Kubernetes / Cloud Run.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -201,10 +208,14 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 ```text
 darkflow/
 ├── prisma/
-│   ├── schema.prisma         # Modelado de datos relacional
+│   ├── schema.prisma         # Esquema activo de Prisma (generado/conmutable)
+│   ├── schema.postgresql.prisma # Esquema para PostgreSQL / Supabase / Neon
+│   ├── schema.sqlite.prisma  # Esquema plantilla para SQLite local
 │   ├── seed.ts               # Semillero inicial de marcas, usuarios y menú
 │   └── dev.db                # Base de datos SQLite local
 ├── public/                   # Activos públicos y logotipos
+├── scripts/
+│   └── switch-db.js          # Utilidad para conmutar entre PostgreSQL y SQLite
 ├── src/
 │   ├── app/
 │   │   ├── api/              # Route Handlers (Backend REST)
@@ -218,6 +229,7 @@ darkflow/
 │   │   │   ├── dashboard/    # KPIs y datos de gráficas
 │   │   │   ├── delivery-simulator/ # Simulador y webhooks de Uber Eats, Rappi, DiDi Food
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
+│   │   │   ├── health/       # Healthcheck activo de DB y uptime (/api/health)
 │   │   │   ├── inventory/    # Insumos, compras y recetas
 │   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
 │   │   │   ├── products/     # Catálogo de platillos por marca
@@ -253,6 +265,11 @@ darkflow/
 │   │   ├── sound.ts          # Sintetizador Web Audio API de campanas KDS
 │   │   └── store.ts          # Estado global Zustand (Carrito, Brand, Toasts)
 │   └── middleware.ts         # Protección perimetral de rutas privadas
+├── .dockerignore             # Exclusiones de contexto para imagen Docker
+├── .env.example              # Plantilla documentada de variables de entorno
+├── Dockerfile                # Imagen multi-etapa (<180MB) optimizada para producción
+├── docker-compose.yml        # Stack completo con PostgreSQL 16 y App
+├── docker-entrypoint.sh      # Script de inicialización y auto-migración
 ├── .gitignore
 ├── package.json
 ├── README.md
@@ -283,4 +300,4 @@ darkflow/
 * ✅ **Fase 8 (Completada):** Promociones Comerciales, Cupones de Descuento y Combos Dinámicos.
 * ✅ **Fase 9 (Completada):** Webhooks y Simulador de Delivery Apps (Uber Eats, Rappi, DiDi Food con comisiones y payout neto).
 * ✅ **Fase 10 (Completada):** Exportaciones Avanzadas en PDF (Comprobante de Venta y Factura Comercial CFDI con motor de impresión Carta/A4).
-* 🔄 **Fase 11 (Siguiente):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.
+* ✅ **Fase 11 (Completada):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.

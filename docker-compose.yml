@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: darkflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-darkflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-darkflow_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-darkflow}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - darkflow_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-darkflow} -d ${POSTGRES_DB:-darkflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - darkflow-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darkflow-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-darkflow}:${POSTGRES_PASSWORD:-darkflow_secret}@postgres:5432/${POSTGRES_DB:-darkflow}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:-darkflow-super-secure-production-key-32-chars}
+      NEXT_TELEMETRY_DISABLED: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - darkflow-network
+
+volumes:
+  darkflow_pgdata:
+    driver: local
+
+networks:
+  darkflow-network:
+    driver: bridge
