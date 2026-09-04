@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { orderEvents } from '@/lib/events';
 
 interface OrderItemInput {
   productId: string;
@@ -195,6 +196,20 @@ export async function POST(req: NextRequest) {
       }
 
       return newOrder;
+    });
+
+    // Emit real-time order creation event for KDS and dispatch
+    orderEvents.emit('order_event', {
+      action: 'CREATED',
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      brandId: order.brandId,
+      source: order.source,
+      customerName: order.customerName,
+      tableId: order.tableId,
+      timestamp: new Date().toISOString(),
+      order,
     });
 
     return NextResponse.json({ success: true, order });

@@ -175,6 +175,16 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Canje de Puntos:** Descuento directo en el carrito de compras a razón de 10 puntos = $1 MXN de descuento.
 * **Clasificación VIP:** Clientes con 3 o más pedidos reciben automáticamente el distintivo `VIP` con métricas de LTV y ticket promedio.
 
+### 6.7. Sincronización en Tiempo Real (SSE) & Chime Sonoro (`/kitchen` & `/drivers`)
+* **Server-Sent Events (SSE) Unidireccional (`/api/orders/stream`):** Flujo de eventos HTTP en tiempo real con bajas latencias para actualización instantánea de comandas.
+* **Gestión de Eventos Reactiva (`src/lib/events.ts`):** `EventEmitter` centralizado que emite `order_event` en creación de pedidos (`CREATED`) y transiciones de estado (`STATUS_CHANGED`).
+* **Sintetizador de Campana Web Audio API (`src/lib/sound.ts`):** Generación procedural de doble tono armónico (880 Hz ➔ 1320 Hz) tipo campana de cocina sin requerir dependencias externas ni descargar archivos de audio.
+* **Temporizadores Vivos en KDS:** Contadores segundo a segundo con código de semáforo de urgencia:
+  - Verde (< 10 min): En tiempo normal.
+  - Ámbar (10-20 min): Atención requerida.
+  - Rojo pulsante (> 20 min): Comanda demorada con icono de advertencia.
+* **Tablero de Despacho en Vivo:** Entrada inmediata de pedidos en estado `READY` para asignación de chofer con timbre auditivo de aviso.
+
 ---
 
 ## 7. Estructura del Código y Convenciones
@@ -197,16 +207,16 @@ darkflow/
 │   │   │   ├── dashboard/    # KPIs y datos de gráficas
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── inventory/    # Insumos, compras y recetas
-│   │   │   ├── orders/       # Listado, creación y ciclo de vida de pedidos
+│   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
 │   │   │   ├── products/     # Catálogo de platillos por marca
 │   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
 │   │   │   ├── tables/       # Mesas físicas, estados y comensales
 │   │   │   └── users/        # Gestión de personal, credenciales y RBAC
 │   │   ├── cash/page.tsx     # Vista de Corte de Caja
 │   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
-│   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes
+│   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes (En Vivo SSE)
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
-│   │   ├── kitchen/page.tsx  # Vista KDS de Cocina con impresión de comandas
+│   │   ├── kitchen/page.tsx  # Vista KDS de Cocina en Tiempo Real (SSE + Campana)
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
 │   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital
 │   │   ├── page.tsx          # Vista de Dashboard Principal
@@ -223,7 +233,9 @@ darkflow/
 │   ├── lib/
 │   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
 │   │   ├── db.ts             # Instancia singleton de Prisma Client
+│   │   ├── events.ts         # Singleton de EventEmitter para eventos reactivos
 │   │   ├── hash.ts           # Hash y verificación PBKDF2 de contraseñas
+│   │   ├── sound.ts          # Sintetizador Web Audio API de campanas KDS
 │   │   └── store.ts          # Estado global Zustand (Carrito, Brand, Toasts)
 │   └── middleware.ts         # Protección perimetral de rutas privadas
 ├── .gitignore
@@ -252,7 +264,8 @@ darkflow/
 * ✅ **Fase 4 (Completada):** Reportes Financieros y Exportación a Excel/CSV.
 * ✅ **Fase 5 (Completada):** Impresión Térmica ESC/POS de Comandas y Recibos (58mm/80mm).
 * ✅ **Fase 6 (Completada):** Módulo de Clientes & Programa de Puntos de Lealtad (CRM).
-* 🔄 **Fase 7 (Siguiente):**
+* ✅ **Fase 7 (Completada):** Sincronización en Tiempo Real (SSE + Campana Sonora) para KDS y Despacho.
+* 🔄 **Fase 8 (Siguiente):**
+  - Simulador e Ingesta de Delivery Apps Externas (Uber Eats, Rappi, Didi Food con comisiones).
+  - Módulo de Cupones, Promociones y Combos Multi-Marca.
   - Migración a PostgreSQL en producción (Supabase / Neon).
-  - Conexión en tiempo real con WebSockets / SSE para el KDS de cocina.
-  - Integración de API de Delivery Externa (Uber Eats & Rappi Webhooks).

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { orderEvents } from '@/lib/events';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -98,6 +99,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           table: true,
         },
       });
+    });
+
+    // Emit real-time order update event for KDS and dispatch
+    orderEvents.emit('order_event', {
+      action: status ? 'STATUS_CHANGED' : 'UPDATED',
+      orderId: updatedOrder.id,
+      orderNumber: updatedOrder.orderNumber,
+      status: updatedOrder.status,
+      brandId: updatedOrder.brandId,
+      source: updatedOrder.source,
+      customerName: updatedOrder.customerName,
+      tableId: updatedOrder.tableId,
+      timestamp: new Date().toISOString(),
+      order: updatedOrder,
     });
 
     return NextResponse.json({ success: true, order: updatedOrder });

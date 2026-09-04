@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardContainer from '@/components/DashboardContainer';
 import { useAppStore } from '@/lib/store';
 import { 
@@ -11,8 +11,11 @@ import {
   Navigation,
   Clock,
   Play,
-  Check
+  Check,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
+import { playDispatchChime } from '@/lib/sound';
 
 interface Driver {
   id: string;
@@ -54,6 +57,10 @@ export default function DriversPage() {
   const [readyOrders, setReadyOrders] = useState<Order[]>([]);
   const [activeDeliveries, setActiveDeliveries] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [connectionMode, setConnectionMode] = useState<'SSE' | 'POLL' | 'CONNECTING'>('CONNECTING');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
 
   // Assignment selections
   const [selectedOrderId, setSelectedOrderId] = useState('');
@@ -91,11 +98,53 @@ export default function DriversPage() {
     }
   }, [selectedOrderId]);
 
+  // Real-time SSE Connection
   useEffect(() => {
     fetchDriverData();
-    const interval = setInterval(fetchDriverData, 10000); // Poll every 10s
-    return () => clearInterval(interval);
-  }, [fetchDriverData]);
+
+    let eventSource: EventSource | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+
+    try {
+      eventSource = new EventSource('/api/orders/stream');
+
+      eventSource.addEventListener('connected', () => {
+        setConnectionMode('SSE');
+      });
+
+      eventSource.addEventListener('order_updated', (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.status === 'READY') {
+            if (soundEnabledRef.current) {
+              playDispatchChime();
+            }
+            addNotification(`🔔 ¡Pedido #${payload.orderNumber} listo para despacho!`, 'info');
+          }
+          fetchDriverData();
+        } catch (err) {
+          console.error('Error parsing order_updated', err);
+        }
+      });
+
+      eventSource.addEventListener('order_created', () => {
+        fetchDriverData();
+      });
+
+      eventSource.onerror = () => {
+        setConnectionMode('POLL');
+      };
+    } catch {
+      setConnectionMode('POLL');
+    }
+
+    fallbackInterval = setInterval(fetchDriverData, 10000);
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (fallbackInterval) clearInterval(fallbackInterval);
+    };
+  }, [fetchDriverData, addNotification]);
 
   const handleAssignOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,9 +231,56 @@ export default function DriversPage() {
     <DashboardContainer>
       <div className="space-y-6">
         {/* Top Header */}
-        <div className="flex items-center gap-2 border-b border-slate-900 pb-3">
-          <Truck className="h-6 w-6 text-brand-primary" />
-          <h2 className="text-xl font-bold text-white">Logística & Despacho de Repartidores</h2>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+              <Truck className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-white">Logística & Despacho de Repartidores</h2>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
+                  connectionMode === 'SSE'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                }`}>
+                  <span className={`h-2 w-2 rounded-full ${connectionMode === 'SSE' ? 'bg-emerald-500 animate-ping' : 'bg-amber-500 animate-pulse'}`} />
+                  {connectionMode === 'SSE' ? 'EN VIVO (SSE)' : 'EN VIVO (POLL)'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">Monitoreo y asignación en tiempo real de pedidos listos</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
+              <button
+                onClick={() => {
+                  const next = !soundEnabled;
+                  setSoundEnabled(next);
+                  if (next) playDispatchChime();
+                  addNotification(next ? 'Alerta sonora de despacho activa' : 'Alerta silenciada', 'info');
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  soundEnabled 
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+                title={soundEnabled ? 'Silenciar alertas' : 'Activar alertas'}
+              >
+                {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                <span className="hidden sm:inline">{soundEnabled ? 'Sonido Activo' : 'Mute'}</span>
+              </button>
+
+              <button
+                onClick={() => playDispatchChime()}
+                className="px-2 py-1.5 text-[11px] font-semibold text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors"
+                title="Probar sonido de despacho"
+              >
+                Probar
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Dispatch Grid */}
