@@ -188,15 +188,21 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
   - Rojo pulsante (> 20 min): Comanda demorada con icono de advertencia.
 * **Tablero de Despacho en Vivo:** Entrada inmediata de pedidos en estado `READY` para asignación de chofer con timbre auditivo de aviso.
 
+### 6.10. Facturación Comercial y Comprobantes en PDF (Carta / A4)
+* Componente `InvoicePdfModal` universal para emisión y vista previa de Facturas Fiscales (representación digital CFDI) y Comprobantes Simples de Venta / Notas de Venta.
+* Generador de importe con letra en español (`numberToSpanishWords`), desglose de IVA (16%), descuentos comerciales (cupones y programa de lealtad), propinas y totales.
+* Impresión vectorial y descarga nativa a PDF mediante CSS Paged Media `@media print { size: letter portrait; }` sin dependencias de servidor pesadas.
+* Acceso directo desde la tabla de ventas de `/reports` (botón de factura por comanda) y desde la confirmación de pedido en `/pos`.
+
 ---
 
-## 7. Estructura del Código y Convenciones
+## 7. Estructura de Directorios
 
-```
+```text
 darkflow/
 ├── prisma/
-│   ├── schema.prisma         # Esquema de datos y relaciones (User, Brand, Table, Customer, Order, etc.)
-│   ├── seed.ts               # Sembrado de datos demo iniciales
+│   ├── schema.prisma         # Modelado de datos relacional
+│   ├── seed.ts               # Semillero inicial de marcas, usuarios y menú
 │   └── dev.db                # Base de datos SQLite local
 ├── public/                   # Activos públicos y logotipos
 ├── src/
@@ -206,8 +212,11 @@ darkflow/
 │   │   │   ├── brands/       # Consulta y creación de marcas
 │   │   │   ├── cash/         # Sesiones y cortes de caja
 │   │   │   ├── categories/   # Secciones de menú
+│   │   │   ├── combos/       # Paquetes y combos comerciales
+│   │   │   ├── coupons/      # Cupones de descuento y validación
 │   │   │   ├── customers/    # CRM de clientes y puntos de fidelidad
 │   │   │   ├── dashboard/    # KPIs y datos de gráficas
+│   │   │   ├── delivery-simulator/ # Simulador y webhooks de Uber Eats, Rappi, DiDi Food
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── inventory/    # Insumos, compras y recetas
 │   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
@@ -217,14 +226,16 @@ darkflow/
 │   │   │   └── users/        # Gestión de personal, credenciales y RBAC
 │   │   ├── cash/page.tsx     # Vista de Corte de Caja
 │   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
+│   │   ├── delivery-simulator/page.tsx # Simulador de Delivery Apps
 │   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes (En Vivo SSE)
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
 │   │   ├── kitchen/page.tsx  # Vista KDS de Cocina en Tiempo Real (SSE + Campana)
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
 │   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital
 │   │   ├── page.tsx          # Vista de Dashboard Principal
-│   │   ├── pos/page.tsx      # Vista de Punto de Venta con CRM y Recibo Térmico
-│   │   ├── reports/page.tsx  # Vista de Reportes con Exportación a Excel/CSV
+│   │   ├── pos/page.tsx      # Vista de Punto de Venta con CRM, Tickets y Facturas
+│   │   ├── promotions/page.tsx# Vista de Gestión de Cupones y Combos
+│   │   ├── reports/page.tsx  # Vista de Reportes con Facturación PDF y Exportación Excel/CSV
 │   │   ├── tables/page.tsx   # Vista de Salón y Mesas con Pre-cuenta Térmica
 │   │   ├── users/page.tsx    # Vista de Administración de Personal & Roles
 │   │   ├── globals.css       # Estilos globales y tokens de Tailwind v4
@@ -232,6 +243,7 @@ darkflow/
 │   ├── components/
 │   │   ├── BrandThemeProvider.tsx # Inyector de variables CSS de marca
 │   │   ├── DashboardContainer.tsx # Layout con Sidebar, Topbar y Selector
+│   │   ├── InvoicePdfModal.tsx    # Modal universal de Factura Fiscal / Nota de Venta PDF (Carta/A4)
 │   │   └── ThermalTicketModal.tsx # Generador universal de tickets térmicos ESC/POS
 │   ├── lib/
 │   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
@@ -270,6 +282,5 @@ darkflow/
 * ✅ **Fase 7 (Completada):** Sincronización en Tiempo Real (SSE + Campana Sonora) para KDS y Despacho.
 * ✅ **Fase 8 (Completada):** Promociones Comerciales, Cupones de Descuento y Combos Dinámicos.
 * ✅ **Fase 9 (Completada):** Webhooks y Simulador de Delivery Apps (Uber Eats, Rappi, DiDi Food con comisiones y payout neto).
-* 🔄 **Fase 10 (Siguiente):**
-  - Exportaciones avanzadas en PDF (comprobantes de venta y facturas).
-  - Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL).
+* ✅ **Fase 10 (Completada):** Exportaciones Avanzadas en PDF (Comprobante de Venta y Factura Comercial CFDI con motor de impresión Carta/A4).
+* 🔄 **Fase 11 (Siguiente):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.

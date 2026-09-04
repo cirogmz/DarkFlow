@@ -9,8 +9,10 @@ import {
   TrendingUp, 
   Coins, 
   Package, 
-  Filter
+  Filter,
+  FileText
 } from 'lucide-react';
+import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
 
 interface BrandRef {
   id: string;
@@ -86,6 +88,8 @@ export default function ReportsPage() {
 
   // Report Data
   const [loading, setLoading] = useState(false);
+  const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<InvoiceOrderData | null>(null);
+  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [salesReport, setSalesReport] = useState<{
     summary: {
       totalOrders: number;
@@ -441,6 +445,7 @@ export default function ReportsPage() {
                           <th className="py-3 px-4 text-right">Subtotal</th>
                           <th className="py-3 px-4 text-right">Total</th>
                           <th className="py-3 px-4 text-center">Estado</th>
+                          <th className="py-3 px-4 text-center">Factura</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-850">
@@ -473,6 +478,18 @@ export default function ReportsPage() {
                                 {o.status}
                               </span>
                             </td>
+                            <td className="py-3 px-4 text-center">
+                              <button
+                                onClick={() => {
+                                  setSelectedOrderForInvoice(o as unknown as InvoiceOrderData);
+                                  setIsInvoiceOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors inline-flex items-center justify-center cursor-pointer shadow-sm group"
+                                title="Ver / Imprimir Factura o Comprobante PDF"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -485,7 +502,7 @@ export default function ReportsPage() {
                           <td className="py-3 px-4 text-right font-mono text-emerald-400 text-sm">
                             ${salesReport.summary.totalRevenue.toFixed(2)}
                           </td>
-                          <td></td>
+                          <td colSpan={2}></td>
                         </tr>
                       </tfoot>
                     </table>
@@ -674,6 +691,13 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+
+      {/* PDF Commercial Invoice & Sales Receipt Modal */}
+      <InvoicePdfModal
+        isOpen={isInvoiceOpen}
+        onClose={() => setIsInvoiceOpen(false)}
+        order={selectedOrderForInvoice}
+      />
     </DashboardContainer>
   );
 }

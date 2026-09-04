@@ -21,6 +21,7 @@ import {
   Layers
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
+import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
 
 interface CustomerSuggestion {
   id: string;
@@ -110,6 +111,12 @@ interface PlacedOrder {
   couponCode?: string | null;
   discountAmount?: number;
   createdAt: string;
+  brand?: {
+    name: string;
+    slug?: string;
+    primaryColor?: string;
+    logoUrl?: string | null;
+  } | null;
   items: PlacedOrderItem[];
   table?: {
     number: string;
@@ -169,6 +176,7 @@ export default function POSPage() {
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [isThermalOpen, setIsThermalOpen] = useState(false);
   const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
+  const [isInvoicePdfOpen, setIsInvoicePdfOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, clearCart, addNotification } = useAppStore();
@@ -1162,6 +1170,12 @@ export default function POSPage() {
               >
                 <FileText className="h-4 w-4" /> Comanda Cocina
               </button>
+              <button
+                onClick={() => setIsInvoicePdfOpen(true)}
+                className="col-span-2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow transition-colors"
+              >
+                <FileText className="h-4 w-4" /> Factura / Comprobante PDF (Carta)
+              </button>
             </div>
 
             <button
@@ -1181,6 +1195,15 @@ export default function POSPage() {
           onClose={() => setIsThermalOpen(false)}
           order={placedOrder as ThermalOrderData}
           initialMode={thermalInitialMode}
+        />
+      )}
+
+      {/* PDF Commercial Invoice & Sales Receipt Modal */}
+      {placedOrder && (
+        <InvoicePdfModal
+          isOpen={isInvoicePdfOpen}
+          onClose={() => setIsInvoicePdfOpen(false)}
+          order={placedOrder as unknown as InvoiceOrderData}
         />
       )}
     </DashboardContainer>
