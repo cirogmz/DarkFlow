@@ -15,8 +15,29 @@ import {
   MapPin, 
   Phone, 
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  CreditCard,
+  Lock,
+  ShieldCheck,
+  Key,
+  ExternalLink,
+  Zap
 } from 'lucide-react';
+
+interface PaymentConfigData {
+  id: string;
+  name: string;
+  slug: string;
+  paymentSandboxMode: boolean;
+  allowOnlinePayments: boolean;
+  hasStripeSecret: boolean;
+  stripeSecretKeyMasked: string;
+  stripePublicKey: string;
+  hasMpToken: boolean;
+  mpAccessTokenMasked: string;
+  mpPublicKey: string;
+  webhookUrl: string;
+}
 
 interface ProductItem {
   id: string;
@@ -61,7 +82,23 @@ interface DeliveryMetrics {
 
 export default function IntegrationsPage() {
   const { activeBrand, addNotification } = useAppStore();
-  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'CREDENTIALS' | 'AUDIT'>('SIMULATOR');
+  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS'>('SIMULATOR');
+
+  // Payments State
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfigData | null>(null);
+  const [, setLoadingPaymentConfig] = useState(false);
+  const [savingPaymentConfig, setSavingPaymentConfig] = useState(false);
+  const [paymentSandboxMode, setPaymentSandboxMode] = useState(true);
+  const [allowOnlinePayments, setAllowOnlinePayments] = useState(true);
+  const [stripeSecretKey, setStripeSecretKey] = useState('');
+  const [stripePublicKey, setStripePublicKey] = useState('');
+  const [stripeWebhookSecret, setStripeWebhookSecret] = useState('');
+  const [mpAccessToken, setMpAccessToken] = useState('');
+  const [mpPublicKey, setMpPublicKey] = useState('');
+  const [mpWebhookSecret, setMpWebhookSecret] = useState('');
+  const [copiedPaymentWebhook, setCopiedPaymentWebhook] = useState(false);
+  const [testingPaymentWebhook, setTestingPaymentWebhook] = useState(false);
+  const [paymentWebhookTestResult, setPaymentWebhookTestResult] = useState<string | null>(null);
 
   // Products and Metrics
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -163,9 +200,32 @@ export default function IntegrationsPage() {
     }
   }, [addNotification, selectedItems.length]);
 
+  const loadPaymentConfig = useCallback(async () => {
+    if (!activeBrand?.id) return;
+    setLoadingPaymentConfig(true);
+    try {
+      const res = await fetch(`/api/integrations/payments?brandId=${activeBrand.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          setPaymentConfig(data.config);
+          setPaymentSandboxMode(Boolean(data.config.paymentSandboxMode));
+          setAllowOnlinePayments(Boolean(data.config.allowOnlinePayments));
+          setStripePublicKey(data.config.stripePublicKey || '');
+          setMpPublicKey(data.config.mpPublicKey || '');
+        }
+      }
+    } catch (err) {
+      console.error('Error loading payment config', err);
+    } finally {
+      setLoadingPaymentConfig(false);
+    }
+  }, [activeBrand?.id]);
+
   useEffect(() => {
     loadData();
-  }, [loadData, activeBrand?.id]);
+    loadPaymentConfig();
+  }, [loadData, loadPaymentConfig, activeBrand?.id]);
 
   // When platform changes, update commission and prefix
   const handlePlatformChange = (p: 'UBER_EATS' | 'RAPPI' | 'DIDI_FOOD') => {
@@ -270,6 +330,112 @@ export default function IntegrationsPage() {
     setTimeout(() => setCopiedWebhookUrl(false), 2000);
   };
 
+  // Payment Webhook URL string
+  const paymentWebhookUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/api/webhooks/payments` 
+    : 'https://darkflow.app/api/webhooks/payments';
+
+  const handleCopyPaymentWebhook = () => {
+    navigator.clipboard.writeText(paymentWebhookUrl);
+    setCopiedPaymentWebhook(true);
+    addNotification('URL de webhook de pagos copiada', 'info');
+    setTimeout(() => setCopiedPaymentWebhook(false), 2000);
+  };
+
+  const handleSavePaymentConfig = async () => {
+    if (!activeBrand?.id) return;
+    setSavingPaymentConfig(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: any = {
+        brandId: activeBrand.id,
+        paymentSandboxMode,
+        allowOnlinePayments,
+        stripePublicKey,
+        mpPublicKey,
+      };
+
+      if (stripeSecretKey && !stripeSecretKey.includes('••••')) {
+        payload.stripeSecretKey = stripeSecretKey;
+      }
+      if (stripeWebhookSecret && !stripeWebhookSecret.includes('••••')) {
+        payload.stripeWebhookSecret = stripeWebhookSecret;
+      }
+      if (mpAccessToken && !mpAccessToken.includes('••••')) {
+        payload.mpAccessToken = mpAccessToken;
+      }
+      if (mpWebhookSecret && !mpWebhookSecret.includes('••••')) {
+        payload.mpWebhookSecret = mpWebhookSecret;
+      }
+
+      const res = await fetch('/api/integrations/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addNotification('Configuración de pasarelas de pago guardada con éxito', 'success');
+        loadPaymentConfig();
+      } else {
+        addNotification(data.error || 'Error al guardar configuración', 'error');
+      }
+    } catch (err) {
+      console.error('Error saving payment config', err);
+      addNotification('Error de conexión al guardar configuración', 'error');
+    } finally {
+      setSavingPaymentConfig(false);
+    }
+  };
+
+  const handleTestPaymentWebhook = async (gateway: 'STRIPE' | 'MERCADOPAGO') => {
+    setTestingPaymentWebhook(true);
+    setPaymentWebhookTestResult(null);
+    try {
+      const dummyId = `test_${Date.now()}`;
+      const payload = gateway === 'STRIPE'
+        ? {
+            id: `evt_${dummyId}`,
+            type: 'checkout.session.completed',
+            data: {
+              object: {
+                id: `cs_test_${dummyId}`,
+                client_reference_id: orders[0]?.id || 'DEMO_ORDER_ID',
+                payment_status: 'paid',
+                amount_total: 25000,
+                currency: 'mxn',
+              },
+            },
+          }
+        : {
+            action: 'payment.created',
+            type: 'payment',
+            data: { id: `mp_${dummyId}` },
+          };
+
+      const res = await fetch('/api/webhooks/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setPaymentWebhookTestResult(`Webhook de ${gateway} respondido: ${JSON.stringify(data)}`);
+        addNotification(`Webhook de prueba ${gateway} recibido y procesado`, 'info');
+      } else {
+        setPaymentWebhookTestResult(`Error webhook: ${data.error || 'Fallo de procesamiento'}`);
+        addNotification('Fallo al simular webhook', 'warning');
+      }
+    } catch (err) {
+      console.error('Error testing webhook', err);
+      setPaymentWebhookTestResult('Error de red al invocar webhook');
+    } finally {
+      setTestingPaymentWebhook(false);
+    }
+  };
+
   return (
     <DashboardContainer>
       <div className="space-y-6">
@@ -347,6 +513,17 @@ export default function IntegrationsPage() {
           >
             <Send className="w-4 h-4 text-orange-400" />
             Simulador de Pedidos en Vivo
+          </button>
+          <button
+            onClick={() => setActiveTab('PAYMENTS')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'PAYMENTS'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <CreditCard className="w-4 h-4 text-indigo-400" />
+            Pasarelas de Pago (Stripe & MP)
           </button>
           <button
             onClick={() => setActiveTab('AUDIT')}
@@ -702,6 +879,301 @@ export default function IntegrationsPage() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 2: PASARELAS DE PAGO (STRIPE & MERCADO PAGO) */}
+        {activeTab === 'PAYMENTS' && (
+          <div className="space-y-6">
+            {/* Top Info Banner */}
+            <div className="bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-slate-900 border border-indigo-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-indigo-400 shrink-0">
+                  <CreditCard className="w-8 h-8" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-black text-white">Pasarelas de Pago Digitales</h2>
+                    {paymentSandboxMode ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        Modo Sandbox Activo
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        Modo Producción en Vivo
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    Habilita pagos en línea con tarjeta y billeteras digitales para tus clientes en el Menú Digital Móvil (<span className="text-slate-300 font-mono">/m/[slug]</span>) y cobros dinámicos con código QR en la caja del POS (<span className="text-slate-300 font-mono">/pos</span>).
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleSavePaymentConfig}
+                  disabled={savingPaymentConfig}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50"
+                >
+                  {savingPaymentConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {savingPaymentConfig ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </div>
+
+            {/* Global Settings Card: Sandbox & Online Toggle */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    <h3 className="text-sm font-bold text-white">Simulador / Modo Sandbox</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Permite realizar y aprobar transacciones de prueba con 1-clic sin requerir cobros bancarios reales.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentSandboxMode}
+                    onChange={(e) => setPaymentSandboxMode(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm font-bold text-white">Aceptar Pagos Digitales</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Habilita las opciones de Stripe y Mercado Pago en el checkout del menú público del cliente.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowOnlinePayments}
+                    onChange={(e) => setAllowOnlinePayments(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+            </div>
+
+            {/* Gateway Cards Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Stripe Card */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#635BFF]/15 border border-[#635BFF]/30 flex items-center justify-center font-black text-[#635BFF] text-lg">
+                      S
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-white text-base">Stripe</h3>
+                      <p className="text-xs text-slate-400">Tarjetas de crédito/débito y Apple/Google Pay</p>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                    paymentConfig?.hasStripeSecret
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {paymentConfig?.hasStripeSecret ? 'Configurado' : 'Sin Credenciales'}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Secret Key (sk_live_... / sk_test_...)</span>
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    </label>
+                    <input
+                      type="password"
+                      value={stripeSecretKey}
+                      onChange={(e) => setStripeSecretKey(e.target.value)}
+                      placeholder={paymentConfig?.stripeSecretKeyMasked || 'sk_test_...'}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Public Key (pk_live_... / pk_test_...)</span>
+                      <Key className="w-3.5 h-3.5 text-slate-500" />
+                    </label>
+                    <input
+                      type="text"
+                      value={stripePublicKey}
+                      onChange={(e) => setStripePublicKey(e.target.value)}
+                      placeholder="pk_test_..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Webhook Signing Secret (whsec_...)</span>
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    </label>
+                    <input
+                      type="password"
+                      value={stripeWebhookSecret}
+                      onChange={(e) => setStripeWebhookSecret(e.target.value)}
+                      placeholder="whsec_..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
+                  <a
+                    href="https://dashboard.stripe.com/apikeys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold"
+                  >
+                    Obtener llaves en Stripe <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleTestPaymentWebhook('STRIPE')}
+                    disabled={testingPaymentWebhook}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                  >
+                    <Zap className="w-3 h-3 text-indigo-400" />
+                    Probar Webhook
+                  </button>
+                </div>
+              </div>
+
+              {/* Mercado Pago Card */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#009EE3]/15 border border-[#009EE3]/30 flex items-center justify-center font-black text-[#009EE3] text-lg">
+                      MP
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-white text-base">Mercado Pago</h3>
+                      <p className="text-xs text-slate-400">Tarjetas, transferencias SPEI y saldo MP</p>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                    paymentConfig?.hasMpToken
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {paymentConfig?.hasMpToken ? 'Configurado' : 'Sin Credenciales'}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Access Token (APP_USR-... o TEST-...)</span>
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    </label>
+                    <input
+                      type="password"
+                      value={mpAccessToken}
+                      onChange={(e) => setMpAccessToken(e.target.value)}
+                      placeholder={paymentConfig?.mpAccessTokenMasked || 'APP_USR-... o TEST-...'}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Public Key (APP_USR-...)</span>
+                      <Key className="w-3.5 h-3.5 text-slate-500" />
+                    </label>
+                    <input
+                      type="text"
+                      value={mpPublicKey}
+                      onChange={(e) => setMpPublicKey(e.target.value)}
+                      placeholder="APP_USR-..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Webhook Secret Signature (Opcional)</span>
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    </label>
+                    <input
+                      type="password"
+                      value={mpWebhookSecret}
+                      onChange={(e) => setMpWebhookSecret(e.target.value)}
+                      placeholder="Firma secreta del webhook..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
+                  <a
+                    href="https://www.mercadopago.com.mx/developers/panel/app"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold"
+                  >
+                    Developers Mercado Pago <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleTestPaymentWebhook('MERCADOPAGO')}
+                    disabled={testingPaymentWebhook}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                  >
+                    <Zap className="w-3 h-3 text-sky-400" />
+                    Probar Webhook
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Webhook Endpoint Configuration Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <FileCode className="w-5 h-5 text-indigo-400" />
+                  <h3 className="font-extrabold text-white text-base">URL Unificada de Webhooks de Pago</h3>
+                </div>
+                <span className="text-xs text-slate-500 font-mono">POST /api/webhooks/payments</span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Registra esta URL tanto en el dashboard de Stripe (<span className="text-slate-300">Developers &gt; Webhooks</span>) como en Mercado Pago (<span className="text-slate-300">Notificaciones IPN / Webhooks</span>). DarkFlow conciliará los pagos y marcará las órdenes como PAGADAS en tiempo real con eventos Server-Sent Events (SSE).
+              </p>
+
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3">
+                <span className="font-mono text-xs text-indigo-400 truncate">{paymentWebhookUrl}</span>
+                <button
+                  type="button"
+                  onClick={handleCopyPaymentWebhook}
+                  className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all"
+                >
+                  {copiedPaymentWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedPaymentWebhook ? 'Copiado' : 'Copiar URL'}
+                </button>
+              </div>
+
+              {paymentWebhookTestResult && (
+                <div className="p-3 bg-slate-950 border border-indigo-500/30 rounded-xl text-xs font-mono text-slate-300 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span className="truncate">{paymentWebhookTestResult}</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

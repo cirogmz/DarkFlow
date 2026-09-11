@@ -223,6 +223,23 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
   - Exportación completa o filtrada a formato CSV con un clic.
   - Control de acceso RBAC estricto exclusivo para `SUPER_ADMIN` y `BRAND_ADMIN`.
 
+### 6.14. Pasarelas de Pago Digitales Integradas (Stripe & Mercado Pago)
+* **Modelo de Datos y Transacciones Multi-Tenant**:
+  - Modelo `PaymentTransaction` con trazabilidad completa de `gateway` (`STRIPE`, `MERCADOPAGO`, `SANDBOX`), `status` (`PENDING`, `COMPLETED`, `FAILED`), montos, identificadores remotos de sesión/orden y respuesta cruda JSON.
+  - Campos ampliados en `Brand` para claves API (`stripeSecretKey`, `stripePublicKey`, `stripeWebhookSecret`, `mpAccessToken`, `mpPublicKey`, `mpWebhookSecret`), interruptor de `paymentSandboxMode` y `allowOnlinePayments`.
+  - Campos de pago en `Order`: `paymentStatus` (`PENDING`, `PAID`, `REFUNDED`), `paymentMethod` (`CASH`, `TERMINAL`, `STRIPE`, `MERCADOPAGO`), `paidAt` y `paymentTransactionId`.
+* **Arquitectura Dual (Producción REST + Simulador Sandbox)**:
+  - Soporte para claves reales de Stripe (Checkout Sessions vía REST) y Mercado Pago (Preferencias vía REST) sin SDKs binarios pesados.
+  - Modo Sandbox con simulador interactivo de 1-clic que aprueba órdenes de prueba con total realismo y sin costo de procesamiento bancario.
+* **Flujos de Cobro Implementados**:
+  - **Menú Móvil del Comensal (`/m/[slug]`)**: Selector de forma de pago (*Efectivo / Mesero*, *Tarjeta con Stripe*, *Mercado Pago*). Modal de pago en línea integrado con redirección y simulador sandbox de auto-aprobación.
+  - **Caja del Punto de Venta (`/pos`)**: Cobro en mostrador con selector dinámico. Al elegir Stripe o Mercado Pago, se despliega un modal con Código QR interactivo (`qrserver.com`) para escanear con el smartphone del cliente, botón para copiar el link directo para envío por WhatsApp, y botón de confirmación inmediata.
+  - **Rastreo de Comanda en Vivo (`/order-tracking/[id]`)**: Indicador de estado de pago con badge verde (*PAGADO*) o advertencia con botones para liquidar en línea con Stripe o Mercado Pago.
+  - **Hub de Integraciones (`/integrations`)**: Pestaña dedicada "Pasarelas de Pago" con captura protegida y enmascarada de credenciales, switches de sandbox y pagos en línea, visualizador y copiado de Webhook URL unificado (`/api/webhooks/payments`), y simulador de prueba de eventos entrantes.
+* **Conciliación Reactiva en Tiempo Real**:
+  - Endpoint receptor unificado de Webhooks (`/api/webhooks/payments`) con soporte para firmas y eventos de Stripe y Mercado Pago.
+  - Confirmación atómica de orden (`confirmOrderPayment`), actualización a `paymentStatus: 'PAID'`, emisión de evento reactivo Server-Sent Events (SSE) `orderEvents.emit('order_event', { action: 'PAID' })`, actualización instantánea en KDS/POS y registro de auditoría forense inmutable (`ORDER_PAID`, `INFO`).
+
 ---
 
 ## 7. Estructura de Directorios
@@ -253,19 +270,28 @@ darkflow/
 │   │   │   ├── delivery-simulator/ # Simulador y webhooks de Uber Eats, Rappi, DiDi Food
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── health/       # Healthcheck activo de DB y uptime (/api/health)
-│   │   │   ├── integrations/ # Webhooks y simulador de delivery
+│   │   │   ├── integrations/ # Webhooks y configuración de pasarelas de pago y delivery
+│   │   │   │   ├── delivery/ # Métricas y resumen financiero de delivery
+│   │   │   │   └── payments/ # Credenciales y configuración de Stripe & Mercado Pago
 │   │   │   ├── inventory/    # Insumos, compras y recetas
 │   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
+│   │   │   ├── payments/     # Creación de sesiones de pago y confirmación sandbox
+│   │   │   │   ├── confirm-sandbox/ # Aprobación 1-clic de órdenes sandbox
+│   │   │   │   └── create-session/  # Generación de Stripe Checkout o MP Preference
 │   │   │   ├── products/     # Catálogo de platillos por marca
 │   │   │   ├── public/       # APIs públicas para clientes (menú, órdenes, tracking)
 │   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
 │   │   │   ├── tables/       # Mesas físicas, estados y comensales
-│   │   │   └── users/        # Gestión de personal, credenciales y RBAC
+│   │   │   ├── users/        # Gestión de personal, credenciales y RBAC
+│   │   │   └── webhooks/     # Receptores de webhooks externos
+│   │   │       ├── delivery/ # Pedidos entrantes de Uber Eats, Rappi y DiDi Food
+│   │   │       └── payments/ # Eventos de pago unificados de Stripe y Mercado Pago
 │   │   ├── audit/page.tsx    # Vista de Auditoría & Trazabilidad Forense de Seguridad
 │   │   ├── cash/page.tsx     # Vista de Corte de Caja
 │   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
 │   │   ├── delivery-simulator/page.tsx # Simulador de Delivery Apps
 │   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes (En Vivo SSE)
+│   │   ├── integrations/page.tsx # Hub de Integraciones (Delivery Apps & Pasarelas de Pago)
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
 │   │   ├── kitchen/page.tsx  # Vista KDS de Cocina en Tiempo Real (SSE + Campana)
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
@@ -291,6 +317,7 @@ darkflow/
 │   │   ├── db.ts             # Instancia singleton de Prisma Client
 │   │   ├── events.ts         # Singleton de EventEmitter para eventos reactivos
 │   │   ├── hash.ts           # Hash y verificación PBKDF2 de contraseñas
+│   │   ├── payments.ts       # Integración REST Stripe, Mercado Pago, Sandbox y confirmación atómica
 │   │   ├── sound.ts          # Sintetizador Web Audio API de campanas KDS
 │   │   └── store.ts          # Estado global Zustand (Carrito, Brand, Toasts)
 │   └── middleware.ts         # Protección perimetral de rutas privadas y acceso a rutas públicas
@@ -333,3 +360,4 @@ darkflow/
 * ✅ **Fase 11 (Completada):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.
 * ✅ **Fase 12 (Completada):** Menú Digital QR y Auto-Pedido Móvil para Comensales con Rastreo en Vivo.
 * ✅ **Fase 13 (Completada):** Auditoría Inmutable, Historial de Seguridad y Registro de Actividad (`/audit`, severidades `INFO`/`WARNING`/`CRITICAL`, exportación CSV e inspección forense).
+* ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).

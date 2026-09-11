@@ -42,6 +42,15 @@ model Brand {
   coupons        Coupon[]
   combos         Combo[]
   auditLogs      AuditLog[]
+  paymentSandboxMode Boolean     @default(true)
+  allowOnlinePayments Boolean    @default(true)
+  stripeSecretKey    String?
+  stripePublicKey    String?
+  stripeWebhookSecret String?
+  mpAccessToken      String?
+  mpPublicKey        String?
+  mpWebhookSecret    String?
+  paymentTransactions PaymentTransaction[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -162,6 +171,11 @@ model Order {
   platformCommission Float? @default(0)
   netPayout    Float?
   deliveryService String?
+  paymentStatus String       @default("PENDING")
+  paymentMethod String?
+  paidAt        DateTime?
+  paymentTransactionId String?
+  paymentTransactions PaymentTransaction[]
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -295,4 +309,27 @@ model AuditLog {
   @@index([brandId, createdAt])
   @@index([action])
   @@index([entityType])
+}
+
+model PaymentTransaction {
+  id               String   @id @default(uuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  brandId          String?
+  brand            Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  gateway          String
+  status           String   @default("PENDING")
+  amount           Float
+  currency         String   @default("MXN")
+  gatewayPaymentId String?
+  gatewayOrderId   String?
+  paymentUrl       String?
+  rawResponse      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([brandId])
+  @@index([gatewayPaymentId])
+  @@index([status])
 }

@@ -3,6 +3,7 @@ import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { orderEvents } from '@/lib/events';
+import { createPaymentSession } from '@/lib/payments';
 
 interface OrderItemInput {
   productId: string;
@@ -81,8 +82,14 @@ export async function POST(req: NextRequest) {
       redeemedPoints = 0,
       discount = 0,
       couponCode,
-      items // Array of { productId, quantity, price, notes }
+      paymentMethod = 'CASH',
+      paymentStatus: explicitPaymentStatus,
+      items
     } = await req.json();
+
+    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD'));
+    const finalPaymentStatus = explicitPaymentStatus || (isDirectPaid ? 'PAID' : 'PENDING');
+    const finalPaidAt = isDirectPaid ? new Date() : null;
 
     if (!customerName || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 });
@@ -215,6 +222,9 @@ export async function POST(req: NextRequest) {
           total,
           tableId: tableId || null,
           diners: diners ? parseInt(String(diners), 10) : 1,
+          paymentMethod,
+          paymentStatus: finalPaymentStatus,
+          paidAt: finalPaidAt,
           items: {
             create: typedItems.map((item) => ({
               productId: item.productId,
@@ -261,7 +271,20 @@ export async function POST(req: NextRequest) {
       order,
     });
 
-    return NextResponse.json({ success: true, order });
+    let paymentSession = null;
+    if (paymentMethod === 'STRIPE' || paymentMethod === 'MERCADOPAGO') {
+      try {
+        paymentSession = await createPaymentSession({
+          orderId: order.id,
+          gateway: paymentMethod,
+          req,
+        });
+      } catch (err) {
+        console.error('Error generating payment session for POS order:', err);
+      }
+    }
+
+    return NextResponse.json({ success: true, order, paymentSession });
   } catch (error: unknown) {
     console.error('Error creating order:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });

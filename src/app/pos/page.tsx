@@ -18,7 +18,12 @@ import {
   Sparkles,
   UserCheck,
   Tag,
-  Layers
+  Layers,
+  CreditCard,
+  Wallet,
+  QrCode,
+  Copy,
+  Check
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
@@ -173,6 +178,11 @@ export default function POSPage() {
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO'>('CASH');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [paymentSessionModal, setPaymentSessionModal] = useState<{ isOpen: boolean; order: any; paymentSession: any } | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [confirmingPosSandbox, setConfirmingPosSandbox] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [isThermalOpen, setIsThermalOpen] = useState(false);
   const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
@@ -396,6 +406,7 @@ export default function POSPage() {
           redeemedPoints: redeemPoints ? redeemedPointsCount : 0,
           discount: liveCouponDiscount + loyaltyDiscount,
           couponCode: appliedCoupon ? appliedCoupon.code : null,
+          paymentMethod,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -408,7 +419,7 @@ export default function POSPage() {
       if (res.ok) {
         const data = await res.json();
         setPlacedOrder(data.order);
-        addNotification(`Pedido ${data.order.orderNumber} creado con éxito`, 'success');
+        addNotification(`Pedido ${data.order.orderNumber} creado (${paymentMethod})`, 'success');
         clearCart();
         setIsCheckoutOpen(false);
         // Clear checkout form and coupon
@@ -419,6 +430,15 @@ export default function POSPage() {
         setTip(0);
         // Refresh products and tables list
         fetchInitialData();
+
+        // If digital payment session returned, open payment QR/link modal
+        if (data.paymentSession) {
+          setPaymentSessionModal({
+            isOpen: true,
+            order: data.order,
+            paymentSession: data.paymentSession,
+          });
+        }
       } else {
         const err = await res.json();
         alert(`Error: ${err.error}`);
@@ -427,6 +447,35 @@ export default function POSPage() {
       alert('Error de red al colocar pedido');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmPosSandboxPayment = async (orderId: string, gateway: string) => {
+    setConfirmingPosSandbox(true);
+    try {
+      const res = await fetch('/api/payments/confirm-sandbox', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          gateway,
+          status: 'PAID',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        addNotification('Pago digital confirmado exitosamente', 'success');
+        setPlacedOrder(data.order);
+        setPaymentSessionModal(null);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Error al confirmar pago');
+      }
+    } catch {
+      alert('Error de conexión al confirmar pago');
+    } finally {
+      setConfirmingPosSandbox(false);
     }
   };
 
@@ -1025,6 +1074,66 @@ export default function POSPage() {
                 )}
               </div>
 
+              {/* Selector de Método de Cobro */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 block">
+                  Método de Cobro
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('CASH')}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
+                      paymentMethod === 'CASH'
+                        ? 'bg-amber-500/20 border-amber-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-sm">💵</span>
+                    <span className="text-[10px] leading-tight">Efectivo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('CARD')}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
+                      paymentMethod === 'CARD'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[10px] leading-tight">Terminal</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('STRIPE')}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
+                      paymentMethod === 'STRIPE'
+                        ? 'bg-indigo-500/20 border-indigo-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="text-[10px] leading-tight">Stripe</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('MERCADOPAGO')}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
+                      paymentMethod === 'MERCADOPAGO'
+                        ? 'bg-sky-500/20 border-sky-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="text-[10px] leading-tight">Mercado Pago</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Financial Breakdown Preview */}
               <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1.5 text-slate-300">
                 <div className="flex justify-between">
@@ -1205,6 +1314,95 @@ export default function POSPage() {
           onClose={() => setIsInvoicePdfOpen(false)}
           order={placedOrder as unknown as InvoiceOrderData}
         />
+      )}
+
+      {/* Digital Payment Link & QR Code Modal */}
+      {paymentSessionModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl ${
+                  paymentSessionModal.paymentSession.gateway === 'STRIPE' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-sky-500/10 text-sky-400'
+                }`}>
+                  {paymentSessionModal.paymentSession.gateway === 'STRIPE' ? (
+                    <CreditCard className="w-5 h-5" />
+                  ) : (
+                    <Wallet className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">
+                    Cobro {paymentSessionModal.paymentSession.gateway === 'STRIPE' ? 'Stripe' : 'Mercado Pago'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-mono">Orden: #{paymentSessionModal.order.orderNumber}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPaymentSessionModal(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Total Amount */}
+            <div className="text-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold">Total a Cobrar</p>
+              <p className="text-2xl font-black text-white font-mono">
+                ${paymentSessionModal.order.total.toFixed(2)} <span className="text-xs text-amber-400">MXN</span>
+              </p>
+            </div>
+
+            {/* QR Code */}
+            <div className="flex flex-col items-center justify-center p-3 bg-white rounded-xl shadow-inner mx-auto w-48 h-48">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                  paymentSessionModal.paymentSession.paymentUrl.startsWith('http')
+                    ? paymentSessionModal.paymentSession.paymentUrl
+                    : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}${paymentSessionModal.paymentSession.paymentUrl}`
+                )}`}
+                alt="Código QR de Pago"
+                className="w-40 h-40 object-contain"
+              />
+            </div>
+            <p className="text-[11px] text-center text-slate-400 flex items-center justify-center gap-1.5">
+              <QrCode className="w-3.5 h-3.5 text-indigo-400" />
+              Muestra este código al cliente para pagar desde su celular
+            </p>
+
+            {/* Actions */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const url = paymentSessionModal.paymentSession.paymentUrl.startsWith('http')
+                    ? paymentSessionModal.paymentSession.paymentUrl
+                    : `${window.location.origin}${paymentSessionModal.paymentSession.paymentUrl}`;
+                  navigator.clipboard.writeText(url);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border border-slate-700 transition"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                <span>{copiedLink ? '¡Enlace copiado al portapapeles!' : 'Copiar Link de Pago (WhatsApp)'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleConfirmPosSandboxPayment(paymentSessionModal.order.id, paymentSessionModal.paymentSession.gateway)}
+                disabled={confirmingPosSandbox}
+                className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow transition disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{confirmingPosSandbox ? 'Aprobando...' : 'Confirmar Cobro Aprobado'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardContainer>
   );

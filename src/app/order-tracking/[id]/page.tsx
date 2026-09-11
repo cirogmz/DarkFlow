@@ -8,7 +8,11 @@ import {
   Bell, 
   Utensils, 
   Receipt, 
-  RotateCw 
+  RotateCw,
+  CreditCard,
+  Wallet,
+  ShieldCheck,
+  Check
 } from 'lucide-react';
 
 interface OrderItemData {
@@ -26,6 +30,9 @@ interface OrderTrackingData {
   id: string;
   orderNumber: string;
   status: string;
+  paymentStatus?: string;
+  paymentMethod?: string | null;
+  paidAt?: string | null;
   customerName: string;
   source: string;
   notes?: string | null;
@@ -57,6 +64,8 @@ export default function OrderTrackingPage({
   const [order, setOrder] = useState<OrderTrackingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [paying, setPaying] = useState(false);
+  const [payModal, setPayModal] = useState<'STRIPE' | 'MERCADOPAGO' | null>(null);
 
   const fetchOrder = React.useCallback(async () => {
     try {
@@ -72,6 +81,61 @@ export default function OrderTrackingPage({
       setLoading(false);
     }
   }, [id]);
+
+  const handlePay = async (gateway: 'STRIPE' | 'MERCADOPAGO') => {
+    setPaying(true);
+    try {
+      const res = await fetch('/api/payments/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: id,
+          gateway,
+          returnUrl: window.location.href,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.paymentUrl) {
+        if (data.isSandbox) {
+          setPayModal(gateway);
+        } else {
+          window.location.href = data.paymentUrl;
+        }
+      } else {
+        alert(data.error || 'Error al iniciar sesión de pago');
+      }
+    } catch {
+      alert('Error de conexión con la pasarela de pagos');
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleConfirmSimulation = async (gateway: 'STRIPE' | 'MERCADOPAGO') => {
+    setPaying(true);
+    try {
+      const res = await fetch('/api/payments/confirm-sandbox', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: id,
+          gateway,
+          status: 'PAID',
+        }),
+      });
+      if (res.ok) {
+        setPayModal(null);
+        fetchOrder();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Error al confirmar pago simulado');
+      }
+    } catch {
+      alert('Error de conexión');
+    } finally {
+      setPaying(false);
+    }
+  };
 
   useEffect(() => {
     fetchOrder();
@@ -176,6 +240,68 @@ export default function OrderTrackingPage({
               <span>Para Llevar</span>
             )}
           </div>
+        </div>
+
+        {/* Payment Status Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+          {order.paymentStatus === 'PAID' ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white">Pago Confirmado</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                      {order.paymentMethod || 'PAGADO'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Monto: <span className="font-mono text-white font-semibold">${order.total.toFixed(2)} MXN</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">Pago Pendiente</h3>
+                    <p className="text-[11px] text-slate-400">Total a liquidar: <strong className="text-amber-400 font-mono">${order.total.toFixed(2)} MXN</strong></p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-400 border border-amber-800">
+                  PENDIENTE
+                </span>
+              </div>
+
+              {/* Online payment buttons */}
+              <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handlePay('STRIPE')}
+                  disabled={paying}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Pagar Stripe
+                </button>
+
+                <button
+                  onClick={() => handlePay('MERCADOPAGO')}
+                  disabled={paying}
+                  className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  Mercado Pago
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Live Stepper Card */}
@@ -304,6 +430,43 @@ export default function OrderTrackingPage({
           </a>
         </div>
       </div>
+
+      {/* Modal de Simulación de Pago */}
+      {payModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-white text-base">Modo Sandbox: {payModal}</h3>
+              <p className="text-xs text-slate-400">Total a liquidar: ${order.total.toFixed(2)} MXN</p>
+            </div>
+
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+              <p>Puedes simular la confirmación bancaria en 1 clic para validar la transición inmediata del pedido.</p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={() => handleConfirmSimulation(payModal)}
+                disabled={paying}
+                className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+              >
+                <Check className="w-4 h-4" />
+                {paying ? 'Aprobando...' : 'Simular Pago Aprobado'}
+              </button>
+
+              <button
+                onClick={() => setPayModal(null)}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -16,7 +16,11 @@ import {
   ChevronRight,
   User,
   Phone,
-  MessageSquare
+  MessageSquare,
+  CreditCard,
+  Wallet,
+  CheckCircle2,
+  ShieldCheck
 } from 'lucide-react';
 
 interface PublicIngredient {
@@ -133,6 +137,17 @@ export default function PublicMenuPage({
   const [selectedTableNumber, setSelectedTableNumber] = useState(queryTable);
   const [orderNotes, setOrderNotes] = useState('');
   const [couponCode, setCouponCode] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'STRIPE' | 'MERCADOPAGO'>('CASH');
+  const [onlinePaymentModal, setOnlinePaymentModal] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    orderNumber: string;
+    gateway: string;
+    amount: number;
+    paymentUrl: string;
+    isSandbox: boolean;
+  } | null>(null);
+  const [confirmingSandboxPay, setConfirmingSandboxPay] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Load menu data
@@ -275,6 +290,7 @@ export default function PublicMenuPage({
           tableNumber: orderType === 'DINE_IN' ? selectedTableNumber : undefined,
           notes: orderNotes.trim() || undefined,
           couponCode: couponCode.trim() || undefined,
+          paymentMethod,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -288,14 +304,53 @@ export default function PublicMenuPage({
         throw new Error(data.error || 'Error al procesar el pedido');
       }
 
-      // Order created! Clear cart and redirect to live tracking screen
       setCart([]);
       setIsCartOpen(false);
-      router.push(`/order-tracking/${data.order.id}`);
+
+      // If online payment (STRIPE or MERCADOPAGO), show payment modal/simulator
+      if (paymentMethod !== 'CASH' && data.paymentSession) {
+        setOnlinePaymentModal({
+          isOpen: true,
+          orderId: data.order.id,
+          orderNumber: data.order.orderNumber,
+          gateway: paymentMethod,
+          amount: data.order.total,
+          paymentUrl: data.paymentSession.paymentUrl,
+          isSandbox: data.paymentSession.isSandbox,
+        });
+      } else {
+        router.push(`/order-tracking/${data.order.id}`);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al enviar pedido');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmSandboxPayment = async (orderId: string, gateway: string) => {
+    setConfirmingSandboxPay(true);
+    try {
+      const res = await fetch('/api/payments/confirm-sandbox', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          gateway,
+          status: 'PAID',
+        }),
+      });
+      if (res.ok) {
+        setOnlinePaymentModal(null);
+        router.push(`/order-tracking/${orderId}?payment_success=true`);
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Error al procesar pago simulado');
+      }
+    } catch {
+      alert('Error de conexión al simular pago');
+    } finally {
+      setConfirmingSandboxPay(false);
     }
   };
 
@@ -869,6 +924,53 @@ export default function PublicMenuPage({
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
+
+                {/* Selector de Método de Pago */}
+                <div className="pt-2 border-t border-slate-800">
+                  <label className="text-xs text-slate-300 font-bold block mb-2">
+                    Forma de Pago
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('CASH')}
+                      className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition ${
+                        paymentMethod === 'CASH'
+                          ? 'bg-amber-500/20 border-amber-500 text-white font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="text-base">💵</span>
+                      <span className="text-[10px] leading-tight">Efectivo / Mesero</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('STRIPE')}
+                      className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition ${
+                        paymentMethod === 'STRIPE'
+                          ? 'bg-indigo-500/20 border-indigo-500 text-white font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4 text-indigo-400" />
+                      <span className="text-[10px] leading-tight">Tarjeta (Stripe)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('MERCADOPAGO')}
+                      className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition ${
+                        paymentMethod === 'MERCADOPAGO'
+                          ? 'bg-sky-500/20 border-sky-500 text-white font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <Wallet className="w-4 h-4 text-sky-400" />
+                      <span className="text-[10px] leading-tight">Mercado Pago</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Financial Totals */}
@@ -882,7 +984,7 @@ export default function PublicMenuPage({
                   <span className="font-mono">${cartTax.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-white font-bold pt-1 border-t border-slate-800 text-sm">
-                  <span>Total Estimado:</span>
+                  <span>Total a Pagar:</span>
                   <span className="text-amber-400 font-mono">${cartTotal.toFixed(2)} MXN</span>
                 </div>
               </div>
@@ -897,14 +999,127 @@ export default function PublicMenuPage({
                 className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl flex items-center justify-center gap-2 shadow-xl cursor-pointer disabled:opacity-50 transition-all text-sm active:scale-98"
               >
                 {submitting ? (
-                  <span>Enviando a cocina...</span>
-                ) : (
+                  <span>Procesando pedido...</span>
+                ) : paymentMethod === 'CASH' ? (
                   <>
                     <span>Confirmar y Enviar a Cocina</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
+                ) : (
+                  <>
+                    <span>Proceder al Pago (${cartTotal.toFixed(2)})</span>
+                    <CreditCard className="w-4 h-4" />
+                  </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Pago Digital / Simulador */}
+      {onlinePaymentModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${
+                  onlinePaymentModal.gateway === 'STRIPE' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-sky-500/10 text-sky-400'
+                }`}>
+                  {onlinePaymentModal.gateway === 'STRIPE' ? (
+                    <CreditCard className="w-6 h-6" />
+                  ) : (
+                    <Wallet className="w-6 h-6" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base flex items-center gap-2">
+                    Pago con {onlinePaymentModal.gateway === 'STRIPE' ? 'Stripe' : 'Mercado Pago'}
+                    {onlinePaymentModal.isSandbox && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/30">
+                        SANDBOX
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-mono">Pedido: #{onlinePaymentModal.orderNumber}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setOnlinePaymentModal(null);
+                  router.push(`/order-tracking/${onlinePaymentModal.orderId}`);
+                }}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-5">
+              <div className="text-center space-y-1">
+                <p className="text-xs text-slate-400 uppercase font-semibold">Total a Cobrar</p>
+                <p className="text-3xl font-black text-white font-mono">
+                  ${onlinePaymentModal.amount.toFixed(2)} <span className="text-sm font-bold text-amber-400">MXN</span>
+                </p>
+              </div>
+
+              {onlinePaymentModal.isSandbox ? (
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-400">
+                    <ShieldCheck className="w-4 h-4" />
+                    Simulador de Pago en Modo Sandbox
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Estás en entorno de pruebas. Puedes simular la aprobación bancaria inmediata con 1 clic para validar el flujo completo sin usar tarjetas reales.
+                  </p>
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 flex justify-between">
+                    <span>Tarjeta Demo:</span>
+                    <span className="text-emerald-400 font-bold">•••• 4242 (Aprobada)</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
+                  <p>Haz clic en el botón a continuación para ser redirigido a la pasarela segura de pago:</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-2">
+                {onlinePaymentModal.isSandbox ? (
+                  <button
+                    type="button"
+                    onClick={() => handleConfirmSandboxPayment(onlinePaymentModal.orderId, onlinePaymentModal.gateway)}
+                    disabled={confirmingSandboxPay}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl flex items-center justify-center gap-2 shadow-lg cursor-pointer disabled:opacity-50 transition active:scale-98 text-sm"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {confirmingSandboxPay ? 'Confirmando...' : 'Simular Pago Aprobado (1-Clic)'}
+                  </button>
+                ) : (
+                  <a
+                    href={onlinePaymentModal.paymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition text-sm"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    Pagar en {onlinePaymentModal.gateway}
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOnlinePaymentModal(null);
+                    router.push(`/order-tracking/${onlinePaymentModal.orderId}`);
+                  }}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium rounded-xl text-xs transition"
+                >
+                  Continuar al Rastreo del Pedido
+                </button>
+              </div>
             </div>
           </div>
         </div>

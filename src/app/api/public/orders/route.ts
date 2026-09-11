@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { orderEvents } from '@/lib/events';
+import { createPaymentSession } from '@/lib/payments';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
       tableNumber,
       notes,
       couponCode,
+      paymentMethod = 'CASH',
       items,
     } = body;
 
@@ -227,6 +229,8 @@ export async function POST(request: NextRequest) {
           couponId: validatedCoupon ? validatedCoupon.id : null,
           couponCode: validatedCoupon ? validatedCoupon.code : null,
           discountAmount,
+          paymentMethod,
+          paymentStatus: 'PENDING',
           items: {
             create: validatedItems.map((i) => ({
               productId: i.productId,
@@ -250,7 +254,22 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    // 5. Emit real-time SSE event to trigger Kitchen KDS and bell sound!
+    // 5. If online payment (STRIPE / MERCADOPAGO), generate payment session
+    let paymentSession = null;
+    if (paymentMethod === 'STRIPE' || paymentMethod === 'MERCADOPAGO') {
+      try {
+        paymentSession = await createPaymentSession({
+          orderId: order.id,
+          gateway: paymentMethod,
+          customerEmail: undefined,
+          req: request,
+        });
+      } catch (err) {
+        console.error('Error initiating payment session for public order:', err);
+      }
+    }
+
+    // 6. Emit real-time SSE event to trigger Kitchen KDS and bell sound!
     orderEvents.emit('order_event', {
       action: 'CREATED',
       order,
@@ -263,9 +282,12 @@ export async function POST(request: NextRequest) {
         id: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
+        paymentStatus: order.paymentStatus,
+        paymentMethod: order.paymentMethod,
         total: order.total,
         createdAt: order.createdAt,
       },
+      paymentSession,
     });
   } catch (error) {
     console.error('Error creating public order:', error);
