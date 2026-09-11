@@ -59,6 +59,25 @@ interface RecipeItem {
   ingredient: Ingredient;
 }
 
+interface ModifierOption {
+  id: string;
+  name: string;
+  price: number;
+  ingredientId?: string | null;
+  ingredientQuantity?: number | null;
+  isDefault: boolean;
+  order: number;
+}
+
+interface ModifierGroup {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  options: ModifierOption[];
+}
+
 interface Product {
   id: string;
   name: string;
@@ -67,6 +86,7 @@ interface Product {
   imageUrl?: string;
   categoryId: string;
   recipeItems: RecipeItem[];
+  modifierGroups?: Array<{ modifierGroup: ModifierGroup }>;
 }
 
 interface Category {
@@ -207,6 +227,10 @@ export default function POSPage() {
   const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
   const [isInvoicePdfOpen, setIsInvoicePdfOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Modifier customization state
+  const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
+  const [customizationSelections, setCustomizationSelections] = useState<Record<string, string[]>>({});
 
   // Split bill states
   const [splitBillModalOpen, setSplitBillModalOpen] = useState(false);
@@ -737,7 +761,21 @@ export default function POSPage() {
                         )}
 
                         <button
-                          onClick={() => addToCart({ id: prod.id, name: prod.name, price: prod.price, imageUrl: prod.imageUrl })}
+                          onClick={() => {
+                            const groups = (prod.modifierGroups || []).map(pmg => pmg.modifierGroup);
+                            if (groups.length > 0) {
+                              // Initialize selections with defaults
+                              const defaults: Record<string, string[]> = {};
+                              groups.forEach(g => {
+                                const def = g.options.filter(o => o.isDefault).map(o => o.id);
+                                defaults[g.id] = def;
+                              });
+                              setCustomizationSelections(defaults);
+                              setCustomizingProduct(prod);
+                            } else {
+                              addToCart({ id: prod.id, name: prod.name, price: prod.price, imageUrl: prod.imageUrl });
+                            }
+                          }}
                           className="p-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-slate-950 transition-colors cursor-pointer"
                           title="Agregar al Carrito"
                         >
@@ -774,39 +812,48 @@ export default function POSPage() {
               </div>
             ) : (
               cart.map((item) => (
-                <div key={item.productId} className="flex flex-col gap-2 p-3 bg-slate-950 border border-slate-800 rounded-lg">
+                <div key={item.id || item.productId} className="flex flex-col gap-2 p-3 bg-slate-950 border border-slate-800 rounded-lg">
                   <div className="flex justify-between items-start">
                     <span className="text-xs font-bold text-white leading-tight max-w-[180px]">{item.name}</span>
                     <span className="text-xs font-black text-brand-primary">${(item.price * item.quantity).toFixed(2)}</span>
                   </div>
+                  {item.modifiers && item.modifiers.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {item.modifiers.map((mod, mi) => (
+                        <span key={mi} className="text-[10px] bg-violet-950/50 border border-violet-800/40 text-violet-300 px-1.5 py-0.5 rounded font-medium">
+                          {mod.optionName}{mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   
                   {/* Notes input */}
                   <input
                     type="text"
                     placeholder="Notas (ej. sin cebolla)"
                     value={item.notes || ''}
-                    onChange={(e) => updateCartNotes(item.productId, e.target.value)}
+                    onChange={(e) => updateCartNotes(item.id || item.productId, e.target.value)}
                     className="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-300 outline-none placeholder:text-slate-600 focus:border-brand-primary"
                   />
 
                   {/* Quantity controls */}
                   <div className="flex items-center justify-between pt-1 border-t border-slate-900">
                     <button 
-                      onClick={() => removeFromCart(item.productId)}
+                      onClick={() => removeFromCart(item.id || item.productId)}
                       className="text-red-500 hover:text-red-400 p-1 rounded hover:bg-red-950/20"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => updateCartQty(item.productId, item.quantity - 1)}
+                        onClick={() => updateCartQty(item.id || item.productId, item.quantity - 1)}
                         className="p-1 bg-slate-800 rounded hover:bg-slate-700 text-slate-400 hover:text-white"
                       >
                         <Minus className="h-3 w-3" />
                       </button>
                       <span className="text-xs font-bold text-slate-200">{item.quantity}</span>
                       <button 
-                        onClick={() => updateCartQty(item.productId, item.quantity + 1)}
+                        onClick={() => updateCartQty(item.id || item.productId, item.quantity + 1)}
                         className="p-1 bg-slate-800 rounded hover:bg-slate-700 text-slate-400 hover:text-white"
                       >
                         <Plus className="h-3 w-3" />
@@ -2006,6 +2053,150 @@ export default function POSPage() {
           </div>
         </div>
       )}
+
+      {/* MODAL: PRODUCT CUSTOMIZATION (Modifiers) */}
+      {customizingProduct && (() => {
+        const groups = (customizingProduct.modifierGroups || []).map(pmg => pmg.modifierGroup);
+
+        const toggleSelection = (groupId: string, optionId: string, maxSelect: number) => {
+          setCustomizationSelections(prev => {
+            const current = prev[groupId] || [];
+            if (current.includes(optionId)) {
+              return { ...prev, [groupId]: current.filter(id => id !== optionId) };
+            } else {
+              if (maxSelect === 1) {
+                return { ...prev, [groupId]: [optionId] };
+              } else if (current.length < maxSelect) {
+                return { ...prev, [groupId]: [...current, optionId] };
+              }
+              return prev; // max reached
+            }
+          });
+        };
+
+        const selectedModifiers = groups.flatMap(g =>
+          (customizationSelections[g.id] || []).map(optId => {
+            const opt = g.options.find(o => o.id === optId);
+            if (!opt) return null;
+            return { groupName: g.name, optionName: opt.name, price: opt.price, ingredientId: opt.ingredientId, ingredientQuantity: opt.ingredientQuantity };
+          }).filter(Boolean) as Array<{ groupName: string; optionName: string; price: number; ingredientId?: string | null; ingredientQuantity?: number | null }>
+        );
+
+        const extraPrice = selectedModifiers.reduce((sum, m) => sum + m.price, 0);
+        const totalPrice = customizingProduct.price + extraPrice;
+
+        const isValid = groups.every(g => {
+          const selected = (customizationSelections[g.id] || []).length;
+          return selected >= g.minSelect;
+        });
+
+        const handleConfirm = () => {
+          addToCart({
+            id: customizingProduct.id,
+            name: customizingProduct.name,
+            price: totalPrice,
+            imageUrl: customizingProduct.imageUrl,
+            modifiers: selectedModifiers,
+          });
+          setCustomizingProduct(null);
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              <button
+                onClick={() => setCustomizingProduct(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="border-b border-slate-800 pb-3">
+                <h3 className="text-lg font-bold text-white">{customizingProduct.name}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Personaliza tu orden</p>
+              </div>
+
+              <div className="space-y-5">
+                {groups.map(group => {
+                  const selected = customizationSelections[group.id] || [];
+                  const isMulti = group.maxSelect > 1;
+                  return (
+                    <div key={group.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-white">{group.name}</p>
+                          <p className="text-[10px] text-slate-500">
+                            {group.isRequired ? <span className="text-amber-400">Obligatorio · </span> : 'Opcional · '}
+                            {isMulti ? `Selecciona hasta ${group.maxSelect}` : 'Elige uno'}
+                          </p>
+                        </div>
+                        {group.isRequired && selected.length < group.minSelect && (
+                          <span className="text-[10px] text-red-400 font-semibold">Requerido</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {group.options.map(opt => {
+                          const isSelected = selected.includes(opt.id);
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => toggleSelection(group.id, opt.id, group.maxSelect)}
+                              className={`flex items-center justify-between px-3 py-2 rounded-lg border text-xs transition-all cursor-pointer text-left ${
+                                isSelected
+                                  ? 'border-brand-primary bg-brand-primary/10 text-white'
+                                  : 'border-slate-700 bg-slate-950/50 text-slate-300 hover:border-slate-600'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'border-brand-primary' : 'border-slate-600'
+                                }`}>
+                                  {isSelected && <span className="h-2 w-2 rounded-full bg-brand-primary" />}
+                                </span>
+                                <span className="font-semibold">{opt.name}</span>
+                              </div>
+                              {opt.price > 0 && (
+                                <span className="font-bold text-emerald-400 ml-auto shrink-0">+${opt.price.toFixed(2)}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 space-y-3">
+                {selectedModifiers.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedModifiers.map((m, i) => (
+                      <span key={i} className="text-[10px] bg-violet-950/50 border border-violet-800/40 text-violet-300 px-2 py-0.5 rounded font-medium">
+                        {m.optionName}{m.price > 0 ? ` +$${m.price.toFixed(2)}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-slate-500">Precio total</p>
+                    <p className="text-lg font-black text-brand-primary">${totalPrice.toFixed(2)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConfirm}
+                    disabled={!isValid}
+                    className="px-6 py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-sm rounded-xl shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Agregar al Carrito
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </DashboardContainer>
   );
 }

@@ -34,6 +34,24 @@ interface PublicRecipeItem {
   ingredient: PublicIngredient;
 }
 
+interface PublicModifierOption {
+  id: string;
+  name: string;
+  price: number;
+  ingredientId?: string | null;
+  ingredientQuantity?: number | null;
+  isDefault: boolean;
+}
+
+interface PublicModifierGroup {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  options: PublicModifierOption[];
+}
+
 interface PublicProduct {
   id: string;
   name: string;
@@ -42,6 +60,7 @@ interface PublicProduct {
   imageUrl?: string | null;
   categoryId: string;
   recipeItems: PublicRecipeItem[];
+  modifierGroups?: Array<{ modifierGroup: PublicModifierGroup }>;
 }
 
 interface PublicCategory {
@@ -89,6 +108,14 @@ interface PublicBrand {
   secondaryColor: string;
 }
 
+interface CartModifier {
+  groupName: string;
+  optionName: string;
+  price: number;
+  ingredientId?: string | null;
+  ingredientQuantity?: number | null;
+}
+
 interface CartItem {
   cartId: string;
   productId: string;
@@ -97,6 +124,7 @@ interface CartItem {
   quantity: number;
   imageUrl?: string | null;
   notes?: string;
+  modifiers?: CartModifier[];
 }
 
 export default function PublicMenuPage({
@@ -129,6 +157,7 @@ export default function PublicMenuPage({
   const [selectedProduct, setSelectedProduct] = useState<PublicProduct | null>(null);
   const [modalQty, setModalQty] = useState(1);
   const [modalNotes, setModalNotes] = useState('');
+  const [modalModifierSelections, setModalModifierSelections] = useState<Record<string, string[]>>({});
 
   // Checkout Form
   const [customerName, setCustomerName] = useState('');
@@ -179,10 +208,14 @@ export default function PublicMenuPage({
   }, [slug, queryTable]);
 
   // Add regular product to cart
-  const handleAddToCart = (product: PublicProduct, qty = 1, notes = '') => {
+  const handleAddToCart = (product: PublicProduct, qty = 1, notes = '', modifiers: CartModifier[] = []) => {
+    const modKey = modifiers.length > 0 ? JSON.stringify(modifiers) : '';
     const existingIndex = cart.findIndex(
-      (c) => c.productId === product.id && (c.notes || '') === (notes || '')
+      (c) => c.productId === product.id && (c.notes || '') === (notes || '') && JSON.stringify(c.modifiers || []) === modKey
     );
+
+    const extraPrice = modifiers.reduce((sum, m) => sum + m.price, 0);
+    const finalPrice = product.price + extraPrice;
 
     if (existingIndex > -1) {
       const updated = [...cart];
@@ -195,10 +228,11 @@ export default function PublicMenuPage({
           cartId: `${product.id}-${Date.now()}`,
           productId: product.id,
           name: product.name,
-          price: product.price,
+          price: finalPrice,
           quantity: qty,
           imageUrl: product.imageUrl,
           notes: notes.trim() || undefined,
+          modifiers: modifiers.length > 0 ? modifiers : undefined,
         },
       ]);
     }
@@ -206,6 +240,7 @@ export default function PublicMenuPage({
     setSelectedProduct(null);
     setModalQty(1);
     setModalNotes('');
+    setModalModifierSelections({});
   };
 
   // Add combo items to cart prorated
@@ -295,6 +330,7 @@ export default function PublicMenuPage({
             productId: i.productId,
             quantity: i.quantity,
             notes: i.notes,
+            modifiers: i.modifiers ? JSON.stringify(i.modifiers) : undefined,
           })),
         }),
       });
@@ -589,6 +625,13 @@ export default function PublicMenuPage({
                         setSelectedProduct(product);
                         setModalQty(1);
                         setModalNotes('');
+                        // Initialize modifier defaults
+                        const groups = (product.modifierGroups || []).map(pmg => pmg.modifierGroup);
+                        const defaults: Record<string, string[]> = {};
+                        groups.forEach(g => {
+                          defaults[g.id] = g.options.filter(o => o.isDefault).map(o => o.id);
+                        });
+                        setModalModifierSelections(defaults);
                       }}
                       className="bg-slate-900/80 border border-slate-800/80 hover:border-slate-700 rounded-2xl p-3 flex gap-3 cursor-pointer transition-all hover:bg-slate-850 shadow group"
                     >
@@ -643,88 +686,172 @@ export default function PublicMenuPage({
       </main>
 
       {/* Product Customization / Add Modal */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-xs p-0 sm:p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-lg font-bold text-white">{selectedProduct.name}</h3>
-                <span className="font-mono font-bold text-amber-400 text-base">
-                  ${selectedProduct.price.toFixed(2)}
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {selectedProduct && (() => {
+        const groups = (selectedProduct.modifierGroups || []).map(pmg => pmg.modifierGroup);
 
-            {selectedProduct.imageUrl && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={selectedProduct.imageUrl}
-                alt={selectedProduct.name}
-                className="w-full h-44 object-cover rounded-xl border border-slate-800"
-              />
-            )}
+        const toggleMod = (groupId: string, optionId: string, maxSelect: number) => {
+          setModalModifierSelections(prev => {
+            const current = prev[groupId] || [];
+            if (current.includes(optionId)) {
+              return { ...prev, [groupId]: current.filter(id => id !== optionId) };
+            } else {
+              if (maxSelect === 1) return { ...prev, [groupId]: [optionId] };
+              if (current.length < maxSelect) return { ...prev, [groupId]: [...current, optionId] };
+              return prev;
+            }
+          });
+        };
 
-            {selectedProduct.description && (
-              <p className="text-xs text-slate-300">{selectedProduct.description}</p>
-            )}
+        const selectedModifiers: CartModifier[] = groups.flatMap(g =>
+          (modalModifierSelections[g.id] || []).map(optId => {
+            const opt = g.options.find(o => o.id === optId);
+            if (!opt) return null;
+            return { groupName: g.name, optionName: opt.name, price: opt.price, ingredientId: opt.ingredientId, ingredientQuantity: opt.ingredientQuantity };
+          }).filter(Boolean) as CartModifier[]
+        );
 
-            {/* Special notes */}
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-400 flex items-center gap-1 font-medium">
-                <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-                Instrucciones para la cocina (Opcional):
-              </label>
-              <input
-                type="text"
-                value={modalNotes}
-                onChange={(e) => setModalNotes(e.target.value)}
-                placeholder="Ej. Sin cebolla, término medio, aderezo aparte..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-              />
-            </div>
+        const extraPrice = selectedModifiers.reduce((sum, m) => sum + m.price, 0);
+        const totalPrice = (selectedProduct.price + extraPrice) * modalQty;
 
-            {/* Quantity and Add Button */}
-            <div className="flex items-center gap-3 pt-2">
-              <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1">
+        const isValid = groups.every(g => {
+          const sel = (modalModifierSelections[g.id] || []).length;
+          return sel >= g.minSelect;
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-xs p-0 sm:p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-bold text-white">{selectedProduct.name}</h3>
+                  <span className="font-mono font-bold text-amber-400 text-base">
+                    ${selectedProduct.price.toFixed(2)}
+                  </span>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => setModalQty(Math.max(1, modalQty - 1))}
-                  className="p-2 text-slate-400 hover:text-white"
+                  onClick={() => { setSelectedProduct(null); setModalModifierSelections({}); }}
+                  className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
                 >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <span className="w-8 text-center font-bold text-sm text-white font-mono">
-                  {modalQty}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setModalQty(modalQty + 1)}
-                  className="p-2 text-slate-400 hover:text-white"
-                >
-                  <Plus className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleAddToCart(selectedProduct, modalQty, modalNotes)}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-98 cursor-pointer text-sm"
-              >
-                <span>Agregar al Pedido</span>
-                <span className="font-mono">
-                  ${(selectedProduct.price * modalQty).toFixed(2)}
-                </span>
-              </button>
+              {selectedProduct.imageUrl && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={selectedProduct.imageUrl}
+                  alt={selectedProduct.name}
+                  className="w-full h-44 object-cover rounded-xl border border-slate-800"
+                />
+              )}
+
+              {selectedProduct.description && (
+                <p className="text-xs text-slate-300">{selectedProduct.description}</p>
+              )}
+
+              {/* Modifier Groups */}
+              {groups.length > 0 && (
+                <div className="space-y-4">
+                  {groups.map(group => {
+                    const sel = modalModifierSelections[group.id] || [];
+                    return (
+                      <div key={group.id} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-white">{group.name}</p>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                            group.isRequired
+                              ? sel.length >= group.minSelect ? 'bg-emerald-900/50 text-emerald-400' : 'bg-amber-900/50 text-amber-400'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {group.isRequired ? 'Obligatorio' : 'Opcional'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {group.options.map(opt => {
+                            const isSelected = sel.includes(opt.id);
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => toggleMod(group.id, opt.id, group.maxSelect)}
+                                className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'border-amber-500 bg-amber-500/10 text-white'
+                                    : 'border-slate-700 bg-slate-950/50 text-slate-300 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                    isSelected ? 'border-amber-500' : 'border-slate-600'
+                                  }`}>
+                                    {isSelected && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                                  </span>
+                                  <span className="font-semibold">{opt.name}</span>
+                                </div>
+                                {opt.price > 0 && (
+                                  <span className="font-bold text-emerald-400 ml-auto shrink-0">+${opt.price.toFixed(2)}</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Special notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400 flex items-center gap-1 font-medium">
+                  <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+                  Instrucciones para la cocina (Opcional):
+                </label>
+                <input
+                  type="text"
+                  value={modalNotes}
+                  onChange={(e) => setModalNotes(e.target.value)}
+                  placeholder="Ej. Sin cebolla, término medio, aderezo aparte..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Quantity and Add Button */}
+              <div className="flex items-center gap-3 pt-2">
+                <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1">
+                  <button
+                    type="button"
+                    onClick={() => setModalQty(Math.max(1, modalQty - 1))}
+                    className="p-2 text-slate-400 hover:text-white"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <span className="w-8 text-center font-bold text-sm text-white font-mono">
+                    {modalQty}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setModalQty(modalQty + 1)}
+                    className="p-2 text-slate-400 hover:text-white"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!isValid}
+                  onClick={() => handleAddToCart(selectedProduct, modalQty, modalNotes, selectedModifiers)}
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-98 cursor-pointer text-sm"
+                >
+                  <span>Agregar al Pedido</span>
+                  <span className="font-mono">${totalPrice.toFixed(2)}</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Floating Bottom Cart Bar */}
       {cart.length > 0 && !isCartOpen && (
@@ -774,6 +901,15 @@ export default function PublicMenuPage({
                   <div key={item.cartId} className="pt-2 flex items-center justify-between gap-3">
                     <div className="flex-1">
                       <p className="font-bold text-white text-xs leading-tight">{item.name}</p>
+                      {item.modifiers && item.modifiers.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {item.modifiers.map((mod, mi) => (
+                            <span key={mi} className="text-[10px] bg-amber-900/40 border border-amber-700/40 text-amber-300 px-1.5 py-0.5 rounded font-medium">
+                              {mod.optionName}{mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {item.notes && <p className="text-[11px] text-amber-400/80 italic mt-0.5">&ldquo;{item.notes}&rdquo;</p>}
                       <span className="text-xs text-slate-400 font-mono">${item.price.toFixed(2)} c/u</span>
                     </div>

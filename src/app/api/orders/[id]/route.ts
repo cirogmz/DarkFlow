@@ -117,6 +117,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               },
             });
           }
+
+          // Deduct stock for modifier options if linked to an ingredient
+          if (orderItem.modifiers) {
+            try {
+              const parsedMods = JSON.parse(orderItem.modifiers);
+              if (Array.isArray(parsedMods)) {
+                for (const mod of parsedMods) {
+                  if (mod.ingredientId && mod.ingredientQuantity && mod.ingredientQuantity > 0) {
+                    await tx.ingredient.update({
+                      where: { id: mod.ingredientId },
+                      data: {
+                        stock: {
+                          decrement: mod.ingredientQuantity * orderItem.quantity,
+                        },
+                      },
+                    });
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('Error parsing orderItem modifiers for stock deduction:', err);
+            }
+          }
         }
       }
 

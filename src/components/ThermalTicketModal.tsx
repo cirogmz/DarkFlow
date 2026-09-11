@@ -47,6 +47,7 @@ export interface ThermalOrderData {
     quantity: number;
     price?: number;
     notes?: string | null;
+    modifiers?: string | null;
     product: {
       name: string;
     };
@@ -253,11 +254,18 @@ export default function ThermalTicketModal({
                       {order.items.map((item, idx) => {
                         const itemPrice = item.price ?? 0;
                         const rowTotal = itemPrice * item.quantity;
+                        let parsedMods: Array<{ optionName: string; price: number }> = [];
+                        try { if (item.modifiers) parsedMods = JSON.parse(item.modifiers); } catch {}
                         return (
                           <tr key={idx} className="align-top">
                             <td className="py-1 font-bold">{item.quantity}</td>
                             <td className="py-1 pr-1">
                               <div className="font-semibold uppercase">{item.product.name}</div>
+                              {parsedMods.map((mod, mi) => (
+                                <div key={mi} className="text-[9px] text-slate-600 pl-1">
+                                  + {mod.optionName}{mod.price > 0 ? ` (+$${mod.price.toFixed(2)})` : ''}
+                                </div>
+                              ))}
                               {item.notes && (
                                 <div className="text-[9px] italic text-slate-600 pl-1">
                                   * {item.notes}
@@ -393,25 +401,34 @@ export default function ThermalTicketModal({
 
                 {/* Items List (Large & Clear for Chefs) */}
                 <div className="py-1 border-b-2 border-black space-y-2">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="border-b border-dashed border-slate-200 pb-2">
-                      <div className="flex items-start gap-2">
-                        <span className="text-base font-black font-mono bg-black text-white px-1.5 py-0.5 rounded shrink-0">
-                          {item.quantity}X
-                        </span>
-                        <div className="flex-1">
-                          <span className="text-sm font-black uppercase leading-tight block">
-                            {item.product.name}
+                  {order.items.map((item, idx) => {
+                    let parsedMods: Array<{ optionName: string; price: number }> = [];
+                    try { if (item.modifiers) parsedMods = JSON.parse(item.modifiers); } catch {}
+                    return (
+                      <div key={idx} className="border-b border-dashed border-slate-200 pb-2">
+                        <div className="flex items-start gap-2">
+                          <span className="text-base font-black font-mono bg-black text-white px-1.5 py-0.5 rounded shrink-0">
+                            {item.quantity}X
                           </span>
-                          {item.notes && (
-                            <span className="text-xs font-bold bg-amber-100 text-amber-950 px-1.5 py-0.5 rounded mt-1 block border border-amber-300">
-                              ⚠️ NOTA: {item.notes}
+                          <div className="flex-1">
+                            <span className="text-sm font-black uppercase leading-tight block">
+                              {item.product.name}
                             </span>
-                          )}
+                            {parsedMods.map((mod, mi) => (
+                              <span key={mi} className="text-xs font-bold bg-violet-100 text-violet-900 px-1.5 py-0.5 rounded mt-0.5 inline-block border border-violet-300 mr-1">
+                                ▸ {mod.optionName}{mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ''}
+                              </span>
+                            ))}
+                            {item.notes && (
+                              <span className="text-xs font-bold bg-amber-100 text-amber-950 px-1.5 py-0.5 rounded mt-1 block border border-amber-300">
+                                ⚠️ NOTA: {item.notes}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* General Order Notes */}

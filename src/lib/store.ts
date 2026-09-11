@@ -1,12 +1,22 @@
 import { create } from 'zustand';
 
+export interface CartModifier {
+  groupName: string;
+  optionName: string;
+  price: number;
+  ingredientId?: string | null;
+  ingredientQuantity?: number | null;
+}
+
 export interface CartItem {
+  id?: string; // Unique key in cart (product + modifiers)
   productId: string;
   name: string;
   price: number;
   imageUrl?: string;
   quantity: number;
   notes?: string;
+  modifiers?: CartModifier[];
 }
 
 interface BrandTheme {
@@ -24,10 +34,17 @@ interface AppState {
   
   // Cart state
   cart: CartItem[];
-  addToCart: (product: { id: string; name: string; price: number; imageUrl?: string }) => void;
-  removeFromCart: (productId: string) => void;
-  updateCartQty: (productId: string, qty: number) => void;
-  updateCartNotes: (productId: string, notes: string) => void;
+  addToCart: (product: {
+    id: string;
+    name: string;
+    price: number;
+    imageUrl?: string;
+    notes?: string;
+    modifiers?: CartModifier[];
+  }) => void;
+  removeFromCart: (itemKey: string) => void;
+  updateCartQty: (itemKey: string, qty: number) => void;
+  updateCartNotes: (itemKey: string, notes: string) => void;
   clearCart: () => void;
   
   // Notification system
@@ -42,29 +59,45 @@ export const useAppStore = create<AppState>((set) => ({
   
   cart: [],
   addToCart: (product) => set((state) => {
-    const existing = state.cart.find((item) => item.productId === product.id);
+    const itemKey = product.modifiers && product.modifiers.length > 0
+      ? `${product.id}-${JSON.stringify(product.modifiers)}`
+      : product.id;
+
+    const existing = state.cart.find((item) => (item.id || item.productId) === itemKey);
     if (existing) {
       return {
         cart: state.cart.map((item) =>
-          item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          (item.id || item.productId) === itemKey ? { ...item, quantity: item.quantity + 1 } : item
         ),
       };
     }
     return {
-      cart: [...state.cart, { productId: product.id, name: product.name, price: product.price, imageUrl: product.imageUrl, quantity: 1 }],
+      cart: [
+        ...state.cart,
+        {
+          id: itemKey,
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          imageUrl: product.imageUrl,
+          quantity: 1,
+          notes: product.notes,
+          modifiers: product.modifiers,
+        },
+      ],
     };
   }),
-  removeFromCart: (productId) => set((state) => ({
-    cart: state.cart.filter((item) => item.productId !== productId),
+  removeFromCart: (itemKey) => set((state) => ({
+    cart: state.cart.filter((item) => (item.id || item.productId) !== itemKey),
   })),
-  updateCartQty: (productId, qty) => set((state) => ({
+  updateCartQty: (itemKey, qty) => set((state) => ({
     cart: state.cart.map((item) =>
-      item.productId === productId ? { ...item, quantity: Math.max(1, qty) } : item
+      (item.id || item.productId) === itemKey ? { ...item, quantity: Math.max(1, qty) } : item
     ),
   })),
-  updateCartNotes: (productId, notes) => set((state) => ({
+  updateCartNotes: (itemKey, notes) => set((state) => ({
     cart: state.cart.map((item) =>
-      item.productId === productId ? { ...item, notes } : item
+      (item.id || item.productId) === itemKey ? { ...item, notes } : item
     ),
   })),
   clearCart: () => set({ cart: [] }),

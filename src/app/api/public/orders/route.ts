@@ -10,6 +10,7 @@ interface PublicOrderItemInput {
   quantity: number;
   price?: number;
   notes?: string;
+  modifiers?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -83,17 +84,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate subtotal from authoritative product prices
+    // Calculate subtotal from authoritative product prices plus modifiers
     let subtotal = 0;
     const validatedItems = items.map((item: PublicOrderItemInput) => {
       const p = dbProducts.find((dbP) => dbP.id === item.productId)!;
-      const itemSubtotal = p.price * item.quantity;
+      let extraModifiersPrice = 0;
+      if (item.modifiers && Array.isArray(item.modifiers)) {
+        extraModifiersPrice = item.modifiers.reduce((sum: number, mod: { price?: number }) => sum + (parseFloat(String(mod.price || 0)) || 0), 0);
+      }
+      const unitPrice = p.price + extraModifiersPrice;
+      const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
       return {
         productId: p.id,
         quantity: item.quantity,
-        price: p.price,
+        price: unitPrice,
         notes: item.notes ? item.notes.trim() : null,
+        modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
       };
     });
 
@@ -237,6 +244,7 @@ export async function POST(request: NextRequest) {
               quantity: i.quantity,
               price: i.price,
               notes: i.notes,
+              modifiers: i.modifiers,
             })),
           },
         },

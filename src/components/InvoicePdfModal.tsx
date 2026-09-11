@@ -42,6 +42,7 @@ export interface InvoiceOrderData {
     quantity: number;
     price?: number;
     notes?: string | null;
+    modifiers?: string | null;
     product: {
       name: string;
     };
@@ -360,12 +361,19 @@ export default function InvoicePdfModal({
                   {order.items.map((item, idx) => {
                     const price = item.price || 0;
                     const rowTotal = price * item.quantity;
+                    let parsedMods: Array<{ optionName: string; price: number }> = [];
+                    try { if (item.modifiers) parsedMods = JSON.parse(item.modifiers); } catch {}
                     return (
                       <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3 px-2 font-bold font-mono">{item.quantity}</td>
                         <td className="py-3 px-2 text-slate-500 font-mono">90101501</td>
                         <td className="py-3 px-3">
                           <span className="font-bold text-slate-900 uppercase block">{item.product.name}</span>
+                          {parsedMods.map((mod, mi) => (
+                            <span key={mi} className="text-[10px] text-slate-500 block mt-0.5 pl-2">
+                              ▸ {mod.optionName}{mod.price > 0 ? ` (+$${mod.price.toFixed(2)})` : ''}
+                            </span>
+                          ))}
                           {item.notes && (
                             <span className="text-[10px] text-slate-500 italic block mt-0.5">
                               * {item.notes}

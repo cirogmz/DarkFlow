@@ -10,6 +10,7 @@ interface OrderItemInput {
   quantity: number;
   price: number;
   notes?: string | null;
+  modifiers?: unknown;
 }
 
 export async function GET(req: NextRequest) {
@@ -231,6 +232,7 @@ export async function POST(req: NextRequest) {
               quantity: item.quantity,
               price: item.price,
               notes: item.notes || null,
+              modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
             })),
           },
         },

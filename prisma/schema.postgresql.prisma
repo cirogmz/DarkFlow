@@ -51,6 +51,7 @@ model Brand {
   mpPublicKey        String?
   mpWebhookSecret    String?
   paymentTransactions PaymentTransaction[]
+  modifierGroups ModifierGroup[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -106,6 +107,7 @@ model Product {
   recipeItems RecipeItem[]
   orderItems  OrderItem[]
   comboItems  ComboItem[]
+  modifierGroups ProductModifierGroup[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -121,6 +123,7 @@ model Ingredient {
   brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   recipeItems RecipeItem[]
   purchases   Purchase[]
+  modifierOptions ModifierOption[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -192,6 +195,7 @@ model OrderItem {
   quantity  Int
   price     Float
   notes     String?
+  modifiers String?
 }
 
 model Purchase {
@@ -341,4 +345,46 @@ model PaymentTransaction {
   @@index([brandId])
   @@index([gatewayPaymentId])
   @@index([status])
+}
+
+model ModifierGroup {
+  id          String                 @id @default(uuid())
+  name        String
+  minSelect   Int                    @default(0)
+  maxSelect   Int                    @default(1)
+  isRequired  Boolean                @default(false)
+  brandId     String
+  brand       Brand                  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  options     ModifierOption[]
+  products    ProductModifierGroup[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([name, brandId])
+}
+
+model ModifierOption {
+  id                 String         @id @default(uuid())
+  modifierGroupId    String
+  modifierGroup      ModifierGroup  @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  name               String
+  price              Float          @default(0)
+  ingredientId       String?
+  ingredient         Ingredient?    @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+  ingredientQuantity Float?         @default(0)
+  isDefault          Boolean        @default(false)
+  order              Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}
+
+model ProductModifierGroup {
+  id              String        @id @default(uuid())
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  modifierGroupId String
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  order           Int           @default(0)
+
+  @@unique([productId, modifierGroupId])
 }

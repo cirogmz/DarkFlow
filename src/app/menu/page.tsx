@@ -15,12 +15,43 @@ import {
   CheckCircle2, 
   XCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  SlidersHorizontal,
+  Settings2,
+  Package
 } from 'lucide-react';
 
 interface Category {
   id: string;
   name: string;
+  _count?: {
+    products: number;
+  };
+}
+
+interface ModifierOptionItem {
+  id?: string;
+  name: string;
+  price: number;
+  ingredientId?: string | null;
+  ingredientQuantity?: number | null;
+  isDefault?: boolean;
+  order?: number;
+  ingredient?: {
+    id: string;
+    name: string;
+    unit: string;
+    stock: number;
+  } | null;
+}
+
+interface ModifierGroupItem {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  isRequired: boolean;
+  options: ModifierOptionItem[];
   _count?: {
     products: number;
   };
@@ -40,6 +71,9 @@ interface Product {
     ingredientId: string;
     quantity: number;
   }>;
+  modifierGroups?: Array<{
+    modifierGroup: ModifierGroupItem;
+  }>;
 }
 
 interface BrandItem {
@@ -53,13 +87,15 @@ interface BrandItem {
 }
 
 export default function MenuManagementPage() {
-  const [activeTab, setActiveTab] = useState<'dishes' | 'categories' | 'brands'>('dishes');
+  const [activeTab, setActiveTab] = useState<'dishes' | 'categories' | 'brands' | 'modifiers'>('dishes');
   const [loading, setLoading] = useState(true);
 
   // Data states
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<BrandItem[]>([]);
+  const [modifierGroups, setModifierGroups] = useState<ModifierGroupItem[]>([]);
+  const [ingredients, setIngredients] = useState<Array<{ id: string; name: string; unit: string; stock: number }>>([]);
 
   // Search and filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +110,16 @@ export default function MenuManagementPage() {
   const [prodCatId, setProdCatId] = useState('');
   const [prodImgUrl, setProdImgUrl] = useState('');
   const [prodIsActive, setProdIsActive] = useState(true);
+  const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>([]);
+
+  // Modifier Group Modal State
+  const [isModifierModalOpen, setIsModifierModalOpen] = useState(false);
+  const [editingModifierGroup, setEditingModifierGroup] = useState<ModifierGroupItem | null>(null);
+  const [modName, setModName] = useState('');
+  const [modMinSelect, setModMinSelect] = useState(0);
+  const [modMaxSelect, setModMaxSelect] = useState(1);
+  const [modIsRequired, setModIsRequired] = useState(false);
+  const [modOptions, setModOptions] = useState<ModifierOptionItem[]>([]);
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -124,6 +170,20 @@ export default function MenuManagementPage() {
         const brandsData = await brandsRes.json();
         setBrands(brandsData.brands || []);
       }
+
+      // 4. Fetch modifier groups
+      const modRes = await fetch('/api/modifiers');
+      if (modRes.ok) {
+        const modData = await modRes.json();
+        setModifierGroups(modData.modifierGroups || []);
+      }
+
+      // 5. Fetch inventory ingredients (for linking modifier options to recipes)
+      const invRes = await fetch('/api/inventory');
+      if (invRes.ok) {
+        const invData = await invRes.json();
+        setIngredients(invData.inventory || []);
+      }
     } catch (err) {
       console.error('Failed to load menu management data', err);
     } finally {
@@ -144,6 +204,7 @@ export default function MenuManagementPage() {
     setProdCatId(categories[0]?.id || '');
     setProdImgUrl('');
     setProdIsActive(true);
+    setSelectedModifierGroupIds([]);
     setIsProductModalOpen(true);
   };
 
@@ -155,6 +216,8 @@ export default function MenuManagementPage() {
     setProdCatId(prod.categoryId);
     setProdImgUrl(prod.imageUrl || '');
     setProdIsActive(prod.isActive);
+    const groupIds = (prod.modifierGroups || []).map((pmg: any) => pmg.modifierGroup?.id || pmg.modifierGroupId).filter(Boolean);
+    setSelectedModifierGroupIds(groupIds);
     setIsProductModalOpen(true);
   };
 
@@ -177,6 +240,7 @@ export default function MenuManagementPage() {
             categoryId: prodCatId,
             imageUrl: prodImgUrl,
             isActive: prodIsActive,
+            modifierGroupIds: selectedModifierGroupIds,
           }),
         });
 
@@ -200,6 +264,7 @@ export default function MenuManagementPage() {
             categoryId: prodCatId,
             imageUrl: prodImgUrl,
             isActive: prodIsActive,
+            modifierGroupIds: selectedModifierGroupIds,
           }),
         });
 
@@ -259,6 +324,127 @@ export default function MenuManagementPage() {
       }
     } catch {
       alert('Error de red al eliminar platillo');
+    }
+  };
+
+  // Modifier Group Actions
+  const handleOpenNewModifierGroup = () => {
+    setEditingModifierGroup(null);
+    setModName('');
+    setModMinSelect(0);
+    setModMaxSelect(1);
+    setModIsRequired(false);
+    setModOptions([
+      { name: '', price: 0, ingredientId: null, ingredientQuantity: null, isDefault: false }
+    ]);
+    setIsModifierModalOpen(true);
+  };
+
+  const handleOpenEditModifierGroup = (group: ModifierGroupItem) => {
+    setEditingModifierGroup(group);
+    setModName(group.name);
+    setModMinSelect(group.minSelect);
+    setModMaxSelect(group.maxSelect);
+    setModIsRequired(group.isRequired);
+    setModOptions(
+      group.options && group.options.length > 0
+        ? group.options.map(opt => ({
+            id: opt.id,
+            name: opt.name,
+            price: opt.price,
+            ingredientId: opt.ingredientId || null,
+            ingredientQuantity: opt.ingredientQuantity || null,
+            isDefault: !!opt.isDefault,
+            order: opt.order || 0
+          }))
+        : [{ name: '', price: 0, ingredientId: null, ingredientQuantity: null, isDefault: false }]
+    );
+    setIsModifierModalOpen(true);
+  };
+
+  const handleSaveModifierGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modName.trim()) return;
+
+    const validOptions = modOptions.filter(opt => opt.name.trim().length > 0);
+    if (validOptions.length === 0) {
+      alert('Debes agregar al menos una opción válida para este grupo');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        name: modName.trim(),
+        minSelect: modIsRequired ? Math.max(1, modMinSelect) : modMinSelect,
+        maxSelect: Math.max(1, modMaxSelect),
+        isRequired: modIsRequired,
+        options: validOptions.map((opt, idx) => ({
+          id: opt.id,
+          name: opt.name.trim(),
+          price: Number(opt.price) || 0,
+          ingredientId: opt.ingredientId || null,
+          ingredientQuantity: opt.ingredientQuantity ? Number(opt.ingredientQuantity) : null,
+          isDefault: !!opt.isDefault,
+          order: idx
+        }))
+      };
+
+      if (editingModifierGroup) {
+        const res = await fetch(`/api/modifiers/${editingModifierGroup.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          addNotification(`Grupo "${modName}" actualizado exitosamente`, 'success');
+          setIsModifierModalOpen(false);
+          fetchAllData();
+        } else {
+          const err = await res.json();
+          alert(`Error: ${err.error}`);
+        }
+      } else {
+        const res = await fetch('/api/modifiers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          addNotification(`Grupo "${modName}" creado exitosamente`, 'success');
+          setIsModifierModalOpen(false);
+          fetchAllData();
+        } else {
+          const err = await res.json();
+          alert(`Error: ${err.error}`);
+        }
+      }
+    } catch {
+      alert('Error de red al guardar grupo de modificadores');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteModifierGroup = async (group: ModifierGroupItem) => {
+    if (!confirm(`¿Eliminar el grupo "${group.name}" y todas sus opciones?`)) return;
+
+    try {
+      const res = await fetch(`/api/modifiers/${group.id}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        addNotification(`Grupo "${group.name}" eliminado`, 'info');
+        fetchAllData();
+      } else {
+        const err = await res.json();
+        alert(`Error: ${err.error}`);
+      }
+    } catch {
+      alert('Error al eliminar grupo de modificadores');
     }
   };
 
@@ -445,13 +631,21 @@ export default function MenuManagementPage() {
               <Sparkles className="h-4 w-4" /> Crear Nueva Marca
             </button>
           )}
+          {activeTab === 'modifiers' && (
+            <button
+              onClick={handleOpenNewModifierGroup}
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-xs rounded-lg shadow-lg cursor-pointer transition-all duration-200"
+            >
+              <Plus className="h-4 w-4 stroke-[3px]" /> Nuevo Grupo de Modificadores
+            </button>
+          )}
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-slate-800 gap-6 text-sm shrink-0">
+        <div className="flex border-b border-slate-800 gap-6 text-sm shrink-0 overflow-x-auto">
           <button
             onClick={() => setActiveTab('dishes')}
-            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
+            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'dishes' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
@@ -459,7 +653,7 @@ export default function MenuManagementPage() {
           </button>
           <button
             onClick={() => setActiveTab('categories')}
-            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
+            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'categories' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
@@ -467,11 +661,19 @@ export default function MenuManagementPage() {
           </button>
           <button
             onClick={() => setActiveTab('brands')}
-            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
+            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'brands' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
             <Store className="h-4 w-4" /> Marcas de Cocina ({brands.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('modifiers')}
+            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'modifiers' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <SlidersHorizontal className="h-4 w-4" /> Modificadores & Extras ({modifierGroups.length})
           </button>
         </div>
 
@@ -757,6 +959,95 @@ export default function MenuManagementPage() {
             </div>
           </div>
         )}
+        {/* TAB 4: MODIFIERS & EXTRAS */}
+        {activeTab === 'modifiers' && (
+          <div className="space-y-4">
+            {modifierGroups.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+                <div className="p-4 rounded-full bg-slate-900 border border-slate-800">
+                  <SlidersHorizontal className="h-10 w-10 text-slate-600" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg">Sin grupos de modificadores</p>
+                  <p className="text-slate-400 text-sm mt-1">Crea grupos como "Término de Cocción", "Extras" o "Salsas" y asígnalos a tus platillos.</p>
+                </div>
+                <button
+                  onClick={handleOpenNewModifierGroup}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-brand-primary text-slate-950 font-bold text-sm rounded-lg shadow-lg cursor-pointer"
+                >
+                  <Plus className="h-4 w-4 stroke-[3px]" /> Crear Primer Grupo
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {modifierGroups.map((group) => (
+                  <div key={group.id} className="glass-panel border border-slate-800 rounded-xl p-5 shadow-lg space-y-3 flex flex-col">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-violet-950/60 border border-violet-900/50 rounded-lg">
+                          <SlidersHorizontal className="h-4 w-4 text-violet-400" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-white text-sm leading-tight">{group.name}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {group.isRequired ? (
+                              <span className="text-amber-400 font-semibold">Obligatorio</span>
+                            ) : (
+                              <span>Opcional</span>
+                            )}
+                            {' · '}Mín: {group.minSelect} / Máx: {group.maxSelect}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleOpenEditModifierGroup(group)}
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          title="Editar grupo"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteModifierGroup(group)}
+                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
+                          title="Eliminar grupo"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 flex-1">
+                      {(group.options || []).map((opt, idx) => (
+                        <div key={opt.id || idx} className="flex items-center justify-between text-xs px-2.5 py-1.5 bg-slate-900/60 rounded-lg border border-slate-800/50">
+                          <div className="flex items-center gap-2">
+                            {opt.isDefault && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-brand-primary shrink-0" title="Opción por defecto" />
+                            )}
+                            <span className="text-slate-200">{opt.name}</span>
+                            {opt.ingredient && (
+                              <span className="text-[10px] text-slate-500 italic">({opt.ingredient.name})</span>
+                            )}
+                          </div>
+                          <span className={`font-bold font-mono ${opt.price > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            {opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incl.'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/50">
+                      <p className="text-[10px] text-slate-500">
+                        <Package className="h-3 w-3 inline mr-1" />
+                        Asignado a {group._count?.products ?? 0} platillo(s)
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* MODAL: PRODUCT CREATE / EDIT */}
         {isProductModalOpen && (
@@ -853,6 +1144,39 @@ export default function MenuManagementPage() {
                     Habilitar para venta inmediata en POS y Apps
                   </label>
                 </div>
+
+                {modifierGroups.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <label className="font-semibold text-slate-400 flex items-center gap-1.5">
+                      <SlidersHorizontal className="h-3.5 w-3.5" /> Grupos de Modificadores / Extras
+                    </label>
+                    <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                      {modifierGroups.map((g) => {
+                        const checked = selectedModifierGroupIds.includes(g.id);
+                        return (
+                          <label key={g.id} className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition-all ${
+                            checked ? 'border-violet-700 bg-violet-950/30' : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setSelectedModifierGroupIds(prev =>
+                                  checked ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                                );
+                              }}
+                              className="h-3.5 w-3.5 rounded"
+                            />
+                            <span className="text-xs text-slate-200 font-semibold">{g.name}</span>
+                            {g.isRequired && (
+                              <span className="text-[10px] text-amber-400 ml-auto">Obligatorio</span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-3 border-t border-slate-800">
                   <button
@@ -1017,6 +1341,174 @@ export default function MenuManagementPage() {
                     className="flex-1 py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold rounded-lg shadow-lg cursor-pointer disabled:opacity-50"
                   >
                     {saving ? 'Guardando...' : editingBrand ? 'Guardar Cambios' : 'Crear Marca'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: MODIFIER GROUP CREATE / EDIT */}
+        {isModifierModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full p-6 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              <button
+                onClick={() => setIsModifierModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="border-b border-slate-800 pb-3 flex items-center gap-2">
+                <SlidersHorizontal className="h-5 w-5 text-violet-400" />
+                <h3 className="text-lg font-bold text-white">
+                  {editingModifierGroup ? `Editar: ${editingModifierGroup.name}` : 'Nuevo Grupo de Modificadores'}
+                </h3>
+              </div>
+
+              <form onSubmit={handleSaveModifierGroup} className="space-y-5 text-xs">
+                {/* Group Name */}
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-400">Nombre del Grupo *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. Término de Cocción, Extras, Salsas, Tamaño"
+                    value={modName}
+                    onChange={(e) => setModName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-violet-500 outline-none"
+                  />
+                </div>
+
+                {/* Rules */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400">Mín. Selección</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={modMinSelect}
+                      onChange={(e) => setModMinSelect(parseInt(e.target.value) || 0)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-violet-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400">Máx. Selección</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={modMaxSelect}
+                      onChange={(e) => setModMaxSelect(parseInt(e.target.value) || 1)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-violet-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1 flex flex-col justify-end">
+                    <label className="flex items-center gap-2 cursor-pointer pb-2">
+                      <input
+                        type="checkbox"
+                        checked={modIsRequired}
+                        onChange={(e) => setModIsRequired(e.target.checked)}
+                        className="h-4 w-4 rounded"
+                      />
+                      <span className="font-semibold text-slate-300">Obligatorio</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Options List */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-slate-400">Opciones</label>
+                    <button
+                      type="button"
+                      onClick={() => setModOptions(prev => [
+                        ...prev,
+                        { name: '', price: 0, ingredientId: null, ingredientQuantity: null, isDefault: false }
+                      ])}
+                      className="flex items-center gap-1 text-violet-400 hover:text-violet-300 cursor-pointer font-bold"
+                    >
+                      <Plus className="h-3 w-3 stroke-[3px]" /> Agregar Opción
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {modOptions.map((opt, idx) => (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-950/50 rounded-lg p-2 border border-slate-800/60">
+                        {/* Name */}
+                        <div className="col-span-4">
+                          <input
+                            type="text"
+                            placeholder="Nombre de opción"
+                            value={opt.name}
+                            onChange={(e) => setModOptions(prev => prev.map((o, i) => i === idx ? { ...o, name: e.target.value } : o))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-slate-200 focus:border-violet-500 outline-none"
+                          />
+                        </div>
+                        {/* Price */}
+                        <div className="col-span-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            placeholder="$0.00"
+                            value={opt.price || ''}
+                            onChange={(e) => setModOptions(prev => prev.map((o, i) => i === idx ? { ...o, price: parseFloat(e.target.value) || 0 } : o))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-slate-200 focus:border-violet-500 outline-none"
+                          />
+                        </div>
+                        {/* Ingredient link */}
+                        <div className="col-span-4">
+                          <select
+                            value={opt.ingredientId || ''}
+                            onChange={(e) => setModOptions(prev => prev.map((o, i) => i === idx ? { ...o, ingredientId: e.target.value || null } : o))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-slate-200 focus:border-violet-500 outline-none"
+                          >
+                            <option value="">Sin insumo</option>
+                            {ingredients.map(ing => (
+                              <option key={ing.id} value={ing.id}>{ing.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {/* Default & Remove */}
+                        <div className="col-span-2 flex items-center gap-1.5 justify-end">
+                          <label title="Marcar como default" className="cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!opt.isDefault}
+                              onChange={(e) => setModOptions(prev => prev.map((o, i) => i === idx ? { ...o, isDefault: e.target.checked } : o))}
+                              className="h-3.5 w-3.5 rounded"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setModOptions(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-300 cursor-pointer p-0.5"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-500">Columnas: Nombre · Precio extra · Insumo vinculado · ✓ Default</p>
+                </div>
+
+                <div className="flex gap-3 pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsModifierModalOpen(false)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg border border-slate-700 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-lg shadow-lg cursor-pointer disabled:opacity-50"
+                  >
+                    {saving ? 'Guardando...' : editingModifierGroup ? 'Actualizar Grupo' : 'Crear Grupo'}
                   </button>
                 </div>
               </form>

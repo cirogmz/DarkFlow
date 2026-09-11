@@ -50,6 +50,18 @@ export async function GET(
                 },
               },
             },
+            modifierGroups: {
+              include: {
+                modifierGroup: {
+                  include: {
+                    options: {
+                      orderBy: { order: 'asc' },
+                    },
+                  },
+                },
+              },
+              orderBy: { order: 'asc' },
+            },
           },
           orderBy: { name: 'asc' },
         },

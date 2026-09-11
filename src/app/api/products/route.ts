@@ -30,6 +30,19 @@ export async function GET(req: NextRequest) {
                 ingredient: true,
               },
             },
+            modifierGroups: {
+              include: {
+                modifierGroup: {
+                  include: {
+                    options: {
+                      include: { ingredient: true },
+                      orderBy: { order: 'asc' },
+                    },
+                  },
+                },
+              },
+              orderBy: { order: 'asc' },
+            },
           },
         },
       },
@@ -45,6 +58,19 @@ export async function GET(req: NextRequest) {
           include: {
             ingredient: true,
           },
+        },
+        modifierGroups: {
+          include: {
+            modifierGroup: {
+              include: {
+                options: {
+                  include: { ingredient: true },
+                  orderBy: { order: 'asc' },
+                },
+              },
+            },
+          },
+          orderBy: { order: 'asc' },
         },
       },
       orderBy: { name: 'asc' },
@@ -70,7 +96,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
-    const { name, description, price, categoryId, imageUrl, isActive = true } = await req.json();
+    const { name, description, price, categoryId, imageUrl, isActive = true, modifierGroupIds } = await req.json();
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json({ error: 'El nombre del platillo es requerido' }, { status: 400 });
@@ -102,6 +128,14 @@ export async function POST(req: NextRequest) {
         brandId: session.activeBrandId,
         imageUrl: imageUrl ? imageUrl.trim() : null,
         isActive: Boolean(isActive),
+        modifierGroups: Array.isArray(modifierGroupIds) && modifierGroupIds.length > 0
+          ? {
+              create: modifierGroupIds.map((groupId: string, idx: number) => ({
+                modifierGroupId: groupId,
+                order: idx,
+              })),
+            }
+          : undefined,
       },
       include: {
         category: true,
@@ -109,6 +143,19 @@ export async function POST(req: NextRequest) {
           include: {
             ingredient: true,
           },
+        },
+        modifierGroups: {
+          include: {
+            modifierGroup: {
+              include: {
+                options: {
+                  include: { ingredient: true },
+                  orderBy: { order: 'asc' },
+                },
+              },
+            },
+          },
+          orderBy: { order: 'asc' },
         },
       },
     });
@@ -133,7 +180,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
-    const { id, name, description, price, categoryId, imageUrl, isActive } = await req.json();
+    const { id, name, description, price, categoryId, imageUrl, isActive, modifierGroupIds } = await req.json();
 
     if (!id) {
       return NextResponse.json({ error: 'ID de platillo requerido' }, { status: 400 });
@@ -154,24 +201,56 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    const updated = await prisma.product.update({
-      where: { id },
-      data: {
-        name: name !== undefined ? name.trim() : undefined,
-        description: description !== undefined ? (description ? description.trim() : null) : undefined,
-        price: price !== undefined ? parseFloat(price) : undefined,
-        categoryId: categoryId !== undefined ? categoryId : undefined,
-        imageUrl: imageUrl !== undefined ? (imageUrl ? imageUrl.trim() : null) : undefined,
-        isActive: isActive !== undefined ? Boolean(isActive) : undefined,
-      },
-      include: {
-        category: true,
-        recipeItems: {
-          include: {
-            ingredient: true,
+    const updated = await prisma.$transaction(async (tx) => {
+      // If modifierGroupIds is explicitly passed, sync relations
+      if (Array.isArray(modifierGroupIds)) {
+        await tx.productModifierGroup.deleteMany({
+          where: { productId: id },
+        });
+
+        if (modifierGroupIds.length > 0) {
+          await tx.productModifierGroup.createMany({
+            data: modifierGroupIds.map((groupId: string, idx: number) => ({
+              productId: id,
+              modifierGroupId: groupId,
+              order: idx,
+            })),
+          });
+        }
+      }
+
+      return await tx.product.update({
+        where: { id },
+        data: {
+          name: name !== undefined ? name.trim() : undefined,
+          description: description !== undefined ? (description ? description.trim() : null) : undefined,
+          price: price !== undefined ? parseFloat(price) : undefined,
+          categoryId: categoryId !== undefined ? categoryId : undefined,
+          imageUrl: imageUrl !== undefined ? (imageUrl ? imageUrl.trim() : null) : undefined,
+          isActive: isActive !== undefined ? Boolean(isActive) : undefined,
+        },
+        include: {
+          category: true,
+          recipeItems: {
+            include: {
+              ingredient: true,
+            },
+          },
+          modifierGroups: {
+            include: {
+              modifierGroup: {
+                include: {
+                  options: {
+                    include: { ingredient: true },
+                    orderBy: { order: 'asc' },
+                  },
+                },
+              },
+            },
+            orderBy: { order: 'asc' },
           },
         },
-      },
+      });
     });
 
     return NextResponse.json({ success: true, product: updated });

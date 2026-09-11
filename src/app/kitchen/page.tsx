@@ -22,6 +22,7 @@ interface OrderItem {
   quantity: number;
   price: number;
   notes?: string | null;
+  modifiers?: string | null;
   product: {
     name: string;
   };
@@ -345,18 +346,31 @@ export default function KitchenPage() {
 
                       {/* Items */}
                       <div className="space-y-1.5 py-2 border-t border-b border-slate-800/60">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="text-xs flex flex-col">
-                            <div className="flex justify-between items-start text-white">
-                              <span className="font-bold">{item.quantity}x {item.product.name}</span>
+                        {order.items.map((item) => {
+                          let parsedMods: Array<{ optionName: string; price: number }> = [];
+                          try { if (item.modifiers) parsedMods = JSON.parse(item.modifiers); } catch {}
+                          return (
+                            <div key={item.id} className="text-xs flex flex-col gap-0.5">
+                              <div className="flex justify-between items-start text-white">
+                                <span className="font-bold">{item.quantity}x {item.product.name}</span>
+                              </div>
+                              {parsedMods.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {parsedMods.map((mod, mi) => (
+                                    <span key={mi} className="text-[10px] font-bold bg-violet-900/60 border border-violet-700/50 text-violet-200 px-1.5 py-0.5 rounded">
+                                      [{mod.optionName}{mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ''}]
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {item.notes && (
+                                <span className="text-[10px] text-amber-500 font-medium italic mt-0.5 bg-amber-950/20 px-1.5 py-0.5 rounded">
+                                  Nota: {item.notes}
+                                </span>
+                              )}
                             </div>
-                            {item.notes && (
-                              <span className="text-[10px] text-amber-500 font-medium italic mt-0.5 bg-amber-950/20 px-1.5 py-0.5 rounded">
-                                Nota: {item.notes}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Footer controls */}
@@ -440,18 +454,31 @@ export default function KitchenPage() {
 
                       {/* Items */}
                       <div className="space-y-1.5 py-2 border-t border-b border-slate-800/60">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="text-xs flex flex-col">
-                            <div className="flex justify-between items-start text-white">
-                              <span className="font-bold">{item.quantity}x {item.product.name}</span>
+                        {order.items.map((item) => {
+                          let parsedMods: Array<{ optionName: string; price: number }> = [];
+                          try { if (item.modifiers) parsedMods = JSON.parse(item.modifiers); } catch {}
+                          return (
+                            <div key={item.id} className="text-xs flex flex-col gap-0.5">
+                              <div className="flex justify-between items-start text-white">
+                                <span className="font-bold">{item.quantity}x {item.product.name}</span>
+                              </div>
+                              {parsedMods.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {parsedMods.map((mod, mi) => (
+                                    <span key={mi} className="text-[10px] font-bold bg-violet-900/60 border border-violet-700/50 text-violet-200 px-1.5 py-0.5 rounded">
+                                      [{mod.optionName}{mod.price > 0 ? ` +$${mod.price.toFixed(2)}` : ''}]
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {item.notes && (
+                                <span className="text-[10px] text-amber-500 font-medium italic mt-0.5 bg-amber-950/20 px-1.5 py-0.5 rounded">
+                                  Nota: {item.notes}
+                                </span>
+                              )}
                             </div>
-                            {item.notes && (
-                              <span className="text-[10px] text-amber-500 font-medium italic mt-0.5 bg-amber-950/20 px-1.5 py-0.5 rounded">
-                                Nota: {item.notes}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Footer controls */}
