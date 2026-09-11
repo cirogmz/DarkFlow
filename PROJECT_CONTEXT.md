@@ -240,6 +240,20 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
   - Endpoint receptor unificado de Webhooks (`/api/webhooks/payments`) con soporte para firmas y eventos de Stripe y Mercado Pago.
   - Confirmación atómica de orden (`confirmOrderPayment`), actualización a `paymentStatus: 'PAID'`, emisión de evento reactivo Server-Sent Events (SSE) `orderEvents.emit('order_event', { action: 'PAID' })`, actualización instantánea en KDS/POS y registro de auditoría forense inmutable (`ORDER_PAID`, `INFO`).
 
+### 6.15. Operativa de Salón Avanzada (Cuentas Divididas, Fusión/Cambio de Mesas y Control de Propinas)
+* **Cuentas Divididas y Pagos Parciales (Split Bills)**:
+  - Soporte de pagos divididos en dos modalidades: **Partes Iguales ($N$ comensales)** y **Por Platillos Consumidos** con asignación interactiva.
+  - Endpoint transaccional `POST /api/orders/split-payment` que acumula abonos en `PaymentTransaction` con `splitIndex`, actualiza `paidAmount` en `Order` y, al liquidar el saldo total, marca la comanda como `PAID`, libera automáticamente la mesa en el salón y emite el evento SSE `action: 'PAID'`.
+  - Componente modal `SplitBillModal` en `/pos` con barra de progreso en vivo del cobro, desglose por comensal, selector de método de pago por abono (Efectivo, Terminal, Stripe, Mercado Pago) y registro de propinas individuales.
+  - Soporte en tickets térmicos (`ThermalTicketModal`) para imprimir el desglose de abonos registrados y propinas recibidas.
+* **Reubicación y Fusión Atómica de Mesas (Table Transfer & Merge)**:
+  - **Mover Comanda (`POST /api/tables/transfer`)**: Reubica comensales y comanda activa desde una mesa ocupada a cualquier mesa disponible del salón, actualizando sus estados (`AVAILABLE` / `OCCUPIED`), emitiendo evento SSE y registrando auditoría forense (`TABLE_TRANSFERRED`).
+  - **Unir Cuentas (`POST /api/tables/merge`)**: Fusiona atómicamente los platillos de dos mesas ocupadas en una sola comanda destino, recalcula subtotal, IVA y total, cancela la orden origen, libera la mesa secundaria y registra auditoría (`TABLE_MERGED`).
+* **Control y Reparto de Propinas (Tip Pool)**:
+  - Botones de propina rápida configurable (`0%`, `10%`, `15%`, `20%` y monto libre `$`) integrados tanto en el pie del carrito como en el modal de checkout de `/pos`.
+  - Agregación automática de propinas discriminadas por método (`tipsCash`, `tipsCard`, `tipsTotal`) en el arqueo y cierre de caja (`CashSession`) en `/api/cash`.
+  - Algoritmo de reparto equitativo del pozo de propinas en `/cash`: 70% para meseros/piso, 20% para cocina y 10% para barra.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -361,3 +375,4 @@ darkflow/
 * ✅ **Fase 12 (Completada):** Menú Digital QR y Auto-Pedido Móvil para Comensales con Rastreo en Vivo.
 * ✅ **Fase 13 (Completada):** Auditoría Inmutable, Historial de Seguridad y Registro de Actividad (`/audit`, severidades `INFO`/`WARNING`/`CRITICAL`, exportación CSV e inspección forense).
 * ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).
+* ✅ **Fase 15 (Completada):** Operativa de Salón Avanzada (Cuentas Divididas por partes iguales o platillos, Reubicación y Fusión atómica de mesas en `/tables`, y Control/Reparto equitativo de propinas en `/pos` y `/cash`).

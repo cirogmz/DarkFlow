@@ -12,12 +12,16 @@ import {
   Receipt, 
   ShoppingBag, 
   Utensils,
-  CreditCard,
   Trash2,
   Printer,
   QrCode,
   ExternalLink,
-  Copy
+  Copy,
+  ArrowRightLeft,
+  GitMerge,
+  Divide,
+  AlertCircle,
+  Check
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import { useRouter } from 'next/navigation';
@@ -79,6 +83,16 @@ export default function TablesPage() {
   // Modal: Table QR Code for Diner Self-Ordering
   const [selectedTableForQr, setSelectedTableForQr] = useState<RestaurantTable | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Modal: Transfer Table Order
+  const [selectedTableForTransfer, setSelectedTableForTransfer] = useState<RestaurantTable | null>(null);
+  const [targetTransferTableId, setTargetTransferTableId] = useState('');
+  const [transferring, setTransferring] = useState(false);
+
+  // Modal: Merge Table Orders
+  const [selectedTableForMerge, setSelectedTableForMerge] = useState<RestaurantTable | null>(null);
+  const [targetMergeTableId, setTargetMergeTableId] = useState('');
+  const [merging, setMerging] = useState(false);
 
   const { activeBrand, addNotification } = useAppStore();
 
@@ -204,6 +218,64 @@ export default function TablesPage() {
 
   const handleOpenPOSForTable = (tableId: string) => {
     router.push(`/pos?tableId=${tableId}&source=DINE_IN`);
+  };
+
+  const handleTransferTable = async () => {
+    if (!selectedTableForTransfer || !targetTransferTableId) return;
+    setTransferring(true);
+    try {
+      const res = await fetch('/api/tables/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceTableId: selectedTableForTransfer.id,
+          targetTableId: targetTransferTableId,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addNotification(data.message || 'Comanda transferida', 'success');
+        setSelectedTableForTransfer(null);
+        setTargetTransferTableId('');
+        fetchTables();
+      } else {
+        addNotification(data.error || 'Error al transferir', 'error');
+      }
+    } catch {
+      addNotification('Error de red al transferir comanda', 'error');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleMergeTables = async () => {
+    if (!selectedTableForMerge || !targetMergeTableId) return;
+    setMerging(true);
+    try {
+      const res = await fetch('/api/tables/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceTableId: selectedTableForMerge.id,
+          targetTableId: targetMergeTableId,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addNotification(data.message || 'Mesas fusionadas con éxito', 'success');
+        setSelectedTableForMerge(null);
+        setTargetMergeTableId('');
+        fetchTables();
+      } else {
+        addNotification(data.error || 'Error al fusionar mesas', 'error');
+      }
+    } catch {
+      addNotification('Error de red al fusionar mesas', 'error');
+    } finally {
+      setMerging(false);
+    }
   };
 
   // Zones list
@@ -454,20 +526,53 @@ export default function TablesPage() {
                   {/* Actions Footer */}
                   <div className="pt-4 mt-3 border-t border-slate-850 flex items-center justify-between gap-2">
                     {isOccupied ? (
-                      <>
-                        <button
-                          onClick={() => setSelectedTableForBill(table)}
-                          className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Receipt className="h-3.5 w-3.5" /> Ver Cuenta
-                        </button>
-                        <button
-                          onClick={() => handleReleaseTable(table.id)}
-                          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs rounded-lg shadow flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <CreditCard className="h-3.5 w-3.5" /> Cobrar
-                        </button>
-                      </>
+                      <div className="w-full space-y-1.5">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            onClick={() => setSelectedTableForBill(table)}
+                            className="py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] rounded-lg border border-slate-700 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                            title="Ver desglose de cuenta"
+                          >
+                            <Receipt className="h-3 w-3 text-brand-primary" /> Cuenta
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedTableForTransfer(table);
+                              setTargetTransferTableId('');
+                            }}
+                            className="py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-[11px] rounded-lg border border-slate-700 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                            title="Transferir comanda a otra mesa disponible"
+                          >
+                            <ArrowRightLeft className="h-3 w-3 text-sky-400" /> Mover
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedTableForMerge(table);
+                              setTargetMergeTableId('');
+                            }}
+                            className="py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-[11px] rounded-lg border border-slate-700 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                            title="Unir comanda con otra mesa ocupada"
+                          >
+                            <GitMerge className="h-3 w-3 text-purple-400" /> Unir
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            onClick={() => router.push(`/pos?tableId=${table.id}&orderId=${activeOrder?.id || ''}&source=DINE_IN`)}
+                            className="py-2 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-black text-xs rounded-lg shadow flex items-center justify-center gap-1 cursor-pointer transition-all"
+                          >
+                            <Divide className="h-3.5 w-3.5 stroke-[2.5px]" /> Cobrar / Dividir
+                          </button>
+                          <button
+                            onClick={() => handleReleaseTable(table.id)}
+                            className="py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-bold text-xs rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                            title="Liberar mesa directamente"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Liberar
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <>
                         <button
@@ -785,6 +890,164 @@ export default function TablesPage() {
                   className="w-full py-2 bg-slate-950 hover:bg-slate-850 text-slate-400 hover:text-white font-bold text-xs rounded-xl border border-slate-800 cursor-pointer"
                 >
                   Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: TRANSFER TABLE */}
+        {selectedTableForTransfer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+              <button
+                onClick={() => setSelectedTableForTransfer(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white p-1"
+              >
+                ✕
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+                <div className="p-2 bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-xl">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base">Mover Comanda</h3>
+                  <p className="text-xs text-slate-400">Origen: Mesa #{selectedTableForTransfer.number} ({selectedTableForTransfer.name})</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Selecciona la mesa disponible a donde deseas reubicar a los comensales. La comanda activa se transferirá automáticamente.
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 block">Mesa Destino (Disponible):</label>
+                {tables.filter(t => t.status === 'AVAILABLE' && t.id !== selectedTableForTransfer.id).length === 0 ? (
+                  <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>No hay mesas disponibles en el salón en este momento.</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                    {tables
+                      .filter(t => t.status === 'AVAILABLE' && t.id !== selectedTableForTransfer.id)
+                      .map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setTargetTransferTableId(t.id)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            targetTransferTableId === t.id
+                              ? 'bg-sky-500/20 border-sky-500 text-white font-bold ring-1 ring-sky-400'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-xs font-black">Mesa {t.number}</span>
+                          <span className="text-[10px] text-slate-500">{t.zone} • {t.capacity}p</span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTableForTransfer(null)}
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTransferTable}
+                  disabled={transferring || !targetTransferTableId}
+                  className="flex-1 py-2 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 text-xs font-black rounded-xl shadow cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                >
+                  {transferring ? <span className="animate-pulse">Moviendo...</span> : <>
+                    <Check className="w-3.5 h-3.5 stroke-[3px]" />
+                    <span>Confirmar</span>
+                  </>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: MERGE TABLES */}
+        {selectedTableForMerge && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+              <button
+                onClick={() => setSelectedTableForMerge(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white p-1"
+              >
+                ✕
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+                <div className="p-2 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-xl">
+                  <GitMerge className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base">Unir Cuentas de Mesas</h3>
+                  <p className="text-xs text-slate-400">Origen: Mesa #{selectedTableForMerge.number}</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Los platillos de la Mesa #{selectedTableForMerge.number} se sumarán a la mesa destino seleccionada. La Mesa #{selectedTableForMerge.number} quedará liberada.
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 block">Unir con Mesa Ocupada:</label>
+                {tables.filter(t => t.id !== selectedTableForMerge.id && (t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED' || (t.orders && t.orders.length > 0))).length === 0 ? (
+                  <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>No hay otras mesas ocupadas para fusionar.</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                    {tables
+                      .filter(t => t.id !== selectedTableForMerge.id && (t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED' || (t.orders && t.orders.length > 0)))
+                      .map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setTargetMergeTableId(t.id)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            targetMergeTableId === t.id
+                              ? 'bg-purple-500/20 border-purple-500 text-white font-bold ring-1 ring-purple-400'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-xs font-black">Mesa {t.number}</span>
+                          <span className="text-[10px] text-brand-primary font-mono">${(t.orders?.[0]?.total || 0).toFixed(2)}</span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTableForMerge(null)}
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMergeTables}
+                  disabled={merging || !targetMergeTableId}
+                  className="flex-1 py-2 bg-purple-500 hover:bg-purple-400 disabled:opacity-50 text-slate-950 text-xs font-black rounded-xl shadow cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                >
+                  {merging ? <span className="animate-pulse">Fusionando...</span> : <>
+                    <GitMerge className="w-3.5 h-3.5" />
+                    <span>Fusionar</span>
+                  </>}
                 </button>
               </div>
             </div>

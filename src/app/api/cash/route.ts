@@ -52,22 +52,44 @@ export async function GET(req: NextRequest) {
       let cashSales = 0;
       let cardSales = 0;
       let appsSales = 0;
+      let tipsCash = 0;
+      let tipsCard = 0;
 
       orders.forEach((order) => {
-        if (order.source === 'UBER_EATS' || order.source === 'RAPPI') {
+        const tipVal = order.tip || 0;
+        if (order.source === 'UBER_EATS' || order.source === 'RAPPI' || order.source === 'DIDI_FOOD') {
           appsSales += order.total;
+        } else if (order.paymentMethod === 'CASH') {
+          cashSales += order.total;
+          tipsCash += tipVal;
+        } else if (order.paymentMethod === 'TERMINAL' || order.paymentMethod === 'STRIPE' || order.paymentMethod === 'MERCADOPAGO') {
+          cardSales += order.total;
+          tipsCard += tipVal;
         } else if (order.source === 'WEB') {
-          cardSales += order.total; // WEB default to Card online payment
+          cardSales += order.total;
+          tipsCard += tipVal;
         } else {
-          cashSales += order.total; // PHONE default to Cash on delivery
+          cashSales += order.total;
+          tipsCash += tipVal;
         }
       });
+
+      const tipsTotal = parseFloat((tipsCash + tipsCard).toFixed(2));
+      const tipDistribution = {
+        waiters: parseFloat((tipsTotal * 0.70).toFixed(2)),
+        kitchen: parseFloat((tipsTotal * 0.20).toFixed(2)),
+        bar: parseFloat((tipsTotal * 0.10).toFixed(2)),
+      };
 
       activeAggregates = {
         cashSales: parseFloat(cashSales.toFixed(2)),
         cardSales: parseFloat(cardSales.toFixed(2)),
         appsSales: parseFloat(appsSales.toFixed(2)),
         totalSales: parseFloat((cashSales + cardSales + appsSales).toFixed(2)),
+        tipsCash: parseFloat(tipsCash.toFixed(2)),
+        tipsCard: parseFloat(tipsCard.toFixed(2)),
+        tipsTotal,
+        tipDistribution,
         expectedBalance: parseFloat((activeSession.openingBalance + cashSales).toFixed(2)),
       };
     }
@@ -162,17 +184,29 @@ export async function POST(req: NextRequest) {
       let cashSales = 0;
       let cardSales = 0;
       let appsSales = 0;
+      let tipsCash = 0;
+      let tipsCard = 0;
 
       orders.forEach((order) => {
-        if (order.source === 'UBER_EATS' || order.source === 'RAPPI') {
+        const tipVal = order.tip || 0;
+        if (order.source === 'UBER_EATS' || order.source === 'RAPPI' || order.source === 'DIDI_FOOD') {
           appsSales += order.total;
+        } else if (order.paymentMethod === 'CASH') {
+          cashSales += order.total;
+          tipsCash += tipVal;
+        } else if (order.paymentMethod === 'TERMINAL' || order.paymentMethod === 'STRIPE' || order.paymentMethod === 'MERCADOPAGO') {
+          cardSales += order.total;
+          tipsCard += tipVal;
         } else if (order.source === 'WEB') {
           cardSales += order.total;
+          tipsCard += tipVal;
         } else {
           cashSales += order.total;
+          tipsCash += tipVal;
         }
       });
 
+      const tipsTotal = parseFloat((tipsCash + tipsCard).toFixed(2));
       const parsedActual = parseFloat(actualBalance);
       const expectedBalance = parseFloat((activeSession.openingBalance + cashSales).toFixed(2));
       const discrepancy = Math.abs(parsedActual - expectedBalance);
@@ -187,6 +221,9 @@ export async function POST(req: NextRequest) {
           cashSales: parseFloat(cashSales.toFixed(2)),
           cardSales: parseFloat(cardSales.toFixed(2)),
           appsSales: parseFloat(appsSales.toFixed(2)),
+          tipsTotal,
+          tipsCash: parseFloat(tipsCash.toFixed(2)),
+          tipsCard: parseFloat(tipsCard.toFixed(2)),
           status: 'CLOSED',
           notes: notes || null,
         },

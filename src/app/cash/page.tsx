@@ -39,6 +39,14 @@ interface Aggregates {
   appsSales: number;
   totalSales: number;
   expectedBalance: number;
+  tipsCash?: number;
+  tipsCard?: number;
+  tipsTotal?: number;
+  tipDistribution?: {
+    waiters: number;
+    kitchen: number;
+    bar: number;
+  };
 }
 
 export default function CashPage() {
@@ -328,6 +336,54 @@ export default function CashPage() {
                     <span className="text-white">Facturación Total del Turno</span>
                     <span className="text-brand-primary">${aggregates.totalSales.toFixed(2)}</span>
                   </div>
+
+                  {/* Tips Breakdown & Distribution Section */}
+                  {aggregates.tipsTotal !== undefined && aggregates.tipsTotal > 0 && (
+                    <div className="p-4 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-3 mt-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Coins className="h-4 w-4 text-purple-400" />
+                          <h5 className="font-bold text-white text-xs">Control & Reparto de Propinas del Turno</h5>
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          Total: ${(aggregates.tipsTotal || 0).toFixed(2)} MXN
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="p-2.5 bg-slate-950/80 rounded-lg border border-purple-900/30 flex justify-between items-center">
+                          <span className="text-slate-400">Propinas en Efectivo:</span>
+                          <span className="font-bold text-amber-400">${(aggregates.tipsCash || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="p-2.5 bg-slate-950/80 rounded-lg border border-purple-900/30 flex justify-between items-center">
+                          <span className="text-slate-400">Propinas en Tarjeta/Apps:</span>
+                          <span className="font-bold text-sky-400">${(aggregates.tipsCard || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {aggregates.tipDistribution && (
+                        <div className="space-y-1.5 pt-2 border-t border-purple-900/30">
+                          <span className="text-[10px] uppercase font-bold text-purple-300 tracking-wider">
+                            Sugerencia de Reparto de Propinas:
+                          </span>
+                          <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+                            <div className="p-2 bg-slate-950 rounded border border-slate-800">
+                              <span className="text-slate-400 block text-[10px]">Meseros (70%)</span>
+                              <span className="font-black text-emerald-400">${aggregates.tipDistribution.waiters.toFixed(2)}</span>
+                            </div>
+                            <div className="p-2 bg-slate-950 rounded border border-slate-800">
+                              <span className="text-slate-400 block text-[10px]">Cocina (20%)</span>
+                              <span className="font-black text-amber-400">${aggregates.tipDistribution.kitchen.toFixed(2)}</span>
+                            </div>
+                            <div className="p-2 bg-slate-950 rounded border border-slate-800">
+                              <span className="text-slate-400 block text-[10px]">Barra (10%)</span>
+                              <span className="font-black text-blue-400">${aggregates.tipDistribution.bar.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

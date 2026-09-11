@@ -5,6 +5,48 @@ import { Prisma } from '@prisma/client';
 import { orderEvents } from '@/lib/events';
 import { recordAuditLog } from '@/lib/audit';
 
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const cookieHeader = req.headers.get('cookie') || '';
+    const session = getSessionFromCookies(cookieHeader);
+
+    if (!session || !session.activeBrandId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        table: true,
+        customer: true,
+        brand: true,
+        paymentTransactions: {
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!order) {
+      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 });
+    }
+
+    if (order.brandId !== session.activeBrandId && session.role !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
+    return NextResponse.json({ success: true, order });
+  } catch (error: unknown) {
+    console.error('Error fetching order by ID:', error);
+    return NextResponse.json({ error: 'Error interno al consultar comanda' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const cookieHeader = req.headers.get('cookie') || '';

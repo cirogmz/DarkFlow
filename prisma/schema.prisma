@@ -173,6 +173,8 @@ model Order {
   deliveryService String?
   paymentStatus String       @default("PENDING")
   paymentMethod String?
+  paidAmount    Float        @default(0)
+  changeAmount  Float        @default(0)
   paidAt        DateTime?
   paymentTransactionId String?
   paymentTransactions PaymentTransaction[]
@@ -220,6 +222,9 @@ model CashSession {
   cashSales      Float             @default(0)
   cardSales      Float             @default(0)
   appsSales      Float             @default(0)
+  tipsTotal      Float             @default(0)
+  tipsCash       Float             @default(0)
+  tipsCard       Float             @default(0)
   notes          String?
 }
 
@@ -320,7 +325,11 @@ model PaymentTransaction {
   gateway          String
   status           String   @default("PENDING")
   amount           Float
+  tip              Float    @default(0)
   currency         String   @default("MXN")
+  method           String?
+  splitIndex       Int?
+  notes            String?
   gatewayPaymentId String?
   gatewayOrderId   String?
   paymentUrl       String?

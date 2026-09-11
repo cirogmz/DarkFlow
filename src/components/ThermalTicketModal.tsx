@@ -33,6 +33,15 @@ export interface ThermalOrderData {
     loyaltyPoints?: number;
     totalOrders?: number;
   } | null;
+  paidAmount?: number;
+  paymentTransactions?: Array<{
+    id?: string;
+    amount: number;
+    tip?: number;
+    method?: string | null;
+    splitIndex?: number | null;
+    notes?: string | null;
+  }>;
   items: Array<{
     id?: string;
     quantity: number;
@@ -291,6 +300,24 @@ export default function ThermalTicketModal({
                     <span className="font-mono text-base">${total.toFixed(2)} MXN</span>
                   </div>
                 </div>
+
+                {/* Split & Partial Payment Transactions Breakdown */}
+                {order.paymentTransactions && order.paymentTransactions.length > 0 && (
+                  <div className="py-2 border-b border-dashed border-slate-400 space-y-1 text-[10px]">
+                    <div className="flex justify-between font-bold text-slate-800">
+                      <span>PAGOS REGISTRADOS:</span>
+                      <span className="font-mono">${(order.paidAmount ?? order.paymentTransactions.reduce((s, pt) => s + pt.amount, 0)).toFixed(2)}</span>
+                    </div>
+                    <div className="space-y-0.5 pt-0.5">
+                      {order.paymentTransactions.map((pt, idx) => (
+                        <div key={idx} className="flex justify-between text-slate-700">
+                          <span>[{pt.method || 'PAGO'}] {pt.notes || `Abono #${idx + 1}`}:</span>
+                          <span className="font-mono">${pt.amount.toFixed(2)} {(pt.tip ?? 0) > 0 ? `(Prop: $${(pt.tip ?? 0).toFixed(2)})` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Loyalty Points Section */}
                 {order.customer && typeof order.customer.loyaltyPoints === 'number' && (

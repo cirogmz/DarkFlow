@@ -23,7 +23,13 @@ import {
   Wallet,
   QrCode,
   Copy,
-  Check
+  Check,
+  Divide,
+  Percent,
+  Receipt,
+  Users,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
@@ -115,6 +121,19 @@ interface PlacedOrder {
   total: number;
   couponCode?: string | null;
   discountAmount?: number;
+  paidAmount?: number;
+  paymentStatus?: string;
+  paymentMethod?: string | null;
+  paymentTransactions?: Array<{
+    id: string;
+    amount: number;
+    tip: number;
+    method?: string | null;
+    splitIndex?: number | null;
+    notes?: string | null;
+    status: string;
+    createdAt: string;
+  }>;
   createdAt: string;
   brand?: {
     name: string;
@@ -189,6 +208,17 @@ export default function POSPage() {
   const [isInvoicePdfOpen, setIsInvoicePdfOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Split bill states
+  const [splitBillModalOpen, setSplitBillModalOpen] = useState(false);
+  const [splitOrder, setSplitOrder] = useState<PlacedOrder | null>(null);
+  const [splitMode, setSplitMode] = useState<'EQUAL' | 'ITEMS'>('EQUAL');
+  const [splitDinersCount, setSplitDinersCount] = useState<number>(2);
+  const [activeSplitDinerIndex, setActiveSplitDinerIndex] = useState<number>(0);
+  const [splitPaymentMethod, setSplitPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO'>('CASH');
+  const [splitDinerTip, setSplitDinerTip] = useState<number>(0);
+  const [splitItemAssignments, setSplitItemAssignments] = useState<Record<string, number>>({});
+  const [processingSplitPayment, setProcessingSplitPayment] = useState(false);
+
   const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, clearCart, addNotification } = useAppStore();
 
   const fetchInitialData = React.useCallback(async () => {
@@ -222,6 +252,77 @@ export default function POSPage() {
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
+
+  // Read URL query parameters for tableId, orderId, or source
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tableIdParam = params.get('tableId');
+      const orderIdParam = params.get('orderId');
+      const sourceParam = params.get('source');
+
+      if (sourceParam === 'DINE_IN') {
+        setOrderSource('DINE_IN');
+      }
+      if (tableIdParam) {
+        setSelectedTableId(tableIdParam);
+      }
+      if (orderIdParam) {
+        fetch(`/api/orders/${orderIdParam}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.order) {
+              setSplitOrder(data.order);
+              setSplitBillModalOpen(true);
+            }
+          })
+          .catch((err) => console.error('Error fetching order for split bill:', err));
+      }
+    }
+  }, []);
+
+  // Split bill payment processor
+  const handleProcessSplitPayment = async (amountToPay: number, tipAmount: number, dinerIndex: number, notes?: string) => {
+    if (!splitOrder) return;
+    if (amountToPay <= 0) {
+      alert('El monto a cobrar debe ser mayor a $0');
+      return;
+    }
+    setProcessingSplitPayment(true);
+    try {
+      const res = await fetch('/api/orders/split-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: splitOrder.id,
+          amount: amountToPay,
+          tip: tipAmount,
+          method: splitPaymentMethod,
+          splitIndex: dinerIndex,
+          notes: notes || `Comensal #${dinerIndex + 1}`,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setSplitOrder(data.order);
+        setPlacedOrder(data.order);
+        setSplitDinerTip(0);
+        if (data.isFullyPaid) {
+          addNotification('¡Cuenta pagada en su totalidad! Mesa liberada.', 'success');
+          fetchInitialData();
+        } else {
+          addNotification(`Abono de $${amountToPay.toFixed(2)} registrado. Saldo pendiente: $${data.remainingBalance.toFixed(2)}`, 'success');
+        }
+      } else {
+        alert(data.error || 'Error al procesar pago dividido');
+      }
+    } catch {
+      alert('Error de conexión al procesar abono');
+    } finally {
+      setProcessingSplitPayment(false);
+    }
+  };
 
   // Helper: check if product has enough ingredients stock
   const checkStockStatus = (product: Product) => {
@@ -747,18 +848,44 @@ export default function POSPage() {
               <span className="font-semibold text-slate-200">${cartTax.toFixed(2)}</span>
             </div>
             
-            {/* Tip controls */}
-            <div className="flex items-center justify-between gap-4 py-1">
-              <span>Propina</span>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-slate-500 font-bold">$</span>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={tip || ''}
-                  onChange={(e) => setTip(Math.max(0, parseFloat(e.target.value) || 0))}
-                  className="w-16 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-center text-slate-200 focus:border-brand-primary outline-none"
-                />
+            {/* Tip controls with presets */}
+            <div className="space-y-1.5 py-1">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Percent className="h-3 w-3 text-brand-primary" /> Propina Sugerida
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-slate-500 font-bold">$</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={tip || ''}
+                    onChange={(e) => setTip(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-16 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-center text-slate-200 focus:border-brand-primary outline-none text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Quick tip buttons */}
+              <div className="grid grid-cols-4 gap-1">
+                {[0, 10, 15, 20].map((pct) => {
+                  const calcVal = pct === 0 ? 0 : parseFloat(((cartSubtotalAfterDiscount * pct) / 100).toFixed(2));
+                  const isSelected = tip === calcVal;
+                  return (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setTip(calcVal)}
+                      className={`py-1 text-[10px] font-bold rounded border transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-brand-primary text-slate-950 border-brand-primary font-black shadow-sm'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      {pct === 0 ? '0%' : `${pct}%`}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -772,13 +899,49 @@ export default function POSPage() {
               <span className="font-black text-brand-primary text-base">${cartTotal.toFixed(2)}</span>
             </div>
 
-            <button
-              onClick={() => setIsCheckoutOpen(true)}
-              disabled={cart.length === 0}
-              className="w-full py-3 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-sm rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2 cursor-pointer transition-colors"
-            >
-              Proceder al Pago
-            </button>
+            <div className="space-y-1.5 pt-1">
+              <button
+                onClick={() => setIsCheckoutOpen(true)}
+                disabled={cart.length === 0}
+                className="w-full py-3 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-sm rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              >
+                Proceder al Pago
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (splitOrder) {
+                    setSplitBillModalOpen(true);
+                    return;
+                  }
+                  // Check occupied tables
+                  const occ = tables.find(t => t.status === 'OCCUPIED' || t.status === 'BILL_REQUESTED');
+                  if (occ) {
+                    try {
+                      const res = await fetch('/api/tables');
+                      if (res.ok) {
+                        const d = await res.json();
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const found = (d.tables as any[])?.find(x => x.id === occ.id);
+                        if (found && found.orders && found.orders.length > 0) {
+                          setSplitOrder(found.orders[0]);
+                          setSplitBillModalOpen(true);
+                          return;
+                        }
+                      }
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }
+                  addNotification('Selecciona una mesa ocupada desde Salón para dividir su cuenta', 'info');
+                }}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-bold text-xs rounded-lg border border-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Divide className="h-3.5 w-3.5 text-brand-primary stroke-[2.5px]" />
+                <span>{splitOrder ? `Dividir Cuenta #${splitOrder.orderNumber}` : 'Dividir Cuenta de Salón'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1134,6 +1297,45 @@ export default function POSPage() {
                 </div>
               </div>
 
+              {/* Selector de Propina en Checkout */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                    <Percent className="h-3 w-3 text-brand-primary" /> Propina Sugerida
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 font-bold">$</span>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={tip || ''}
+                      onChange={(e) => setTip(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-20 bg-slate-900 border border-slate-750 rounded px-2 py-0.5 text-center text-slate-200 focus:border-brand-primary outline-none text-xs font-mono font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[0, 10, 15, 20].map((pct) => {
+                    const calcVal = pct === 0 ? 0 : parseFloat(((cartSubtotalAfterDiscount * pct) / 100).toFixed(2));
+                    const isSelected = tip === calcVal;
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setTip(calcVal)}
+                        className={`py-1.5 text-xs font-bold rounded-lg border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-brand-primary text-slate-950 border-brand-primary font-black shadow'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        {pct === 0 ? 'Sin propina' : `${pct}% ($${calcVal.toFixed(0)})`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Financial Breakdown Preview */}
               <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1.5 text-slate-300">
                 <div className="flex justify-between">
@@ -1399,6 +1601,406 @@ export default function POSPage() {
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{confirmingPosSandbox ? 'Aprobando...' : 'Confirmar Cobro Aprobado'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Bill & Partial Payment Modal */}
+      {splitBillModalOpen && splitOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl relative my-6">
+            <button
+              onClick={() => setSplitBillModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            >
+              ✕
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+              <div className="p-2.5 bg-brand-primary/10 border border-brand-primary/20 text-brand-primary rounded-xl">
+                <Divide className="w-5 h-5 stroke-[2.5px]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-black text-white">Dividir Cuenta & Pagos Parciales</h3>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                    (splitOrder.paidAmount ?? 0) >= (splitOrder.total - 0.05)
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  }`}>
+                    {(splitOrder.paidAmount ?? 0) >= (splitOrder.total - 0.05) ? 'PAGADA COMPLETA' : 'PENDIENTE / PARCIAL'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Orden: <strong className="text-white">#{splitOrder.orderNumber}</strong>
+                  {splitOrder.table ? ` • Mesa: ${splitOrder.table.name} (#${splitOrder.table.number})` : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* Financial Summary & Live Progress Bar */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-850">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Cuenta</span>
+                  <span className="text-base font-black text-white font-mono">${splitOrder.total.toFixed(2)}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/40">
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 block">Total Pagado</span>
+                  <span className="text-base font-black text-emerald-400 font-mono">
+                    ${(splitOrder.paidAmount ?? 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-800/40">
+                  <span className="text-[10px] uppercase font-bold text-amber-400 block">Saldo Restante</span>
+                  <span className="text-base font-black text-amber-400 font-mono">
+                    ${Math.max(0, splitOrder.total - (splitOrder.paidAmount ?? 0)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>Progreso de Cobro:</span>
+                  <span className="font-bold text-white">
+                    {Math.min(100, Math.round(((splitOrder.paidAmount ?? 0) / (splitOrder.total || 1)) * 100))}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-brand-primary h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.min(100, ((splitOrder.paidAmount ?? 0) / (splitOrder.total || 1)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Split Mode Selector Tabs */}
+            <div className="flex border-b border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSplitMode('EQUAL')}
+                className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition cursor-pointer ${
+                  splitMode === 'EQUAL'
+                    ? 'border-brand-primary text-brand-primary font-black'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Users className="w-4 h-4" /> Partes Iguales (N Comensales)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitMode('ITEMS')}
+                className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition cursor-pointer ${
+                  splitMode === 'ITEMS'
+                    ? 'border-brand-primary text-brand-primary font-black'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Receipt className="w-4 h-4" /> Por Platillos Consumidos
+              </button>
+            </div>
+
+            {/* MODE 1: EQUAL SPLIT */}
+            {splitMode === 'EQUAL' && (
+              <div className="space-y-4">
+                {/* Diners Count Stepper */}
+                <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">Número de Comensales</span>
+                    <span className="text-[10px] text-slate-400">
+                      Monto sugerido por persona: <strong className="text-brand-primary">${(splitOrder.total / splitDinersCount).toFixed(2)} MXN</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={splitDinersCount <= 2}
+                      onClick={() => setSplitDinersCount(Math.max(2, splitDinersCount - 1))}
+                      className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 rounded-lg text-white transition"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-8 text-center font-black text-sm text-white font-mono">{splitDinersCount}</span>
+                    <button
+                      type="button"
+                      disabled={splitDinersCount >= 12}
+                      onClick={() => setSplitDinersCount(Math.min(12, splitDinersCount + 1))}
+                      className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 rounded-lg text-white transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Diners List */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto p-1">
+                  {Array.from({ length: splitDinersCount }).map((_, idx) => {
+                    const equalAmount = parseFloat((splitOrder.total / splitDinersCount).toFixed(2));
+                    const matchingTx = splitOrder.paymentTransactions?.find(
+                      (tx) => tx.splitIndex === idx && tx.status === 'COMPLETED'
+                    );
+
+                    const isPayingThis = activeSplitDinerIndex === idx && !matchingTx;
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3.5 rounded-xl border transition-all ${
+                          matchingTx
+                            ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300'
+                            : isPayingThis
+                            ? 'bg-slate-950 border-brand-primary ring-1 ring-brand-primary/50'
+                            : 'bg-slate-950 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-xs font-black block text-white">Comensal #{idx + 1}</span>
+                            <span className="text-[11px] font-mono text-slate-400">
+                              Parte: ${equalAmount.toFixed(2)}
+                            </span>
+                          </div>
+                          {matchingTx ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                              <Check className="w-3 h-3 stroke-[3px]" /> Pagado
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              Pendiente
+                            </span>
+                          )}
+                        </div>
+
+                        {matchingTx ? (
+                          <div className="mt-2 text-[10px] text-slate-400 border-t border-emerald-900/30 pt-1.5 space-y-0.5">
+                            <div>Método: <strong className="text-slate-200">{matchingTx.method || 'PAGO'}</strong></div>
+                            {matchingTx.tip > 0 && <div>Propina: <strong className="text-brand-primary">${matchingTx.tip.toFixed(2)}</strong></div>}
+                          </div>
+                        ) : isPayingThis ? (
+                          <div className="mt-3 pt-2.5 border-t border-slate-800 space-y-2.5">
+                            {/* Payment Method Selector */}
+                            <div className="grid grid-cols-4 gap-1 text-[10px]">
+                              {(['CASH', 'CARD', 'STRIPE', 'MERCADOPAGO'] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setSplitPaymentMethod(m)}
+                                  className={`py-1 px-1 rounded-md border text-center transition cursor-pointer ${
+                                    splitPaymentMethod === m
+                                      ? 'bg-brand-primary text-slate-950 border-brand-primary font-black'
+                                      : 'bg-slate-900 border-slate-850 text-slate-400 hover:text-white'
+                                  }`}
+                                >
+                                  {m === 'CASH' ? 'Efectivo' : m === 'CARD' ? 'Tarjeta' : m === 'STRIPE' ? 'Stripe' : 'MP'}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Tip Input */}
+                            <div className="flex items-center justify-between text-[11px] text-slate-400">
+                              <span>Propina voluntaria:</span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-500 font-bold">$</span>
+                                <input
+                                  type="number"
+                                  placeholder="0"
+                                  value={splitDinerTip || ''}
+                                  onChange={(e) => setSplitDinerTip(Math.max(0, parseFloat(e.target.value) || 0))}
+                                  className="w-16 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-center text-white outline-none font-mono text-xs focus:border-brand-primary"
+                                />
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={processingSplitPayment}
+                              onClick={() => handleProcessSplitPayment(equalAmount, splitDinerTip, idx)}
+                              className="w-full py-2 bg-brand-primary hover:bg-brand-primary-hover disabled:opacity-50 text-slate-950 font-black text-xs rounded-lg shadow transition cursor-pointer"
+                            >
+                              {processingSplitPayment ? 'Procesando...' : `Confirmar Abono ($${(equalAmount + splitDinerTip).toFixed(2)})`}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-2.5 pt-2 border-t border-slate-900">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveSplitDinerIndex(idx);
+                                setSplitDinerTip(0);
+                              }}
+                              className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-lg transition cursor-pointer"
+                            >
+                              Cobrar a este Comensal
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* MODE 2: BY ITEMS */}
+            {splitMode === 'ITEMS' && (
+              <div className="space-y-4">
+                {/* Comensal active tabs */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {Array.from({ length: splitDinersCount }).map((_, dIdx) => (
+                    <button
+                      key={dIdx}
+                      type="button"
+                      onClick={() => setActiveSplitDinerIndex(dIdx)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                        activeSplitDinerIndex === dIdx
+                          ? 'bg-brand-primary text-slate-950 font-black shadow'
+                          : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Comensal #{dIdx + 1}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Items selection */}
+                <div className="max-h-56 overflow-y-auto space-y-2 p-1">
+                  {splitOrder.items.map((item) => {
+                    const assignedDiner = splitItemAssignments[item.id] ?? 0;
+                    const isForActive = assignedDiner === activeSplitDinerIndex;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between transition ${
+                          isForActive
+                            ? 'bg-brand-primary/10 border-brand-primary/40 text-white'
+                            : 'bg-slate-950 border-slate-850 text-slate-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSplitItemAssignments((prev) => ({
+                                ...prev,
+                                [item.id]: isForActive ? -1 : activeSplitDinerIndex,
+                              }));
+                            }}
+                            className="cursor-pointer text-brand-primary"
+                          >
+                            {isForActive ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 text-slate-600" />}
+                          </button>
+                          <div>
+                            <span className="text-xs font-bold text-white block">{item.quantity}x {item.product.name}</span>
+                            <span className="text-[10px] text-slate-500 font-mono">${(item.price * item.quantity).toFixed(2)}</span>
+                          </div>
+                        </div>
+
+                        {/* Assign dropdown */}
+                        <select
+                          value={assignedDiner}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setSplitItemAssignments((prev) => ({
+                              ...prev,
+                              [item.id]: val,
+                            }));
+                          }}
+                          className="bg-slate-900 border border-slate-750 text-slate-300 rounded px-2 py-1 text-xs outline-none"
+                        >
+                          <option value={-1}>-- Sin Asignar --</option>
+                          {Array.from({ length: splitDinersCount }).map((_, di) => (
+                            <option key={di} value={di}>Comensal #{di + 1}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Active Diner Items Calculation & Pay */}
+                {(() => {
+                  const activeItems = splitOrder.items.filter((it) => (splitItemAssignments[it.id] ?? 0) === activeSplitDinerIndex);
+                  const sub = activeItems.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+                  const txRatio = splitOrder.subtotal > 0 ? (sub / splitOrder.subtotal) : 0;
+                  const itemTax = parseFloat((splitOrder.tax * txRatio).toFixed(2));
+                  const itemTotal = parseFloat((sub + itemTax).toFixed(2));
+
+                  return (
+                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-400">Total Platillos Comensal #{activeSplitDinerIndex + 1}:</span>
+                        <span className="font-mono font-bold text-white">${itemTotal.toFixed(2)} MXN</span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1 text-[10px]">
+                        {(['CASH', 'CARD', 'STRIPE', 'MERCADOPAGO'] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setSplitPaymentMethod(m)}
+                            className={`py-1 px-1 rounded-md border text-center transition cursor-pointer ${
+                              splitPaymentMethod === m
+                                ? 'bg-brand-primary text-slate-950 border-brand-primary font-black'
+                                : 'bg-slate-900 border-slate-850 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {m === 'CASH' ? 'Efectivo' : m === 'CARD' ? 'Tarjeta' : m === 'STRIPE' ? 'Stripe' : 'MP'}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={itemTotal <= 0 || processingSplitPayment}
+                        onClick={() => handleProcessSplitPayment(itemTotal, splitDinerTip, activeSplitDinerIndex, `Platillos Comensal #${activeSplitDinerIndex + 1}`)}
+                        className="w-full py-2 bg-brand-primary hover:bg-brand-primary-hover disabled:opacity-40 text-slate-950 font-black text-xs rounded-lg shadow transition cursor-pointer"
+                      >
+                        {processingSplitPayment ? 'Procesando...' : `Cobrar Platillos de Comensal #${activeSplitDinerIndex + 1} ($${(itemTotal + splitDinerTip).toFixed(2)})`}
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Modal Actions Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlacedOrder(splitOrder);
+                    setThermalInitialMode('CUSTOMER');
+                    setIsThermalOpen(true);
+                  }}
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-brand-primary" /> Imprimir Ticket
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlacedOrder(splitOrder);
+                    setIsInvoicePdfOpen(true);
+                  }}
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-400" /> Factura PDF
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSplitBillModalOpen(false)}
+                className="py-2 px-4 bg-slate-950 hover:bg-slate-850 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-800 transition cursor-pointer"
+              >
+                Cerrar
               </button>
             </div>
           </div>
