@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { recordAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -116,6 +117,17 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await recordAuditLog({
+        action: 'CASH_SESSION_OPENED',
+        entityType: 'CASH_SESSION',
+        entityId: newSession.id,
+        details: { openingBalance: newSession.openingBalance },
+        severity: 'INFO',
+        brandId: activeBrandId,
+        userId: session.userId,
+        req,
+      });
+
       return NextResponse.json({ success: true, session: newSession });
     }
 
@@ -163,6 +175,7 @@ export async function POST(req: NextRequest) {
 
       const parsedActual = parseFloat(actualBalance);
       const expectedBalance = parseFloat((activeSession.openingBalance + cashSales).toFixed(2));
+      const discrepancy = Math.abs(parsedActual - expectedBalance);
 
       const updatedSession = await prisma.cashSession.update({
         where: { id: activeSession.id },
@@ -177,6 +190,25 @@ export async function POST(req: NextRequest) {
           status: 'CLOSED',
           notes: notes || null,
         },
+      });
+
+      await recordAuditLog({
+        action: 'CASH_SESSION_CLOSED',
+        entityType: 'CASH_SESSION',
+        entityId: updatedSession.id,
+        details: {
+          expectedBalance,
+          actualBalance: parsedActual,
+          difference: parseFloat((parsedActual - expectedBalance).toFixed(2)),
+          cashSales,
+          cardSales,
+          appsSales,
+          notes,
+        },
+        severity: discrepancy > 0.5 ? 'CRITICAL' : 'INFO',
+        brandId: activeBrandId,
+        userId: session.userId,
+        req,
       });
 
       return NextResponse.json({ success: true, session: updatedSession });

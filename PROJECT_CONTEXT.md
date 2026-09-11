@@ -209,6 +209,20 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Pantalla de Seguimiento en Vivo**: Ruta `/order-tracking/[id]` con stepper de 4 etapas (`RECEIVED` ➔ `PREPARING` ➔ `READY` ➔ `DELIVERED`), refresco automático y desglose de ticket.
 * **Generador de QR en Salón**: En `/tables`, cada mesa cuenta con un botón para desplegar e imprimir la tarjeta QR con el enlace directo `http://<host>/m/[slug]?table=[number]`.
 
+### 6.13. Registro de Auditoría y Trazabilidad Forense (`/audit`)
+* **Bitácora Inmutable (`AuditLog`)**: Registro estructurado de eventos de alta sensibilidad con niveles de severidad (`INFO`, `WARNING`, `CRITICAL`), actor (`userId`), marca (`brandId`), `ipAddress` del cliente y diferencias (`details` JSON).
+* **Instrumentación Automática de Endpoints**:
+  - `/api/orders/[id]`: Cancelación forzada de órdenes (`ORDER_CANCELLED`, CRITICAL) y transiciones de estado.
+  - `/api/cash`: Apertura de turno (`CASH_SESSION_OPENED`, INFO) y cierre con arqueo (`CASH_SESSION_CLOSED`, CRITICAL si diferencia > $0.50, de lo contrario INFO).
+  - `/api/inventory`: Ajustes manuales de existencias (`STOCK_ADJUSTED`, WARNING), compras de almacén (`PURCHASE_RECORDED`, INFO) y creación de insumos (`INGREDIENT_CREATED`, INFO).
+  - `/api/users`: Creación (`USER_CREATED`, INFO), cambios de rol administrativo (`USER_ROLE_CHANGED`, CRITICAL) y bajas de cuentas (`USER_DELETED`, CRITICAL).
+* **Módulo de Gestión Forense (`/audit`)**:
+  - KPIs de seguridad con tarjetas de conteo de eventos totales, críticos, advertencias e informativos.
+  - Filtros en tiempo real por severidad, entidad (`ORDER`, `CASH_SESSION`, `INGREDIENT`, `PURCHASE`, `USER`), búsqueda textual y rango de fechas.
+  - Modal de inspección profunda con visualización de payload JSON con formato indentado.
+  - Exportación completa o filtrada a formato CSV con un clic.
+  - Control de acceso RBAC estricto exclusivo para `SUPER_ADMIN` y `BRAND_ADMIN`.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -227,6 +241,7 @@ darkflow/
 ├── src/
 │   ├── app/
 │   │   ├── api/              # Route Handlers (Backend REST)
+│   │   │   ├── audit/        # Consulta y filtros de logs de auditoría forense
 │   │   │   ├── auth/         # Login, logout, me
 │   │   │   ├── brands/       # Consulta y creación de marcas
 │   │   │   ├── cash/         # Sesiones y cortes de caja
@@ -238,6 +253,7 @@ darkflow/
 │   │   │   ├── delivery-simulator/ # Simulador y webhooks de Uber Eats, Rappi, DiDi Food
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── health/       # Healthcheck activo de DB y uptime (/api/health)
+│   │   │   ├── integrations/ # Webhooks y simulador de delivery
 │   │   │   ├── inventory/    # Insumos, compras y recetas
 │   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
 │   │   │   ├── products/     # Catálogo de platillos por marca
@@ -245,6 +261,7 @@ darkflow/
 │   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
 │   │   │   ├── tables/       # Mesas físicas, estados y comensales
 │   │   │   └── users/        # Gestión de personal, credenciales y RBAC
+│   │   ├── audit/page.tsx    # Vista de Auditoría & Trazabilidad Forense de Seguridad
 │   │   ├── cash/page.tsx     # Vista de Corte de Caja
 │   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
 │   │   ├── delivery-simulator/page.tsx # Simulador de Delivery Apps
@@ -269,6 +286,7 @@ darkflow/
 │   │   ├── InvoicePdfModal.tsx    # Modal universal de Factura Fiscal / Nota de Venta PDF (Carta/A4)
 │   │   └── ThermalTicketModal.tsx # Generador universal de tickets térmicos ESC/POS
 │   ├── lib/
+│   │   ├── audit.ts          # Helper resiliente para registro de auditoría y captura de IP
 │   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
 │   │   ├── db.ts             # Instancia singleton de Prisma Client
 │   │   ├── events.ts         # Singleton de EventEmitter para eventos reactivos
@@ -296,6 +314,7 @@ darkflow/
 3. **Cero Dependencias Inseguras:** Mantener la sesión basada en cookies HTTP-Only nativas de Node Crypto y evitar paquetes externos pesados para auth.
 4. **Tipado Estricto:** Evitar el uso de `any` en TypeScript; definir interfaces o usar tipos inferidos de Prisma.
 5. **Evolución sin Romper:** No reescribir módulos funcionales existentes; extender mediante componentes o campos adicionales documentados.
+6. **Inmutabilidad en Auditoría:** Los registros de `AuditLog` nunca deben ser modificados o eliminados; su inserción es resiliente y no bloqueante.
 
 ---
 
@@ -313,3 +332,4 @@ darkflow/
 * ✅ **Fase 10 (Completada):** Exportaciones Avanzadas en PDF (Comprobante de Venta y Factura Comercial CFDI con motor de impresión Carta/A4).
 * ✅ **Fase 11 (Completada):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.
 * ✅ **Fase 12 (Completada):** Menú Digital QR y Auto-Pedido Móvil para Comensales con Rastreo en Vivo.
+* ✅ **Fase 13 (Completada):** Auditoría Inmutable, Historial de Seguridad y Registro de Actividad (`/audit`, severidades `INFO`/`WARNING`/`CRITICAL`, exportación CSV e inspección forense).

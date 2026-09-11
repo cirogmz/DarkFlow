@@ -3,6 +3,7 @@ import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { orderEvents } from '@/lib/events';
+import { recordAuditLog } from '@/lib/audit';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -114,6 +115,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       timestamp: new Date().toISOString(),
       order: updatedOrder,
     });
+
+    // Record Audit Log
+    if (status === 'CANCELLED') {
+      await recordAuditLog({
+        action: 'ORDER_CANCELLED',
+        entityType: 'ORDER',
+        entityId: updatedOrder.id,
+        details: {
+          orderNumber: updatedOrder.orderNumber,
+          previousStatus: order.status,
+          total: updatedOrder.total,
+          customerName: updatedOrder.customerName,
+        },
+        severity: 'CRITICAL',
+        brandId: updatedOrder.brandId,
+        userId: session.userId,
+        req,
+      });
+    } else if (status && status !== order.status) {
+      await recordAuditLog({
+        action: 'ORDER_STATUS_CHANGED',
+        entityType: 'ORDER',
+        entityId: updatedOrder.id,
+        details: {
+          orderNumber: updatedOrder.orderNumber,
+          from: order.status,
+          to: status,
+        },
+        severity: 'INFO',
+        brandId: updatedOrder.brandId,
+        userId: session.userId,
+        req,
+      });
+    }
 
     return NextResponse.json({ success: true, order: updatedOrder });
   } catch (error: unknown) {

@@ -17,6 +17,7 @@ model User {
   orders        Order[]         @relation("DeliveryDriver")
   cashSessions  CashSession[]
   deliveryProfile DeliveryProfile?
+  auditLogs     AuditLog[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -40,6 +41,7 @@ model Brand {
   customers      Customer[]
   coupons        Coupon[]
   combos         Combo[]
+  auditLogs      AuditLog[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -274,4 +276,23 @@ model ComboItem {
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantity  Int      @default(1)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entityType String
+  entityId   String?
+  details    String?
+  severity   String   @default("INFO")
+  ipAddress  String?
+  brandId    String?
+  brand      Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([brandId, createdAt])
+  @@index([action])
+  @@index([entityType])
 }

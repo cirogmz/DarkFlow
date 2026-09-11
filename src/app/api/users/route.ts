@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/hash';
+import { recordAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -168,6 +169,22 @@ export async function POST(req: NextRequest) {
       return user;
     });
 
+    await recordAuditLog({
+      action: 'USER_CREATED',
+      entityType: 'USER',
+      entityId: newUser.id,
+      details: {
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        brandIds: targetBrandIds,
+      },
+      severity: 'INFO',
+      brandId: session.activeBrandId || null,
+      userId: session.userId,
+      req,
+    });
+
     return NextResponse.json({ success: true, user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role } });
   } catch (error: unknown) {
     console.error('Error creating user:', error);
@@ -213,9 +230,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'No tienes permisos para modificar a un Super Administrador' }, { status: 403 });
     }
 
+    const roleChanged = Boolean(role && role !== targetUser.role);
+    const updateData: { name?: string; email?: string; passwordHash?: string; role?: string } = {};
+
     await prisma.$transaction(async (tx) => {
       // 1. Update basic user data
-      const updateData: { name?: string; email?: string; passwordHash?: string; role?: string } = {};
       if (name) updateData.name = name.trim();
       if (email) updateData.email = email.trim().toLowerCase();
       if (password && password.trim().length > 0) {
@@ -270,6 +289,23 @@ export async function PATCH(req: NextRequest) {
       }
     });
 
+    await recordAuditLog({
+      action: roleChanged ? 'USER_ROLE_CHANGED' : 'USER_UPDATED',
+      entityType: 'USER',
+      entityId: targetUser.id,
+      details: {
+        userName: targetUser.name,
+        userEmail: targetUser.email,
+        previousRole: targetUser.role,
+        newRole: role || targetUser.role,
+        updatedFields: Object.keys(updateData),
+      },
+      severity: roleChanged ? 'CRITICAL' : 'INFO',
+      brandId: session.activeBrandId || null,
+      userId: session.userId,
+      req,
+    });
+
     return NextResponse.json({ success: true, updated: true });
   } catch (error: unknown) {
     console.error('Error updating user:', error);
@@ -317,6 +353,21 @@ export async function DELETE(req: NextRequest) {
 
     await prisma.user.delete({
       where: { id: userId },
+    });
+
+    await recordAuditLog({
+      action: 'USER_DELETED',
+      entityType: 'USER',
+      entityId: user.id,
+      details: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      severity: 'CRITICAL',
+      brandId: session.activeBrandId || null,
+      userId: session.userId,
+      req,
     });
 
     return NextResponse.json({ success: true, deleted: true });
