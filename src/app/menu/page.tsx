@@ -17,7 +17,6 @@ import {
   Eye,
   EyeOff,
   SlidersHorizontal,
-  Settings2,
   Package
 } from 'lucide-react';
 
@@ -216,8 +215,8 @@ export default function MenuManagementPage() {
     setProdCatId(prod.categoryId);
     setProdImgUrl(prod.imageUrl || '');
     setProdIsActive(prod.isActive);
-    const groupIds = (prod.modifierGroups || []).map((pmg: any) => pmg.modifierGroup?.id || pmg.modifierGroupId).filter(Boolean);
-    setSelectedModifierGroupIds(groupIds);
+    const groupIds = (prod.modifierGroups || []).map((pmg: { modifierGroup?: { id: string }; modifierGroupId?: string }) => pmg.modifierGroup?.id || pmg.modifierGroupId).filter(Boolean);
+    setSelectedModifierGroupIds(groupIds as string[]);
     setIsProductModalOpen(true);
   };
 
@@ -969,7 +968,7 @@ export default function MenuManagementPage() {
                 </div>
                 <div>
                   <p className="text-white font-bold text-lg">Sin grupos de modificadores</p>
-                  <p className="text-slate-400 text-sm mt-1">Crea grupos como "Término de Cocción", "Extras" o "Salsas" y asígnalos a tus platillos.</p>
+                  <p className="text-slate-400 text-sm mt-1">Crea grupos como &quot;T&eacute;rmino de Cocci&oacute;n&quot;, &quot;Extras&quot; o &quot;Salsas&quot; y as&iacute;gnalos a tus platillos.</p>
                 </div>
                 <button
                   onClick={handleOpenNewModifierGroup}

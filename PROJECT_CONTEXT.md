@@ -254,6 +254,20 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
   - Agregación automática de propinas discriminadas por método (`tipsCash`, `tipsCard`, `tipsTotal`) en el arqueo y cierre de caja (`CashSession`) en `/api/cash`.
   - Algoritmo de reparto equitativo del pozo de propinas en `/cash`: 70% para meseros/piso, 20% para cocina y 10% para barra.
 
+### 6.16. Modificadores Avanzados, Grupos de Extras y Términos de Cocina
+* **Catálogo de Modificadores (`ModifierGroup` y `ModifierOption`)**:
+  - Modelos relacionales con validación de mínimos (`minSelect`, 0 = opcional, 1+ = obligatorio) y máximos (`maxSelect`, 1 = radio única, >1 = checkboxes hasta el límite).
+  - Precios adicionales por opción (+$0.00 para términos de carne o +$XX.00 para extras/toppings) y enlace opcional a insumos de inventario (`ingredientId`, `ingredientQuantity`) para descuento automático de stock.
+  - Asociación flexible a productos del menú mediante `ProductModifierGroup`.
+* **Experiencia POS y Menú Digital QR (`/pos` & `/m/[slug]`)**:
+  - Modal interactivo de personalización (`ProductCustomizeModal`) con validación de selecciones obligatorias antes de agregar al carrito.
+  - Carrito lateral con desglose visual de modificadores y recálculo automático de precio unitario.
+* **Visualización en KDS de Cocina (`/kitchen`) y Tickets ESC/POS**:
+  - Badges de alto contraste en las comandas de cocina (`[Término: Tres Cuartos]`, `[+ Tocino (+$25.00)]`) para lectura instantánea de la brigada de cocina.
+  - Desglose en `ThermalTicketModal`, `InvoicePdfModal` y pantalla de rastreo `/order-tracking/[id]`.
+* **Descuento Atómico de Inventario**:
+  - Al marcar comanda como `DELIVERED`, descuenta del almacén tanto la receta base como los insumos asociados a los modificadores elegidos en una única transacción de Prisma.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -376,3 +390,8 @@ darkflow/
 * ✅ **Fase 13 (Completada):** Auditoría Inmutable, Historial de Seguridad y Registro de Actividad (`/audit`, severidades `INFO`/`WARNING`/`CRITICAL`, exportación CSV e inspección forense).
 * ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).
 * ✅ **Fase 15 (Completada):** Operativa de Salón Avanzada (Cuentas Divididas por partes iguales o platillos, Reubicación y Fusión atómica de mesas en `/tables`, y Control/Reparto equitativo de propinas en `/pos` y `/cash`).
+* ✅ **Fase 16 (Completada):** Modificadores Avanzados, Grupos de Extras y Términos de Cocina (Términos de carne, toppings adicionales, descuentos automáticos de inventario, modal táctil en POS y QR, badges en KDS y desglose en tickets térmicos).
+* ⏳ **Fase 17 (Próxima):** Almacén y Costeo Avanzado — Sub-recetas Multinivel, Registro de Mermas Operativas y Traspasos entre Bodegas.
+* ⏳ **Fase 18 (Planeada):** Facturación Fiscal Mexicana (CFDI 4.0 Directo & Portal Público de Auto-Facturaci&oacute;n).
+* ⏳ **Fase 19 (Planeada):** KDS Avanzado (Semáforos SLA por Platillo, Tiempos de Servicio y Comanda por Tiempos).
+* ⏳ **Fase 20 (Planeada):** Hardware Bridge Local & Impresión Silenciosa Desatendida (ESC/POS LAN/IP).
