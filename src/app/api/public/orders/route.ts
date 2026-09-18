@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
         isActive: true,
       },
       include: {
+        category: true,
         recipeItems: {
           include: {
             ingredient: true,
@@ -217,6 +218,8 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      const calculatedSla = dbProducts.reduce((max, p) => Math.max(max, p.targetPrepTime || 10), 10);
+
       // 4. Create Order
       return await tx.order.create({
         data: {
@@ -238,14 +241,28 @@ export async function POST(request: NextRequest) {
           discountAmount,
           paymentMethod,
           paymentStatus: 'PENDING',
+          prepTimeTarget: calculatedSla,
+          currentStage: 'STARTER',
           items: {
-            create: validatedItems.map((i) => ({
-              productId: i.productId,
-              quantity: i.quantity,
-              price: i.price,
-              notes: i.notes,
-              modifiers: i.modifiers,
-            })),
+            create: validatedItems.map((i) => {
+              const prod = dbProducts.find((p) => p.id === i.productId);
+              let stage = 'MAIN';
+              if (prod?.category?.name) {
+                const catName = prod.category.name.toLowerCase();
+                if (catName.includes('bebid') || catName.includes('drink') || catName.includes('trago')) stage = 'DRINK';
+                else if (catName.includes('entrad') || catName.includes('aperitiv') || catName.includes('starter')) stage = 'STARTER';
+                else if (catName.includes('postre') || catName.includes('dessert') || catName.includes('dulce')) stage = 'DESSERT';
+              }
+              return {
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                notes: i.notes,
+                modifiers: i.modifiers,
+                status: 'PENDING',
+                serviceStage: stage,
+              };
+            }),
           },
         },
         include: {

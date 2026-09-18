@@ -56,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const { status, driverId } = await req.json();
+    const { status, driverId, currentStage, itemUpdates } = await req.json();
     const { id } = await params;
     const orderId = id;
 
@@ -90,15 +90,61 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const updateData: Prisma.OrderUpdateInput = {};
-    if (status) updateData.status = status;
+    if (status) {
+      updateData.status = status;
+      if (status === 'PREPARING' && !order.cookingStartedAt) {
+        updateData.cookingStartedAt = new Date();
+      } else if (status === 'READY' && !order.cookingFinishedAt) {
+        updateData.cookingFinishedAt = new Date();
+      }
+    }
+    if (currentStage) {
+      updateData.currentStage = currentStage;
+    }
     if (driverId !== undefined) {
       updateData.driver = driverId ? { connect: { id: driverId } } : { disconnect: true };
     }
 
-    // Core requirement check: Deduct inventory stock if status is changing to DELIVERED
-    const isTransitioningToDelivered = status === 'DELIVERED' && order.status !== 'DELIVERED';
-
     const updatedOrder = await prisma.$transaction(async (tx) => {
+      // 0. Process individual item updates if provided
+      if (Array.isArray(itemUpdates) && itemUpdates.length > 0) {
+        for (const itm of itemUpdates) {
+          const itemUpdateData: Prisma.OrderItemUpdateInput = {
+            status: itm.status,
+          };
+          if (itm.status === 'COOKING') {
+            itemUpdateData.startedAt = new Date();
+          } else if (itm.status === 'DONE') {
+            itemUpdateData.finishedAt = new Date();
+          }
+          await tx.orderItem.update({
+            where: { id: itm.id },
+            data: itemUpdateData,
+          });
+        }
+
+        // If order was in RECEIVED and items started cooking/done, move order to PREPARING
+        if (order.status === 'RECEIVED' && !updateData.status) {
+          updateData.status = 'PREPARING';
+          if (!order.cookingStartedAt) {
+            updateData.cookingStartedAt = new Date();
+          }
+        }
+
+        // Check if all items in this order are now DONE
+        const currentItems = await tx.orderItem.findMany({
+          where: { orderId },
+        });
+        const allDone = currentItems.length > 0 && currentItems.every((i) => i.status === 'DONE');
+        if (allDone && order.status !== 'DELIVERED') {
+          updateData.status = 'READY';
+          updateData.cookingFinishedAt = new Date();
+        }
+      }
+
+      // Core requirement check: Deduct inventory stock if status is changing to DELIVERED
+      const effectiveStatus = (updateData.status as string) || order.status;
+      const isTransitioningToDelivered = effectiveStatus === 'DELIVERED' && order.status !== 'DELIVERED';
       // 1. Deduct stock if transitioning to DELIVERED
       if (isTransitioningToDelivered) {
         for (const orderItem of order.items) {

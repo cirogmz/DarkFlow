@@ -119,6 +119,8 @@ model Product {
   brandId     String
   brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   isActive    Boolean      @default(true)
+  targetPrepTime Int?      @default(10)
+  kitchenStation String?   @default("COCINA")
   recipeItems RecipeItem[]
   orderItems  OrderItem[]
   comboItems  ComboItem[]
@@ -207,21 +209,29 @@ model Order {
   paymentTransactions PaymentTransaction[]
   invoiceId    String?      @unique
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  prepTimeTarget Int?       @default(15)
+  cookingStartedAt DateTime?
+  cookingFinishedAt DateTime?
+  currentStage String?      @default("STARTER")
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
 
 model OrderItem {
-  id        String   @id @default(uuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Float
-  notes     String?
-  modifiers String?
+  id           String    @id @default(uuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  quantity     Int
+  price        Float
+  notes        String?
+  modifiers    String?
+  status       String    @default("PENDING")
+  serviceStage String?   @default("MAIN")
+  startedAt    DateTime?
+  finishedAt   DateTime?
 }
 
 model Purchase {

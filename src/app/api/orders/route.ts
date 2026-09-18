@@ -11,6 +11,8 @@ interface OrderItemInput {
   price: number;
   notes?: string | null;
   modifiers?: unknown;
+  serviceStage?: string | null;
+  status?: string;
 }
 
 export async function GET(req: NextRequest) {
@@ -153,6 +155,15 @@ export async function POST(req: NextRequest) {
     const totalOrdersCount = await prisma.order.count();
     const orderNumber = `DF-${1000 + totalOrdersCount + 1}`;
 
+    // Fetch products info to compute order prepTimeTarget (SLA) and default serviceStage
+    const productIds = typedItems.map((i) => i.productId);
+    const productsInfo = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, targetPrepTime: true, category: { select: { name: true } } },
+    });
+    const prodMap = new Map(productsInfo.map((p) => [p.id, p]));
+    const calculatedSla = productsInfo.reduce((max, p) => Math.max(max, p.targetPrepTime || 10), 10);
+
     // Create Order in transaction and update table/customer status
     const order = await prisma.$transaction(async (tx) => {
       let linkedCustomerId: string | null = null;
@@ -226,14 +237,34 @@ export async function POST(req: NextRequest) {
           paymentMethod,
           paymentStatus: finalPaymentStatus,
           paidAt: finalPaidAt,
+          prepTimeTarget: calculatedSla,
+          currentStage: 'STARTER',
           items: {
-            create: typedItems.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              price: item.price,
-              notes: item.notes || null,
-              modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
-            })),
+            create: typedItems.map((item) => {
+              const p = prodMap.get(item.productId);
+              let detectedStage = item.serviceStage;
+              if (!detectedStage && p?.category?.name) {
+                const catName = p.category.name.toLowerCase();
+                if (catName.includes('bebid') || catName.includes('drink') || catName.includes('trago') || catName.includes('refresco')) {
+                  detectedStage = 'DRINK';
+                } else if (catName.includes('entrad') || catName.includes('aperitiv') || catName.includes('starter') || catName.includes('botana')) {
+                  detectedStage = 'STARTER';
+                } else if (catName.includes('postre') || catName.includes('dessert') || catName.includes('dulce') || catName.includes('helado')) {
+                  detectedStage = 'DESSERT';
+                } else {
+                  detectedStage = 'MAIN';
+                }
+              }
+              return {
+                productId: item.productId,
+                quantity: item.quantity,
+                price: item.price,
+                notes: item.notes || null,
+                modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
+                status: item.status || 'PENDING',
+                serviceStage: detectedStage || 'MAIN',
+              };
+            }),
           },
         },
         include: {

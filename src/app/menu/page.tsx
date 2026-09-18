@@ -65,6 +65,8 @@ interface Product {
   categoryId: string;
   category?: Category;
   isActive: boolean;
+  targetPrepTime?: number | null;
+  kitchenStation?: string | null;
   recipeItems?: Array<{
     id: string;
     ingredientId: string;
@@ -109,6 +111,8 @@ export default function MenuManagementPage() {
   const [prodCatId, setProdCatId] = useState('');
   const [prodImgUrl, setProdImgUrl] = useState('');
   const [prodIsActive, setProdIsActive] = useState(true);
+  const [prodTargetPrepTime, setProdTargetPrepTime] = useState<number>(10);
+  const [prodKitchenStation, setProdKitchenStation] = useState<string>('COCINA');
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>([]);
 
   // Modifier Group Modal State
@@ -203,6 +207,8 @@ export default function MenuManagementPage() {
     setProdCatId(categories[0]?.id || '');
     setProdImgUrl('');
     setProdIsActive(true);
+    setProdTargetPrepTime(10);
+    setProdKitchenStation('COCINA');
     setSelectedModifierGroupIds([]);
     setIsProductModalOpen(true);
   };
@@ -215,6 +221,8 @@ export default function MenuManagementPage() {
     setProdCatId(prod.categoryId);
     setProdImgUrl(prod.imageUrl || '');
     setProdIsActive(prod.isActive);
+    setProdTargetPrepTime(prod.targetPrepTime || 10);
+    setProdKitchenStation(prod.kitchenStation || 'COCINA');
     const groupIds = (prod.modifierGroups || []).map((pmg: { modifierGroup?: { id: string }; modifierGroupId?: string }) => pmg.modifierGroup?.id || pmg.modifierGroupId).filter(Boolean);
     setSelectedModifierGroupIds(groupIds as string[]);
     setIsProductModalOpen(true);
@@ -239,6 +247,8 @@ export default function MenuManagementPage() {
             categoryId: prodCatId,
             imageUrl: prodImgUrl,
             isActive: prodIsActive,
+            targetPrepTime: prodTargetPrepTime,
+            kitchenStation: prodKitchenStation,
             modifierGroupIds: selectedModifierGroupIds,
           }),
         });
@@ -263,6 +273,8 @@ export default function MenuManagementPage() {
             categoryId: prodCatId,
             imageUrl: prodImgUrl,
             isActive: prodIsActive,
+            targetPrepTime: prodTargetPrepTime,
+            kitchenStation: prodKitchenStation,
             modifierGroupIds: selectedModifierGroupIds,
           }),
         });
@@ -1129,6 +1141,43 @@ export default function MenuManagementPage() {
                     onChange={(e) => setProdImgUrl(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
                   />
+                </div>
+
+                {/* KDS Config: Target Prep Time & Kitchen Station */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400 flex items-center gap-1">
+                      ⏱️ SLA Preparación (min) *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      required
+                      value={prodTargetPrepTime}
+                      onChange={(e) => setProdTargetPrepTime(Math.max(1, parseInt(e.target.value) || 10))}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-brand-primary outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500">Semáforo de cocina</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400 flex items-center gap-1">
+                      🍳 Estación KDS *
+                    </label>
+                    <select
+                      value={prodKitchenStation}
+                      onChange={(e) => setProdKitchenStation(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-brand-primary outline-none"
+                    >
+                      <option value="COCINA">Cocina Caliente</option>
+                      <option value="PARRILLA">Parrilla / Plancha</option>
+                      <option value="BARRA">Barra de Bebidas</option>
+                      <option value="POSTRES">Postres / Panadería</option>
+                      <option value="ENSALADAS">Barra Fría / Ensaladas</option>
+                    </select>
+                    <span className="text-[10px] text-slate-500">Ruteo de pantalla</span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-1">

@@ -537,6 +537,8 @@ export default function POSPage() {
             quantity: i.quantity,
             price: i.price,
             notes: i.notes,
+            modifiers: i.modifiers,
+            serviceStage: i.serviceStage,
           })),
         }),
       });

@@ -17,6 +17,7 @@ export interface CartItem {
   quantity: number;
   notes?: string;
   modifiers?: CartModifier[];
+  serviceStage?: string;
 }
 
 interface BrandTheme {

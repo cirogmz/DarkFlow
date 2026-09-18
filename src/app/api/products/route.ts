@@ -96,7 +96,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
-    const { name, description, price, categoryId, imageUrl, isActive = true, modifierGroupIds } = await req.json();
+    const { 
+      name, 
+      description, 
+      price, 
+      categoryId, 
+      imageUrl, 
+      isActive = true, 
+      modifierGroupIds,
+      targetPrepTime = 10,
+      kitchenStation = 'COCINA'
+    } = await req.json();
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json({ error: 'El nombre del platillo es requerido' }, { status: 400 });
@@ -128,6 +138,8 @@ export async function POST(req: NextRequest) {
         brandId: session.activeBrandId,
         imageUrl: imageUrl ? imageUrl.trim() : null,
         isActive: Boolean(isActive),
+        targetPrepTime: targetPrepTime ? parseInt(String(targetPrepTime), 10) : 10,
+        kitchenStation: kitchenStation ? String(kitchenStation).trim().toUpperCase() : 'COCINA',
         modifierGroups: Array.isArray(modifierGroupIds) && modifierGroupIds.length > 0
           ? {
               create: modifierGroupIds.map((groupId: string, idx: number) => ({
@@ -180,7 +192,18 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
-    const { id, name, description, price, categoryId, imageUrl, isActive, modifierGroupIds } = await req.json();
+    const { 
+      id, 
+      name, 
+      description, 
+      price, 
+      categoryId, 
+      imageUrl, 
+      isActive, 
+      modifierGroupIds,
+      targetPrepTime,
+      kitchenStation
+    } = await req.json();
 
     if (!id) {
       return NextResponse.json({ error: 'ID de platillo requerido' }, { status: 400 });
@@ -228,6 +251,8 @@ export async function PATCH(req: NextRequest) {
           categoryId: categoryId !== undefined ? categoryId : undefined,
           imageUrl: imageUrl !== undefined ? (imageUrl ? imageUrl.trim() : null) : undefined,
           isActive: isActive !== undefined ? Boolean(isActive) : undefined,
+          targetPrepTime: targetPrepTime !== undefined ? (targetPrepTime ? parseInt(String(targetPrepTime), 10) : 10) : undefined,
+          kitchenStation: kitchenStation !== undefined ? (kitchenStation ? String(kitchenStation).trim().toUpperCase() : 'COCINA') : undefined,
         },
         include: {
           category: true,
