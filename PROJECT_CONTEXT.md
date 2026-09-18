@@ -268,6 +268,19 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Descuento Atómico de Inventario**:
   - Al marcar comanda como `DELIVERED`, descuenta del almacén tanto la receta base como los insumos asociados a los modificadores elegidos en una única transacción de Prisma.
 
+### 6.17. Almacén y Costeo Avanzado (Sub-recetas, Mermas y Múltiples Bodegas)
+* **Sub-recetas Multinivel y Fichas Técnicas (`SubRecipeItem`)**:
+  - Definición de alimentos preparados (salsas, aderezos, masas de pizza) a partir de insumos base, con factor de rendimiento neto (`yieldQuantity`, `yieldUnit`) y recálculo automático de costo unitario ponderado.
+  - Órdenes de producción en cocina (`ProductionBatch`): al preparar un lote, se valida el stock disponible, se descuenta la materia prima base y se incrementa el insumo terminado atómicamente.
+* **Bitácora y Control de Mermas Operativas (`WasteLog`)**:
+  - Registro clasificado de pérdidas por `EXPIRATION` (caducidad), `KITCHEN_ERROR` (error cocina), `PREPARATION_WASTE` (porcionado), `DAMAGE_SPILL` (accidentes) y `OTHER`.
+  - Cuantificación financiera inmediata de la pérdida en pesos/dinero real y registro inmutable en auditoría forense (`WASTE_RECORDED`, `WARNING`).
+* **Múltiples Bodegas y Traspasos Internos (`Warehouse`, `WarehouseStock`, `WarehouseTransfer`)**:
+  - Centros de almacenamiento independientes (`Almacén General`, `Cocina Caliente`, `Barra de Bebidas`).
+  - Bitácora de traspaso de mercancía entre bodegas con validación de existencias origen y firma de responsable.
+* **Centro de Gestión de Inventarios (`/inventory`)**:
+  - Pestañas profesionales tipo ERP: Insumos & Stock (con filtro RAW vs PREPARED), Sub-recetas & Producción, Control de Mermas con métricas financieras, Bodegas & Traspasos, Compras y Fichas de Platillos.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -391,7 +404,7 @@ darkflow/
 * ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).
 * ✅ **Fase 15 (Completada):** Operativa de Salón Avanzada (Cuentas Divididas por partes iguales o platillos, Reubicación y Fusión atómica de mesas en `/tables`, y Control/Reparto equitativo de propinas en `/pos` y `/cash`).
 * ✅ **Fase 16 (Completada):** Modificadores Avanzados, Grupos de Extras y Términos de Cocina (Términos de carne, toppings adicionales, descuentos automáticos de inventario, modal táctil en POS y QR, badges en KDS y desglose en tickets térmicos).
-* ⏳ **Fase 17 (Próxima):** Almacén y Costeo Avanzado — Sub-recetas Multinivel, Registro de Mermas Operativas y Traspasos entre Bodegas.
-* ⏳ **Fase 18 (Planeada):** Facturación Fiscal Mexicana (CFDI 4.0 Directo & Portal Público de Auto-Facturaci&oacute;n).
+* ✅ **Fase 17 (Completada):** Almacén y Costeo Avanzado (Sub-recetas multinivel, órdenes de producción en cocina, bitácora clasificada de mermas con impacto financiero y traspasos internos entre bodegas).
+* ⏳ **Fase 18 (Próxima):** Facturación Fiscal Mexicana (CFDI 4.0 Directo con PAC & Portal Público de Auto-Facturación).
 * ⏳ **Fase 19 (Planeada):** KDS Avanzado (Semáforos SLA por Platillo, Tiempos de Servicio y Comanda por Tiempos).
 * ⏳ **Fase 20 (Planeada):** Hardware Bridge Local & Impresión Silenciosa Desatendida (ESC/POS LAN/IP).
