@@ -59,6 +59,14 @@ model Brand {
   productionBatches ProductionBatch[]
   warehouseTransfers WarehouseTransfer[]
   wasteLogs      WasteLog[]
+  rfc            String?
+  legalName      String?
+  taxRegime      String?       @default("601")
+  postalCode     String?
+  invoiceSeries  String?       @default("FAC")
+  invoiceNextFolio Int         @default(1)
+  pacEnvironment String        @default("SANDBOX")
+  invoices       Invoice[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -197,6 +205,8 @@ model Order {
   paidAt        DateTime?
   paymentTransactionId String?
   paymentTransactions PaymentTransaction[]
+  invoiceId    String?      @unique
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -498,4 +508,42 @@ model WasteLog {
   userId       String?
   user         User?      @relation(fields: [userId], references: [id])
   createdAt    DateTime   @default(now())
+}
+
+model Invoice {
+  id                    String    @id @default(uuid())
+  uuid                  String    @unique
+  folio                 Int
+  serie                 String    @default("FAC")
+  brandId               String
+  brand                 Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderId               String?   @unique
+  order                 Order?
+  rfcReceptor           String
+  nombreReceptor        String
+  regimenFiscalReceptor String
+  codigoPostalReceptor  String
+  usoCfdi               String
+  emailReceptor         String?
+  subtotal              Float
+  descuento             Float     @default(0)
+  iva                   Float
+  total                 Float
+  formaPago             String
+  metodoPago            String    @default("PUE")
+  fechaEmision          DateTime  @default(now())
+  fechaTimbrado         DateTime  @default(now())
+  selloDigital          String
+  selloSat              String
+  noCertificadoSat      String
+  cadenaOriginalSat     String
+  qrSatUrl              String
+  xmlContent            String
+  status                String    @default("TIMBRADO")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([uuid])
+  @@index([rfcReceptor])
 }

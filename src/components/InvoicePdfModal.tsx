@@ -47,6 +47,22 @@ export interface InvoiceOrderData {
       name: string;
     };
   }>;
+  invoice?: {
+    id?: string;
+    uuid: string;
+    folio: number;
+    serie: string;
+    rfcReceptor: string;
+    nombreReceptor: string;
+    regimenFiscalReceptor?: string;
+    codigoPostalReceptor?: string;
+    usoCfdi?: string;
+    selloDigital?: string;
+    selloSat?: string;
+    noCertificadoSat?: string;
+    cadenaOriginalSat?: string;
+    qrSatUrl?: string;
+  } | null;
 }
 
 interface InvoicePdfModalProps {
@@ -232,6 +248,16 @@ export default function InvoicePdfModal({
               </button>
             </div>
 
+            {order.invoice && (
+              <button
+                onClick={() => window.open(`/api/invoices/${order.invoice?.id || order.invoice?.uuid}?format=xml`, '_blank')}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer border border-slate-700"
+              >
+                <FileText className="w-4 h-4 text-brand-primary" />
+                <span className="hidden sm:inline">Descargar</span> XML
+              </button>
+            )}
+
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-lg cursor-pointer"
@@ -303,8 +329,11 @@ export default function InvoicePdfModal({
                 {docMode === 'INVOICE' && (
                   <div className="text-[11px] text-slate-600 font-mono space-y-0.5">
                     <p><strong>FOLIO FISCAL (UUID):</strong></p>
-                    <p className="text-[10px] text-slate-800 break-all">{simulatedUUID}</p>
-                    <p><strong>No. Serie CSD:</strong> 00001000000508492011</p>
+                    <p className="text-[10px] text-brand-primary font-bold break-all">
+                      {order.invoice?.uuid || simulatedUUID}
+                    </p>
+                    <p><strong>Serie y Folio:</strong> {order.invoice ? `${order.invoice.serie}-${order.invoice.folio}` : 'FAC-1001'}</p>
+                    <p><strong>No. Serie CSD SAT:</strong> {order.invoice?.noCertificadoSat || '30001000000500003416'}</p>
                   </div>
                 )}
                 <p className="text-xs text-slate-600 pt-1">
@@ -327,9 +356,15 @@ export default function InvoicePdfModal({
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                   DATOS DEL RECEPTOR / CLIENTE
                 </span>
-                <p className="text-sm font-bold text-slate-900">{order.customerName || 'PÚBLICO EN GENERAL'}</p>
-                <p className="text-slate-600 mt-0.5"><strong>R.F.C.:</strong> XAXX010101000</p>
-                <p className="text-slate-600"><strong>Uso de CFDI:</strong> G03 - Gastos en general / S01 - Sin efectos</p>
+                <p className="text-sm font-bold text-slate-900">{order.invoice?.nombreReceptor || order.customerName || 'PÚBLICO EN GENERAL'}</p>
+                <p className="text-slate-600 mt-0.5"><strong>R.F.C.:</strong> {order.invoice?.rfcReceptor || 'XAXX010101000'}</p>
+                <p className="text-slate-600"><strong>Uso de CFDI:</strong> {order.invoice?.usoCfdi || 'G03 - Gastos en general'}</p>
+                {order.invoice?.regimenFiscalReceptor && (
+                  <p className="text-slate-600"><strong>Régimen Receptor:</strong> {order.invoice.regimenFiscalReceptor}</p>
+                )}
+                {order.invoice?.codigoPostalReceptor && (
+                  <p className="text-slate-600"><strong>C.P. Domicilio:</strong> {order.invoice.codigoPostalReceptor}</p>
+                )}
               </div>
 
               <div>
@@ -450,10 +485,18 @@ export default function InvoicePdfModal({
             {/* Digital Seals, QR Code and Footer (For Invoice Mode) */}
             {docMode === 'INVOICE' && (
               <div className="pt-6 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
-                {/* QR Code Graphic (Vector SVG representation) */}
+                {/* QR Code Graphic */}
                 <div className="flex flex-col items-center justify-center p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                  <div className="w-24 h-24 bg-white border border-slate-300 p-1 flex items-center justify-center rounded">
-                    <QrCode className="w-20 h-20 text-slate-900" />
+                  <div className="w-24 h-24 bg-white border border-slate-300 p-1 flex items-center justify-center rounded overflow-hidden">
+                    {order.invoice?.qrSatUrl ? (
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(order.invoice.qrSatUrl)}`}
+                        alt="QR SAT"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <QrCode className="w-20 h-20 text-slate-900" />
+                    )}
                   </div>
                   <span className="text-[9px] font-mono text-slate-500 mt-1">Verificación SAT</span>
                 </div>
@@ -463,19 +506,19 @@ export default function InvoicePdfModal({
                   <div>
                     <p className="font-bold text-slate-700">SELLO DIGITAL DEL EMISOR:</p>
                     <p className="truncate text-slate-600">
-                      kX9qP2bW4rT7yU8iO1pA3sD5fG6hJ7kL9zX8cV7bN5mQ2wE4rT6yU8iO1pA3sD5fG7hJ8kL0zX==
+                      {order.invoice?.selloDigital || 'kX9qP2bW4rT7yU8iO1pA3sD5fG6hJ7kL9zX8cV7bN5mQ2wE4rT6yU8iO1pA3sD5fG7hJ8kL0zX=='}
                     </p>
                   </div>
                   <div>
                     <p className="font-bold text-slate-700">SELLO DIGITAL DEL SAT:</p>
                     <p className="truncate text-slate-600">
-                      vB6nM8kL0zX9qP2bW4rT7yU8iO1pA3sD5fG6hJ7kL9zX8cV7bN5mQ2wE4rT6yU8iO1pA3sD5fG==
+                      {order.invoice?.selloSat || 'vB6nM8kL0zX9qP2bW4rT7yU8iO1pA3sD5fG6hJ7kL9zX8cV7bN5mQ2wE4rT6yU8iO1pA3sD5fG=='}
                     </p>
                   </div>
                   <div>
                     <p className="font-bold text-slate-700">CADENA ORIGINAL DEL COMPLEMENTO DE CERTIFICACIÓN DIGITAL DEL SAT:</p>
                     <p className="truncate text-slate-600">
-                      ||1.1|{simulatedUUID}|{new Date().toISOString()}|DFK190822ABC|kX9qP2bW4rT7yU8iO1pA3sD5fG6hJ7kL==|00001000000508492011||
+                      {order.invoice?.cadenaOriginalSat || `||1.1|${simulatedUUID}|${new Date().toISOString()}|DFK190822ABC|kX9qP2bW4rT7yU8iO1pA3sD5fG6hJ7kL==|00001000000508492011||`}
                     </p>
                   </div>
                 </div>

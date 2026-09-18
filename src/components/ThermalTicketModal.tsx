@@ -347,10 +347,16 @@ export default function ThermalTicketModal({
                 </div>
 
                 {/* Footer */}
-                <div className="text-center pt-2 space-y-1 text-[10px] text-slate-600">
+                <div className="text-center pt-2 space-y-1 text-[10px] text-slate-600 border-t border-dashed border-slate-300">
                   <p className="font-bold">¡GRACIAS POR SU PREFERENCIA!</p>
-                  <p>ESTE COMPROBANTE NO ES UN COMPROBANTE FISCAL</p>
-                  <p className="font-mono">*** DARKFLOW POS SYSTEM ***</p>
+                  <div className="p-1.5 bg-slate-100 rounded border border-slate-300 font-mono text-[9px] text-slate-800 space-y-0.5">
+                    <p className="font-bold">¿REQUIERE FACTURA FISCAL CFDI 4.0?</p>
+                    <p>Genérela en línea en:</p>
+                    <p className="font-black text-black">/facturacion</p>
+                    <p>Folio: <strong>{order.orderNumber}</strong> • Total: <strong>${total.toFixed(2)}</strong></p>
+                    <p className="text-[8px] text-slate-500">Válido durante el mes en curso</p>
+                  </div>
+                  <p className="font-mono pt-0.5">*** DARKFLOW POS SYSTEM ***</p>
                 </div>
               </div>
             )}

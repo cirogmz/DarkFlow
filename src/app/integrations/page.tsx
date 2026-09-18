@@ -21,8 +21,12 @@ import {
   ShieldCheck,
   Key,
   ExternalLink,
-  Zap
+  Zap,
+  FileText,
+  Building2,
+  QrCode
 } from 'lucide-react';
+import { TAX_REGIMES } from '@/lib/cfdi';
 
 interface PaymentConfigData {
   id: string;
@@ -82,7 +86,19 @@ interface DeliveryMetrics {
 
 export default function IntegrationsPage() {
   const { activeBrand, addNotification } = useAppStore();
-  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS'>('SIMULATOR');
+  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING'>('SIMULATOR');
+
+  // Invoicing State (CFDI 4.0)
+  const [invoicingRfc, setInvoicingRfc] = useState('');
+  const [invoicingLegalName, setInvoicingLegalName] = useState('');
+  const [invoicingTaxRegime, setInvoicingTaxRegime] = useState('601');
+  const [invoicingPostalCode, setInvoicingPostalCode] = useState('');
+  const [invoicingSeries, setInvoicingSeries] = useState('A');
+  const [invoicingNextFolio, setInvoicingNextFolio] = useState(1);
+  const [invoicingPacEnvironment, setInvoicingPacEnvironment] = useState<'SANDBOX' | 'PRODUCTION'>('SANDBOX');
+  const [invoicingCount, setInvoicingCount] = useState(0);
+  const [savingInvoicingConfig, setSavingInvoicingConfig] = useState(false);
+  const [copiedPortalUrl, setCopiedPortalUrl] = useState(false);
 
   // Payments State
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfigData | null>(null);
@@ -222,10 +238,33 @@ export default function IntegrationsPage() {
     }
   }, [activeBrand?.id]);
 
+  const loadInvoicingConfig = useCallback(async () => {
+    if (!activeBrand?.id) return;
+    try {
+      const res = await fetch(`/api/integrations/invoicing?brandId=${activeBrand.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          setInvoicingRfc(data.config.rfc || '');
+          setInvoicingLegalName(data.config.legalName || '');
+          setInvoicingTaxRegime(data.config.taxRegime || '601');
+          setInvoicingPostalCode(data.config.postalCode || '');
+          setInvoicingSeries(data.config.invoiceSeries || 'A');
+          setInvoicingNextFolio(data.config.invoiceNextFolio || 1);
+          setInvoicingPacEnvironment(data.config.pacEnvironment || 'SANDBOX');
+          setInvoicingCount(data.config.invoiceCount || 0);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading invoicing config', err);
+    }
+  }, [activeBrand?.id]);
+
   useEffect(() => {
     loadData();
     loadPaymentConfig();
-  }, [loadData, loadPaymentConfig, activeBrand?.id]);
+    loadInvoicingConfig();
+  }, [loadData, loadPaymentConfig, loadInvoicingConfig, activeBrand?.id]);
 
   // When platform changes, update commission and prefix
   const handlePlatformChange = (p: 'UBER_EATS' | 'RAPPI' | 'DIDI_FOOD') => {
@@ -436,6 +475,52 @@ export default function IntegrationsPage() {
     }
   };
 
+  const invoicingPortalUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/facturacion`
+    : 'https://darkflow.app/facturacion';
+
+  const handleCopyPortalUrl = () => {
+    navigator.clipboard.writeText(invoicingPortalUrl);
+    setCopiedPortalUrl(true);
+    addNotification('URL del portal de autofacturación copiada al portapapeles', 'info');
+    setTimeout(() => setCopiedPortalUrl(false), 2000);
+  };
+
+  const handleSaveInvoicingConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeBrand?.id) return;
+    setSavingInvoicingConfig(true);
+    try {
+      const res = await fetch('/api/integrations/invoicing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandId: activeBrand.id,
+          rfc: invoicingRfc,
+          legalName: invoicingLegalName,
+          taxRegime: invoicingTaxRegime,
+          postalCode: invoicingPostalCode,
+          invoiceSeries: invoicingSeries,
+          invoiceNextFolio: Number(invoicingNextFolio),
+          pacEnvironment: invoicingPacEnvironment,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        addNotification('Configuración fiscal CFDI 4.0 guardada correctamente', 'success');
+        loadInvoicingConfig();
+      } else {
+        addNotification(data.error || 'Error al guardar configuración fiscal', 'error');
+      }
+    } catch (err) {
+      console.error('Error saving invoicing config', err);
+      addNotification('Error de conexión al guardar configuración fiscal', 'error');
+    } finally {
+      setSavingInvoicingConfig(false);
+    }
+  };
+
   return (
     <DashboardContainer>
       <div className="space-y-6">
@@ -546,6 +631,17 @@ export default function IntegrationsPage() {
           >
             <FileCode className="w-4 h-4 text-blue-400" />
             Documentación & Webhook URL
+          </button>
+          <button
+            onClick={() => setActiveTab('INVOICING')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'INVOICING'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-purple-400" />
+            Facturación SAT CFDI 4.0 {invoicingCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-bold">{invoicingCount}</span>}
           </button>
         </div>
 
@@ -1232,7 +1328,258 @@ export default function IntegrationsPage() {
             </div>
           </div>
         )}
+
+        {/* TAB 5: CFDI 4.0 INVOICING */}
+        {activeTab === 'INVOICING' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left: Configuration Form */}
+            <div className="lg:col-span-2 space-y-5">
+              <form onSubmit={handleSaveInvoicingConfig} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-xl">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-base">Datos Fiscales del Emisor</h3>
+                      <p className="text-xs text-slate-400">Configuración requerida por el SAT según la Reforma Fiscal CFDI versión 4.0</p>
+                    </div>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                    invoicingPacEnvironment === 'PRODUCTION'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`}>
+                    {invoicingPacEnvironment === 'PRODUCTION' ? 'PAC: Producción SAT' : 'PAC: Ambiente Sandbox'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* RFC Emisor */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      RFC del Contribuyente *
+                    </label>
+                    <input
+                      type="text"
+                      value={invoicingRfc}
+                      onChange={(e) => setInvoicingRfc(e.target.value.toUpperCase())}
+                      placeholder="Ej: DFL230518AA1"
+                      maxLength={13}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-purple-500"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">12 caracteres para Personas Morales, 13 para Físicas</p>
+                  </div>
+
+                  {/* Razón Social */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Razón Social Oficial *
+                    </label>
+                    <input
+                      type="text"
+                      value={invoicingLegalName}
+                      onChange={(e) => setInvoicingLegalName(e.target.value.toUpperCase())}
+                      placeholder="Ej: RESTAURANTES DEL NORTE SA DE CV"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-purple-500"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">Nombre registrado tal como aparece en la Constancia Fiscal</p>
+                  </div>
+
+                  {/* Régimen Fiscal */}
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Régimen Fiscal (Catálogo SAT) *
+                    </label>
+                    <select
+                      value={invoicingTaxRegime}
+                      onChange={(e) => setInvoicingTaxRegime(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                    >
+                      {TAX_REGIMES.map(reg => (
+                        <option key={reg.code} value={reg.code}>{reg.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Código Postal */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Lugar de Expedición (Código Postal) *
+                    </label>
+                    <input
+                      type="text"
+                      value={invoicingPostalCode}
+                      onChange={(e) => setInvoicingPostalCode(e.target.value.trim())}
+                      placeholder="Ej: 06700"
+                      maxLength={5}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  {/* Serie y Folio */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Serie
+                      </label>
+                      <input
+                        type="text"
+                        value={invoicingSeries}
+                        onChange={(e) => setInvoicingSeries(e.target.value.toUpperCase())}
+                        maxLength={5}
+                        placeholder="A"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-purple-500 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Próximo Folio
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={invoicingNextFolio}
+                        onChange={(e) => setInvoicingNextFolio(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-purple-500 text-center"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Entorno PAC */}
+                  <div className="md:col-span-2 pt-2">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                      Ambiente de Timbrado
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setInvoicingPacEnvironment('SANDBOX')}
+                        className={`p-3 rounded-xl border text-left flex items-start gap-3 transition-all ${
+                          invoicingPacEnvironment === 'SANDBOX'
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-300'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <Zap className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+                        <div>
+                          <p className="text-sm font-bold">Modo Sandbox (Pruebas)</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Genera timbres y sellos de prueba sin efectos fiscales reales</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setInvoicingPacEnvironment('PRODUCTION')}
+                        className={`p-3 rounded-xl border text-left flex items-start gap-3 transition-all ${
+                          invoicingPacEnvironment === 'PRODUCTION'
+                            ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5 text-emerald-400" />
+                        <div>
+                          <p className="text-sm font-bold">Modo Producción (SAT Real)</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Envía el CFDI 4.0 al PAC certificado para timbrado fiscal</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingInvoicingConfig}
+                    className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all"
+                  >
+                    {savingInvoicingConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {savingInvoicingConfig ? 'Guardando...' : 'Guardar Configuración Fiscal'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Right: Portal and Status cards */}
+            <div className="space-y-5">
+              {/* Public Self-Invoicing Portal Card */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Portal de Auto-Facturación</h4>
+                    <p className="text-[11px] text-slate-400">Acceso público para tus clientes</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Tus comensales pueden facturar sus tickets en menos de 1 minuto desde cualquier dispositivo móvil o computadora. El enlace se imprime automáticamente al pie de los tickets térmicos.
+                </p>
+
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs text-purple-300 truncate">{invoicingPortalUrl}</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyPortalUrl}
+                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0"
+                  >
+                    {copiedPortalUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedPortalUrl ? 'Copiado' : 'Copiar'}
+                  </button>
+                </div>
+
+                <a
+                  href="/facturacion"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 bg-purple-600/10 hover:bg-purple-600/20 border border-purple-500/30 text-purple-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Abrir Portal de Clientes
+                </a>
+              </div>
+
+              {/* Status and Specs Card */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <h4 className="font-bold text-white text-xs uppercase tracking-wider text-slate-400">
+                  Estado del Módulo Fiscal
+                </h4>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs">
+                    <span className="text-slate-400">Facturas Timbradas</span>
+                    <span className="font-mono font-bold text-purple-400">{invoicingCount} CFDIs</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs">
+                    <span className="text-slate-400">Versión CFDI</span>
+                    <span className="font-mono font-bold text-white">4.0 (Anexo 20 SAT)</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs">
+                    <span className="text-slate-400">Formato de Sello</span>
+                    <span className="font-mono text-slate-300">SHA256withRSA</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs">
+                    <span className="text-slate-400">Complementos</span>
+                    <span className="font-mono text-emerald-400">tfd:TimbreFiscalDigital 1.1</span>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    💡 Cumple con los requisitos del SAT para restaurantes, dark kitchens y servicios de comida para llevar.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardContainer>
   );
 }
+
