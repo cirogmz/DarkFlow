@@ -1,9 +1,9 @@
 # DarkFlow Manager - Documento Maestro de Contexto del Proyecto
 
 > **Fuente Única de Verdad (Single Source of Truth)**  
-> **Versión del Documento:** 1.18.0  
+> **Versión del Documento:** 1.19.0  
 > **Última Actualización:** 2026-09-18  
-> **Estado del Proyecto:** Facturación Fiscal Mexicana CFDI 4.0 (Fase 18 Operativa)
+> **Estado del Proyecto:** KDS Avanzado con Semáforos SLA y Tiempos de Servicio (Fase 19 Operativa)
 
 ---
 
@@ -302,6 +302,25 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Configuración por Marca (`/integrations` - Tab Facturación CFDI 4.0)**:
   - Formulario administrativo para configurar RFC, Razón Social, Régimen Fiscal, Código Postal, Serie, Folio Consecutivo y selector de ambiente (Sandbox vs Producción).
 
+### 6.19. KDS Avanzado (Semáforos SLA por Platillo, Tiempos de Servicio y Ruteo por Estaciones)
+* **Semáforos SLA Inteligentes en Tiempo Real**:
+  - Tiempo objetivo diferenciado por platillo (`targetPrepTime`) y consolidado por comanda (`prepTimeTarget`).
+  - Barra de progreso y cronómetro en vivo con código de semáforo:
+    - 🟢 **En Tiempo** (< 70% del SLA).
+    - 🟡 **Alerta SLA** (70% - 100% del SLA).
+    - 🔴 **Vencido / Fuera de SLA** (> 100% del SLA) con cálculo dinámico del tiempo de demora (+MM:SS retraso) y borde pulsante de advertencia.
+* **Comanda por Tiempos de Servicio ("Marcha de Comanda")**:
+  - Agrupación visual de platillos en 3 bloques operativos: `1er Tiempo (Entradas & Bebidas)`, `2do Tiempo (Platos Fuertes)` y `3er Tiempo (Postres)`.
+  - Botón interactivo **"Marchar Siguiente Tiempo"** en cocina y salón para activar el siguiente bloque de cocción con timbre auditivo SSE en tiempo real.
+* **Control Interactivo por Platillo Individual (`itemUpdates`)**:
+  - Ciclo de estados independiente por platillo (`PENDING` ➔ `COOKING` ➔ `DONE`) con timestamps `startedAt` y `finishedAt`.
+  - Transición automática: al marcar todos los platillos como `DONE`, la orden avanza automáticamente a `READY` y detona la campana de despacho.
+* **Ruteo de Pantalla por Estaciones de Trabajo (`kitchenStation`)**:
+  - Filtro táctil en cabecera: `Todas`, `Cocina Caliente`, `Parrilla / Plancha`, `Barra de Bebidas`, `Postres / Panadería` y `Barra Fría / Ensaladas`.
+  - Conteo en vivo de platillos pendientes por estación.
+* **Métricas KDS en Vivo**:
+  - Indicador de % de Cumplimiento de SLA del turno y cronómetro de preparación.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -430,6 +449,7 @@ darkflow/
 * ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).
 * ✅ **Fase 15 (Completada):** Operativa de Salón Avanzada (Cuentas Divididas por partes iguales o platillos, Reubicación y Fusión atómica de mesas en `/tables`, y Control/Reparto equitativo de propinas en `/pos` y `/cash`).
 * ✅ **Fase 16 (Completada):** Modificadores Avanzados, Grupos de Extras y Términos de Cocina (Términos de carne, toppings adicionales, descuentos automáticos de inventario, modal táctil en POS y QR, badges en KDS y desglose en tickets térmicos).
+* ✅ **Fase 17 (Completada):** Almacén y Costeo Avanzado (Sub-recetas multinivel, órdenes de producción en cocina, bitácora clasificada de mermas con impacto financiero y traspasos internos entre bodegas).
 * ✅ **Fase 18 (Completada):** Facturación Fiscal Mexicana CFDI 4.0 (Motor Anexo 20 SAT, generación de XML con sellos SHA256 y Timbre Fiscal Digital, API `/api/invoices`, Portal Público `/facturacion` para comensales, avisos en tickets térmicos y tab en `/integrations`).
-* ⏳ **Fase 19 (Próxima):** KDS Avanzado (Semáforos SLA por Platillo, Tiempos de Servicio y Comanda por Tiempos).
-* ⏳ **Fase 20 (Planeada):** Hardware Bridge Local & Impresión Silenciosa Desatendida (ESC/POS LAN/IP).
+* ✅ **Fase 19 (Completada):** KDS Avanzado (Semáforos SLA en tiempo real por comanda y platillo, comanda por tiempos de servicio con marcha interactiva, marcado de platillos por ítem y ruteo por estaciones de cocina).
+* ⏳ **Fase 20 (Próxima):** Hardware Bridge Local & Impresión Silenciosa Desatendida (ESC/POS LAN/IP / Impresoras Térmicas de Red).
