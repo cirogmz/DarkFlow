@@ -1,9 +1,9 @@
 # DarkFlow Manager - Documento Maestro de Contexto del Proyecto
 
 > **Fuente Única de Verdad (Single Source of Truth)**  
-> **Versión del Documento:** 1.0.0  
-> **Última Actualización:** 2026-09-01  
-> **Estado del Proyecto:** MVP Funcional Avanzado (Fase 1 Operativa)
+> **Versión del Documento:** 1.18.0  
+> **Última Actualización:** 2026-09-18  
+> **Estado del Proyecto:** Facturación Fiscal Mexicana CFDI 4.0 (Fase 18 Operativa)
 
 ---
 
@@ -281,6 +281,27 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Centro de Gestión de Inventarios (`/inventory`)**:
   - Pestañas profesionales tipo ERP: Insumos & Stock (con filtro RAW vs PREPARED), Sub-recetas & Producción, Control de Mermas con métricas financieras, Bodegas & Traspasos, Compras y Fichas de Platillos.
 
+### 6.18. Facturación Fiscal Mexicana (CFDI 4.0 Directo & Portal Público de Auto-Facturación)
+* **Motor CFDI 4.0 Nativo (`src/lib/cfdi.ts`)**:
+  - Implementación compliant con el **Anexo 20 del SAT** (versión 4.0). Genera el árbol XML canónico con `<cfdi:Comprobante>`, `<cfdi:Emisor>`, `<cfdi:Receptor>`, `<cfdi:Conceptos>`, `<cfdi:Impuestos>`, sellos digitales criptográficos SHA256withRSA, y el nodo de timbre `<tfd:TimbreFiscalDigital>` versión 1.1 con UUID SAT.
+  - Catálogos oficiales del SAT integrados: Regímenes Fiscales (`601`, `612`, `626`, etc.), Usos de CFDI (`G01`, `G03`, `S01`, `CP01`, etc.), Formas de Pago (`01`, `03`, `04`, `28`, etc.) y Métodos (`PUE`, `PPD`).
+  - Validación de RFC para Personas Físicas (13 caracteres), Personas Morales (12 caracteres), y genéricos del SAT (`XAXX010101000`, `XEXX010101000`).
+  - Generación de la URL oficial de verificación SAT con código QR (`https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?...`).
+* **Modelo de Datos `Invoice`**:
+  - Relación 1-a-1 con `Order` (`order.invoiceId` con `@unique` para prevención de doble facturación).
+  - Almacena UUID fiscal, serie, folio consecutivo por marca, datos fiscales completos del receptor, desglose de subtotal/IVA/total, XML timbrado inmutable, y sellos digitales.
+* **Portal de Auto-Facturación para Comensales (`/facturacion`)**:
+  - Portal web público responsivo (móvil y escritorio) para clientes de restaurantes y dark kitchens.
+  - Búsqueda por número de ticket (`#DF-...`) y fecha/importe para consultar comanda.
+  - Formulario de captura fiscal guiada con validación de RFC en tiempo real, selección de régimen y uso de CFDI.
+  - Emisión y timbrado en 1 clic con descarga inmediata de archivos oficiales: XML y PDF.
+* **Tickets Térmicos con Datos de Facturación (`ThermalTicketModal`)**:
+  - Impresión automática en el pie de los tickets de venta con el número de orden y la URL del portal de autofacturación para que el cliente facture desde su teléfono.
+* **Representación Impresa PDF con Datos SAT (`InvoicePdfModal`)**:
+  - Incluye UUID timbrado, régimen fiscal del emisor y receptor, sellos digitales, cadena original del SAT y código QR de verificación fiscal.
+* **Configuración por Marca (`/integrations` - Tab Facturación CFDI 4.0)**:
+  - Formulario administrativo para configurar RFC, Razón Social, Régimen Fiscal, Código Postal, Serie, Folio Consecutivo y selector de ambiente (Sandbox vs Producción).
+
 ---
 
 ## 7. Estructura de Directorios
@@ -311,16 +332,19 @@ darkflow/
 │   │   │   ├── delivery-simulator/ # Simulador y webhooks de Uber Eats, Rappi, DiDi Food
 │   │   │   ├── drivers/      # Perfiles y estados de repartidores
 │   │   │   ├── health/       # Healthcheck activo de DB y uptime (/api/health)
-│   │   │   ├── integrations/ # Webhooks y configuración de pasarelas de pago y delivery
+│   │   │   ├── integrations/ # Webhooks y configuración de pasarelas, delivery y fiscal
 │   │   │   │   ├── delivery/ # Métricas y resumen financiero de delivery
+│   │   │   │   ├── invoicing/# Configuración fiscal CFDI 4.0 por marca
 │   │   │   │   └── payments/ # Credenciales y configuración de Stripe & Mercado Pago
-│   │   │   ├── inventory/    # Insumos, compras y recetas
+│   │   │   ├── inventory/    # Insumos, compras, sub-recetas, mermas y bodegas
+│   │   │   ├── invoices/     # Emisión, consulta y descarga de CFDI 4.0 (XML/JSON)
 │   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
 │   │   │   ├── payments/     # Creación de sesiones de pago y confirmación sandbox
 │   │   │   │   ├── confirm-sandbox/ # Aprobación 1-clic de órdenes sandbox
 │   │   │   │   └── create-session/  # Generación de Stripe Checkout o MP Preference
 │   │   │   ├── products/     # Catálogo de platillos por marca
-│   │   │   ├── public/       # APIs públicas para clientes (menú, órdenes, tracking)
+│   │   │   ├── public/       # APIs públicas para clientes (menú, órdenes, autofacturación)
+│   │   │   │   └── invoicing/# Lookup y timbrado de facturas para comensales
 │   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
 │   │   │   ├── tables/       # Mesas físicas, estados y comensales
 │   │   │   ├── users/        # Gestión de personal, credenciales y RBAC
@@ -332,7 +356,8 @@ darkflow/
 │   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
 │   │   ├── delivery-simulator/page.tsx # Simulador de Delivery Apps
 │   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes (En Vivo SSE)
-│   │   ├── integrations/page.tsx # Hub de Integraciones (Delivery Apps & Pasarelas de Pago)
+│   │   ├── facturacion/page.tsx # Portal Público de Auto-Facturación CFDI 4.0 para Comensales
+│   │   ├── integrations/page.tsx # Hub de Integraciones (Delivery Apps, Pasarelas y CFDI 4.0)
 │   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
 │   │   ├── kitchen/page.tsx  # Vista KDS de Cocina en Tiempo Real (SSE + Campana)
 │   │   ├── login/page.tsx    # Vista de Login con accesos demo
@@ -355,6 +380,7 @@ darkflow/
 │   ├── lib/
 │   │   ├── audit.ts          # Helper resiliente para registro de auditoría y captura de IP
 │   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
+│   │   ├── cfdi.ts           # Motor Anexo 20 SAT CFDI 4.0, sellado criptográfico y QR
 │   │   ├── db.ts             # Instancia singleton de Prisma Client
 │   │   ├── events.ts         # Singleton de EventEmitter para eventos reactivos
 │   │   ├── hash.ts           # Hash y verificación PBKDF2 de contraseñas
@@ -404,7 +430,6 @@ darkflow/
 * ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).
 * ✅ **Fase 15 (Completada):** Operativa de Salón Avanzada (Cuentas Divididas por partes iguales o platillos, Reubicación y Fusión atómica de mesas en `/tables`, y Control/Reparto equitativo de propinas en `/pos` y `/cash`).
 * ✅ **Fase 16 (Completada):** Modificadores Avanzados, Grupos de Extras y Términos de Cocina (Términos de carne, toppings adicionales, descuentos automáticos de inventario, modal táctil en POS y QR, badges en KDS y desglose en tickets térmicos).
-* ✅ **Fase 17 (Completada):** Almacén y Costeo Avanzado (Sub-recetas multinivel, órdenes de producción en cocina, bitácora clasificada de mermas con impacto financiero y traspasos internos entre bodegas).
-* ⏳ **Fase 18 (Próxima):** Facturación Fiscal Mexicana (CFDI 4.0 Directo con PAC & Portal Público de Auto-Facturación).
-* ⏳ **Fase 19 (Planeada):** KDS Avanzado (Semáforos SLA por Platillo, Tiempos de Servicio y Comanda por Tiempos).
+* ✅ **Fase 18 (Completada):** Facturación Fiscal Mexicana CFDI 4.0 (Motor Anexo 20 SAT, generación de XML con sellos SHA256 y Timbre Fiscal Digital, API `/api/invoices`, Portal Público `/facturacion` para comensales, avisos en tickets térmicos y tab en `/integrations`).
+* ⏳ **Fase 19 (Próxima):** KDS Avanzado (Semáforos SLA por Platillo, Tiempos de Servicio y Comanda por Tiempos).
 * ⏳ **Fase 20 (Planeada):** Hardware Bridge Local & Impresión Silenciosa Desatendida (ESC/POS LAN/IP).
