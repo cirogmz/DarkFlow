@@ -20,6 +20,17 @@ export async function GET(req: NextRequest) {
             product: true,
           },
         },
+        parentSubRecipes: {
+          include: {
+            childIngredient: true,
+          },
+        },
+        childSubRecipes: true,
+        warehouseStocks: {
+          include: {
+            warehouse: true,
+          },
+        },
       },
       orderBy: { name: 'asc' },
     });
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     const activeBrandId = session.activeBrandId as string;
     const body = await req.json();
-    const { action, ingredientId, name, unit, minStock, stock, cost, quantity, supplier, newStock, reason } = body;
+    const { action, ingredientId, name, unit, minStock, stock, cost, quantity, supplier, newStock, reason, type, yieldQuantity, yieldUnit } = body;
 
     if (action === 'new_ingredient') {
       if (!name || !unit) {
@@ -64,6 +75,9 @@ export async function POST(req: NextRequest) {
           stock: stock ? parseFloat(stock) : 0,
           minStock: minStock ? parseFloat(minStock) : 0,
           cost: cost ? parseFloat(cost) : 0,
+          type: type === 'PREPARED' ? 'PREPARED' : 'RAW',
+          yieldQuantity: yieldQuantity ? parseFloat(yieldQuantity) : null,
+          yieldUnit: yieldUnit || null,
           brandId: activeBrandId,
         },
       });

@@ -18,6 +18,9 @@ model User {
   cashSessions  CashSession[]
   deliveryProfile DeliveryProfile?
   auditLogs     AuditLog[]
+  productionBatches ProductionBatch[]
+  warehouseTransfers WarehouseTransfer[]
+  wasteLogs     WasteLog[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -52,6 +55,10 @@ model Brand {
   mpWebhookSecret    String?
   paymentTransactions PaymentTransaction[]
   modifierGroups ModifierGroup[]
+  warehouses     Warehouse[]
+  productionBatches ProductionBatch[]
+  warehouseTransfers WarehouseTransfer[]
+  wasteLogs      WasteLog[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -119,11 +126,20 @@ model Ingredient {
   unit        String
   cost        Float        @default(0)
   minStock    Float        @default(0)
+  type        String       @default("RAW")
+  yieldQuantity Float?
+  yieldUnit   String?
   brandId     String
   brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   recipeItems RecipeItem[]
   purchases   Purchase[]
   modifierOptions ModifierOption[]
+  parentSubRecipes SubRecipeItem[] @relation("ParentSubRecipe")
+  childSubRecipes  SubRecipeItem[] @relation("ChildSubRecipe")
+  productionBatches ProductionBatch[]
+  warehouseStocks  WarehouseStock[]
+  warehouseTransfers WarehouseTransfer[]
+  wasteLogs        WasteLog[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -387,4 +403,99 @@ model ProductModifierGroup {
   order           Int           @default(0)
 
   @@unique([productId, modifierGroupId])
+}
+
+model Warehouse {
+  id            String              @id @default(uuid())
+  name          String
+  code          String?
+  description   String?
+  isDefault     Boolean             @default(false)
+  brandId       String
+  brand         Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  stocks        WarehouseStock[]
+  transfersFrom WarehouseTransfer[] @relation("TransferSource")
+  transfersTo   WarehouseTransfer[] @relation("TransferDestination")
+  wasteLogs     WasteLog[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([name, brandId])
+}
+
+model WarehouseStock {
+  id           String     @id @default(uuid())
+  warehouseId  String
+  warehouse    Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  stock        Float      @default(0)
+  minStock     Float      @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([warehouseId, ingredientId])
+}
+
+model SubRecipeItem {
+  id                 String     @id @default(uuid())
+  parentIngredientId String
+  parentIngredient   Ingredient @relation("ParentSubRecipe", fields: [parentIngredientId], references: [id], onDelete: Cascade)
+  childIngredientId  String
+  childIngredient    Ingredient @relation("ChildSubRecipe", fields: [childIngredientId], references: [id], onDelete: Cascade)
+  quantity           Float
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@unique([parentIngredientId, childIngredientId])
+}
+
+model ProductionBatch {
+  id           String     @id @default(uuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float
+  totalCost    Float
+  unitCost     Float
+  notes        String?
+  brandId      String
+  brand        Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?      @relation(fields: [userId], references: [id])
+  createdAt    DateTime   @default(now())
+}
+
+model WarehouseTransfer {
+  id              String     @id @default(uuid())
+  ingredientId    String
+  ingredient      Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity        Float
+  fromWarehouseId String
+  fromWarehouse   Warehouse  @relation("TransferSource", fields: [fromWarehouseId], references: [id], onDelete: Cascade)
+  toWarehouseId   String
+  toWarehouse     Warehouse  @relation("TransferDestination", fields: [toWarehouseId], references: [id], onDelete: Cascade)
+  notes           String?
+  brandId         String
+  brand           Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?      @relation(fields: [userId], references: [id])
+  createdAt       DateTime   @default(now())
+}
+
+model WasteLog {
+  id           String     @id @default(uuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float
+  costPerUnit  Float
+  totalCost    Float
+  reason       String
+  notes        String?
+  warehouseId  String?
+  warehouse    Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  brandId      String
+  brand        Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?      @relation(fields: [userId], references: [id])
+  createdAt    DateTime   @default(now())
 }
