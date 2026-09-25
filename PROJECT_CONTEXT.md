@@ -401,6 +401,7 @@ darkflow/
 │   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
 │   │   ├── cfdi.ts           # Motor Anexo 20 SAT CFDI 4.0, sellado criptográfico y QR
 │   │   ├── db.ts             # Instancia singleton de Prisma Client
+│   │   ├── escpos.ts         # Driver ESC/POS puro sobre sockets TCP 9100 y formateador binario
 │   │   ├── events.ts         # Singleton de EventEmitter para eventos reactivos
 │   │   ├── hash.ts           # Hash y verificación PBKDF2 de contraseñas
 │   │   ├── payments.ts       # Integración REST Stripe, Mercado Pago, Sandbox y confirmación atómica
@@ -426,7 +427,7 @@ darkflow/
 2. **Atomicidad en Inventarios:** El descuento de stock de insumos por receta siempre debe ejecutarse dentro de un `$transaction` de Prisma para garantizar consistencia.
 3. **Cero Dependencias Inseguras:** Mantener la sesión basada en cookies HTTP-Only nativas de Node Crypto y evitar paquetes externos pesados para auth.
 4. **Tipado Estricto:** Evitar el uso de `any` en TypeScript; definir interfaces o usar tipos inferidos de Prisma.
-5. **Evolución sin Romper:** No reescribir módulos funcionales existentes; extender mediante componentes o campos adicionales documentados.
+5. **Evolución sin Romper:** No reescribir módulos funcionales existentes; extender mediante componentes o factores adicionales documentados.
 6. **Inmutabilidad en Auditoría:** Los registros de `AuditLog` nunca deben ser modificados o eliminados; su inserción es resiliente y no bloqueante.
 
 ---
@@ -452,4 +453,5 @@ darkflow/
 * ✅ **Fase 17 (Completada):** Almacén y Costeo Avanzado (Sub-recetas multinivel, órdenes de producción en cocina, bitácora clasificada de mermas con impacto financiero y traspasos internos entre bodegas).
 * ✅ **Fase 18 (Completada):** Facturación Fiscal Mexicana CFDI 4.0 (Motor Anexo 20 SAT, generación de XML con sellos SHA256 y Timbre Fiscal Digital, API `/api/invoices`, Portal Público `/facturacion` para comensales, avisos en tickets térmicos y tab en `/integrations`).
 * ✅ **Fase 19 (Completada):** KDS Avanzado (Semáforos SLA en tiempo real por comanda y platillo, comanda por tiempos de servicio con marcha interactiva, marcado de platillos por ítem y ruteo por estaciones de cocina).
-* ⏳ **Fase 20 (Próxima):** Hardware Bridge Local & Impresión Silenciosa Desatendida (ESC/POS LAN/IP / Impresoras Térmicas de Red).
+* ✅ **Fase 20 (Completada):** Hardware Bridge Local & Impresión Silenciosa Desatendida (Driver ESC/POS nativo sobre TCP socket en puerto 9100 sin binarios externos, comanderas de red por estación, apertura remota de cajón de dinero, auto-impresión en segundo plano y panel en `/integrations`).
+* ⏳ **Fase 21 (Próxima):** Control de Asistencia, Turnos de Personal & Reloj Checador (Clock-in / Clock-out con PIN de seguridad, bitácora de entradas/salidas, cálculo de retardos y horas efectivas por sucursal).
