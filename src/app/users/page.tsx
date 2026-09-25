@@ -1001,7 +1001,7 @@ export default function UsersManagementPage() {
                               {rec.breakMinutes || 0} min
                             </td>
                             <td className="py-3 px-4">
-                              {rec.totalHours !== null ? (
+                              {typeof rec.totalHours === 'number' ? (
                                 <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-mono font-bold border border-emerald-500/20">
                                   {rec.totalHours.toFixed(2)} hrs
                                 </span>

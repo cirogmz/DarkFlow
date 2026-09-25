@@ -3,10 +3,10 @@ import { prisma } from "@/lib/db";
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
 
     const existing = await prisma.waitlistEntry.findUnique({
@@ -73,10 +73,10 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const existing = await prisma.waitlistEntry.findUnique({
       where: { id },

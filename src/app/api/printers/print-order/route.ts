@@ -28,9 +28,6 @@ export async function POST(req: NextRequest) {
         },
         table: true,
         brand: true,
-        user: {
-          select: { id: true, name: true, role: true },
-        },
       },
     });
 

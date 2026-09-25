@@ -77,12 +77,8 @@ export async function GET(req: NextRequest) {
           },
           driver: {
             select: {
-              user: {
-                select: {
-                  name: true,
-                },
-              },
-              vehicleType: true,
+              id: true,
+              name: true,
             },
           },
           items: {

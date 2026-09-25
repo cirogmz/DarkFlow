@@ -122,11 +122,20 @@ export async function GET(
       orderBy: { number: 'asc' },
     });
 
+    // Fetch active price rules for Happy Hour / dynamic rates
+    const priceRules = await prisma.priceRule.findMany({
+      where: {
+        brandId: brand.id,
+        isActive: true,
+      },
+    });
+
     return NextResponse.json({
       brand,
       categories,
       combos: enrichedCombos,
       tables,
+      priceRules,
     });
   } catch (error) {
     console.error('Error fetching public menu:', error);

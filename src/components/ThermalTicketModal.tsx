@@ -59,6 +59,7 @@ interface ThermalTicketModalProps {
   onClose: () => void;
   order: ThermalOrderData | null;
   initialMode?: 'CUSTOMER' | 'KITCHEN';
+  defaultMode?: 'CUSTOMER' | 'KITCHEN' | 'KOT' | string;
 }
 
 export default function ThermalTicketModal({
@@ -66,9 +67,11 @@ export default function ThermalTicketModal({
   onClose,
   order,
   initialMode = 'CUSTOMER',
+  defaultMode,
 }: ThermalTicketModalProps) {
   const [paperWidth, setPaperWidth] = useState<'58mm' | '80mm'>('80mm');
-  const [ticketMode, setTicketMode] = useState<'CUSTOMER' | 'KITCHEN'>(initialMode);
+  const effectiveMode = defaultMode === 'KOT' ? 'KITCHEN' : (defaultMode as 'CUSTOMER' | 'KITCHEN') || initialMode;
+  const [ticketMode, setTicketMode] = useState<'CUSTOMER' | 'KITCHEN'>(effectiveMode);
 
   if (!isOpen || !order) return null;
 

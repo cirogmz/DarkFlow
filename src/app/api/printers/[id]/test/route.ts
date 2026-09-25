@@ -9,10 +9,10 @@ import {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const action = body.action || "PRINT_TEST"; // "PRINT_TEST" | "PING_ONLY" | "KICK_DRAWER"
 

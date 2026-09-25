@@ -20,8 +20,10 @@ import {
   CreditCard,
   Wallet,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  Flame
 } from 'lucide-react';
+import { PriceRuleItem, calculateItemPriceRule } from '@/lib/priceRules';
 
 interface PublicIngredient {
   id: string;
@@ -125,6 +127,8 @@ interface CartItem {
   imageUrl?: string | null;
   notes?: string;
   modifiers?: CartModifier[];
+  originalPrice?: number;
+  appliedPromo?: string;
 }
 
 export default function PublicMenuPage({
@@ -144,6 +148,7 @@ export default function PublicMenuPage({
   const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [combos, setCombos] = useState<PublicCombo[]>([]);
   const [tables, setTables] = useState<PublicTable[]>([]);
+  const [priceRules, setPriceRules] = useState<PriceRuleItem[]>([]);
 
   // Filtering state
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -195,6 +200,7 @@ export default function PublicMenuPage({
         setCategories(data.categories || []);
         setCombos(data.combos || []);
         setTables(data.tables || []);
+        setPriceRules(data.priceRules || []);
         if (queryTable) {
           setSelectedTableNumber(queryTable);
         }
@@ -214,12 +220,21 @@ export default function PublicMenuPage({
       (c) => c.productId === product.id && (c.notes || '') === (notes || '') && JSON.stringify(c.modifiers || []) === modKey
     );
 
+    const promo = calculateItemPriceRule(product, qty, priceRules);
     const extraPrice = modifiers.reduce((sum, m) => sum + m.price, 0);
-    const finalPrice = product.price + extraPrice;
+    const basePrice = promo.hasPromo ? promo.effectiveUnitPrice : product.price;
+    const finalPrice = basePrice + extraPrice;
+    const originalPrice = promo.hasPromo ? product.price + extraPrice : undefined;
 
     if (existingIndex > -1) {
       const updated = [...cart];
-      updated[existingIndex].quantity += qty;
+      const newQty = updated[existingIndex].quantity + qty;
+      const rePromo = calculateItemPriceRule(product, newQty, priceRules);
+      const reBase = rePromo.hasPromo ? rePromo.effectiveUnitPrice : product.price;
+      updated[existingIndex].quantity = newQty;
+      updated[existingIndex].price = reBase + extraPrice;
+      updated[existingIndex].originalPrice = rePromo.hasPromo ? product.price + extraPrice : undefined;
+      updated[existingIndex].appliedPromo = rePromo.hasPromo ? rePromo.badgeText : undefined;
       setCart(updated);
     } else {
       setCart([
@@ -229,6 +244,8 @@ export default function PublicMenuPage({
           productId: product.id,
           name: product.name,
           price: finalPrice,
+          originalPrice,
+          appliedPromo: promo.hasPromo ? promo.badgeText : undefined,
           quantity: qty,
           imageUrl: product.imageUrl,
           notes: notes.trim() || undefined,
@@ -279,7 +296,21 @@ export default function PublicMenuPage({
         .map((item) => {
           if (item.cartId === cartId) {
             const newQty = item.quantity + delta;
-            return newQty > 0 ? { ...item, quantity: newQty } : null;
+            if (newQty <= 0) return null;
+            const product = categories.flatMap(c => c.products).find(p => p.id === item.productId);
+            if (product) {
+              const promo = calculateItemPriceRule(product, newQty, priceRules);
+              const extraPrice = (item.modifiers || []).reduce((sum, m) => sum + m.price, 0);
+              const basePrice = promo.hasPromo ? promo.effectiveUnitPrice : product.price;
+              return {
+                ...item,
+                quantity: newQty,
+                price: basePrice + extraPrice,
+                originalPrice: promo.hasPromo ? product.price + extraPrice : undefined,
+                appliedPromo: promo.hasPromo ? promo.badgeText : undefined,
+              };
+            }
+            return { ...item, quantity: newQty };
           }
           return item;
         })
@@ -618,60 +649,83 @@ export default function PublicMenuPage({
                 </h2>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {category.products.map((product) => (
-                    <div
-                      key={product.id}
-                      onClick={() => {
-                        setSelectedProduct(product);
-                        setModalQty(1);
-                        setModalNotes('');
-                        // Initialize modifier defaults
-                        const groups = (product.modifierGroups || []).map(pmg => pmg.modifierGroup);
-                        const defaults: Record<string, string[]> = {};
-                        groups.forEach(g => {
-                          defaults[g.id] = g.options.filter(o => o.isDefault).map(o => o.id);
-                        });
-                        setModalModifierSelections(defaults);
-                      }}
-                      className="bg-slate-900/80 border border-slate-800/80 hover:border-slate-700 rounded-2xl p-3 flex gap-3 cursor-pointer transition-all hover:bg-slate-850 shadow group"
-                    >
-                      {product.imageUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="w-24 h-24 rounded-xl object-cover shrink-0 border border-slate-800 group-hover:scale-103 transition-transform"
-                        />
-                      ) : (
-                        <div className="w-24 h-24 rounded-xl bg-slate-800/50 flex items-center justify-center text-slate-600 shrink-0">
-                          <Utensils className="w-8 h-8" />
-                        </div>
-                      )}
+                  {category.products.map((product) => {
+                    const promo = calculateItemPriceRule(product, 1, priceRules);
+                    return (
+                      <div
+                        key={product.id}
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setModalQty(1);
+                          setModalNotes('');
+                          // Initialize modifier defaults
+                          const groups = (product.modifierGroups || []).map(pmg => pmg.modifierGroup);
+                          const defaults: Record<string, string[]> = {};
+                          groups.forEach(g => {
+                            defaults[g.id] = g.options.filter(o => o.isDefault).map(o => o.id);
+                          });
+                          setModalModifierSelections(defaults);
+                        }}
+                        className={`border rounded-2xl p-3 flex gap-3 cursor-pointer transition-all shadow group ${
+                          promo.hasPromo
+                            ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-500/70'
+                            : 'bg-slate-900/80 border-slate-800/80 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        {product.imageUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="w-24 h-24 rounded-xl object-cover shrink-0 border border-slate-800 group-hover:scale-103 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-24 h-24 rounded-xl bg-slate-800/50 flex items-center justify-center text-slate-600 shrink-0">
+                            <Utensils className="w-8 h-8" />
+                          </div>
+                        )}
 
-                      <div className="flex-1 flex flex-col justify-between py-0.5">
-                        <div>
-                          <h3 className="font-bold text-sm text-white group-hover:text-amber-400 transition-colors line-clamp-1">
-                            {product.name}
-                          </h3>
-                          {product.description && (
-                            <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">
-                              {product.description}
-                            </p>
-                          )}
-                        </div>
+                        <div className="flex-1 flex flex-col justify-between py-0.5">
+                          <div>
+                            {promo.hasPromo && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1 animate-pulse">
+                                <Flame className="w-2.5 h-2.5 text-amber-400" /> {promo.badgeText}
+                              </span>
+                            )}
+                            <h3 className="font-bold text-sm text-white group-hover:text-amber-400 transition-colors line-clamp-1">
+                              {product.name}
+                            </h3>
+                            {product.description && (
+                              <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">
+                                {product.description}
+                              </p>
+                            )}
+                          </div>
 
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="font-mono font-black text-white text-sm">
-                            ${product.price.toFixed(2)}
-                          </span>
+                          <div className="flex items-center justify-between mt-2">
+                            <div>
+                              <span className="font-mono font-black text-amber-400 text-sm">
+                                ${promo.hasPromo ? promo.effectiveUnitPrice.toFixed(2) : product.price.toFixed(2)}
+                              </span>
+                              {promo.hasPromo && promo.savings > 0 && (
+                                <span className="text-[10px] line-through text-slate-500 font-mono ml-1.5">
+                                  ${product.price.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
 
-                          <span className="p-1 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
-                            <Plus className="w-4 h-4" />
-                          </span>
+                            <span className={`p-1 rounded-lg transition-colors ${
+                              promo.hasPromo
+                                ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                                : 'bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-slate-950'
+                            }`}>
+                              <Plus className="w-4 h-4" />
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ))}
@@ -710,8 +764,10 @@ export default function PublicMenuPage({
           }).filter(Boolean) as CartModifier[]
         );
 
+        const promo = calculateItemPriceRule(selectedProduct, modalQty, priceRules);
         const extraPrice = selectedModifiers.reduce((sum, m) => sum + m.price, 0);
-        const totalPrice = (selectedProduct.price + extraPrice) * modalQty;
+        const baseUnitPrice = promo.hasPromo ? promo.effectiveUnitPrice : selectedProduct.price;
+        const totalPrice = (baseUnitPrice + extraPrice) * modalQty;
 
         const isValid = groups.every(g => {
           const sel = (modalModifierSelections[g.id] || []).length;
@@ -723,10 +779,22 @@ export default function PublicMenuPage({
             <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-start">
                 <div>
+                  {promo.hasPromo && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1">
+                      <Flame className="w-3 h-3 text-amber-400" /> {promo.badgeText}
+                    </span>
+                  )}
                   <h3 className="text-lg font-bold text-white">{selectedProduct.name}</h3>
-                  <span className="font-mono font-bold text-amber-400 text-base">
-                    ${selectedProduct.price.toFixed(2)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-amber-400 text-base">
+                      ${baseUnitPrice.toFixed(2)}
+                    </span>
+                    {promo.hasPromo && promo.savings > 0 && (
+                      <span className="text-xs line-through text-slate-500 font-mono">
+                        ${selectedProduct.price.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={() => { setSelectedProduct(null); setModalModifierSelections({}); }}
@@ -900,7 +968,14 @@ export default function PublicMenuPage({
                 {cart.map((item) => (
                   <div key={item.cartId} className="pt-2 flex items-center justify-between gap-3">
                     <div className="flex-1">
-                      <p className="font-bold text-white text-xs leading-tight">{item.name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-bold text-white text-xs leading-tight">{item.name}</p>
+                        {item.appliedPromo && (
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+                            <Flame className="w-2.5 h-2.5 text-amber-400" /> {item.appliedPromo}
+                          </span>
+                        )}
+                      </div>
                       {item.modifiers && item.modifiers.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {item.modifiers.map((mod, mi) => (
@@ -911,7 +986,14 @@ export default function PublicMenuPage({
                         </div>
                       )}
                       {item.notes && <p className="text-[11px] text-amber-400/80 italic mt-0.5">&ldquo;{item.notes}&rdquo;</p>}
-                      <span className="text-xs text-slate-400 font-mono">${item.price.toFixed(2)} c/u</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs text-slate-400 font-mono">${item.price.toFixed(2)} c/u</span>
+                        {item.originalPrice && item.originalPrice > item.price && (
+                          <span className="text-[10px] line-through text-slate-500 font-mono">
+                            ${item.originalPrice.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">

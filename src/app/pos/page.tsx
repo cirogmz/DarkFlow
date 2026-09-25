@@ -29,10 +29,12 @@ import {
   Receipt,
   Users,
   CheckSquare,
-  Square
+  Square,
+  Flame
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
+import { PriceRuleItem, calculateItemPriceRule } from '@/lib/priceRules';
 
 interface CustomerSuggestion {
   id: string;
@@ -178,6 +180,7 @@ interface TableOption {
   name: string;
   status: string;
   capacity: number;
+  zone?: string;
 }
 
 export default function POSPage() {
@@ -185,6 +188,7 @@ export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [combos, setCombos] = useState<PosCombo[]>([]);
   const [tables, setTables] = useState<TableOption[]>([]);
+  const [priceRules, setPriceRules] = useState<PriceRuleItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -247,10 +251,11 @@ export default function POSPage() {
 
   const fetchInitialData = React.useCallback(async () => {
     try {
-      const [prodRes, tablesRes, combosRes] = await Promise.all([
+      const [prodRes, tablesRes, combosRes, rulesRes] = await Promise.all([
         fetch('/api/products'),
         fetch('/api/tables'),
         fetch('/api/combos?active=true'),
+        fetch('/api/price-rules?active=true'),
       ]);
 
       if (prodRes.ok) {
@@ -267,6 +272,11 @@ export default function POSPage() {
       if (combosRes.ok) {
         const combosData = await combosRes.json();
         setCombos(combosData.combos || []);
+      }
+
+      if (rulesRes.ok) {
+        const rulesData = await rulesRes.json();
+        setPriceRules(rulesData.rules || []);
       }
     } catch (err) {
       console.error('Failed to fetch POS initial data', err);
@@ -731,17 +741,39 @@ export default function POSPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-6">
                 {filteredProducts.map((prod) => {
                   const stock = checkStockStatus(prod);
+                  const promo = calculateItemPriceRule(prod, 1, priceRules);
+
                   return (
                     <div 
                       key={prod.id} 
                       className={`glass-panel border rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 ${
-                        stock.ok ? 'border-slate-800' : 'border-red-950/50 bg-red-950/5'
+                        promo.hasPromo
+                          ? 'border-amber-500/40 bg-amber-950/10'
+                          : stock.ok
+                          ? 'border-slate-800'
+                          : 'border-red-950/50 bg-red-950/5'
                       }`}
                     >
                       <div className="space-y-2.5">
                         <div className="flex justify-between items-start gap-2">
-                          <h4 className="font-bold text-white text-sm leading-snug">{prod.name}</h4>
-                          <span className="font-black text-brand-primary text-sm">${prod.price.toFixed(2)}</span>
+                          <div>
+                            {promo.hasPromo && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1 animate-pulse">
+                                <Flame className="w-2.5 h-2.5 text-amber-400" /> {promo.badgeText}
+                              </span>
+                            )}
+                            <h4 className="font-bold text-white text-sm leading-snug">{prod.name}</h4>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-black text-brand-primary text-sm font-mono block">
+                              ${promo.hasPromo ? promo.effectiveUnitPrice.toFixed(2) : prod.price.toFixed(2)}
+                            </span>
+                            {promo.hasPromo && promo.savings > 0 && (
+                              <span className="text-[10px] line-through text-slate-500 font-mono block">
+                                ${prod.price.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         
                         {prod.imageUrl && (
@@ -775,10 +807,21 @@ export default function POSPage() {
                               setCustomizationSelections(defaults);
                               setCustomizingProduct(prod);
                             } else {
-                              addToCart({ id: prod.id, name: prod.name, price: prod.price, imageUrl: prod.imageUrl });
+                              addToCart({
+                                id: prod.id,
+                                name: prod.name,
+                                price: promo.hasPromo ? promo.effectiveUnitPrice : prod.price,
+                                originalPrice: promo.hasPromo ? prod.price : undefined,
+                                appliedPromo: promo.hasPromo ? promo.badgeText : undefined,
+                                imageUrl: prod.imageUrl,
+                              });
                             }
                           }}
-                          className="p-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-slate-950 transition-colors cursor-pointer"
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            promo.hasPromo
+                              ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                              : 'bg-brand-primary hover:bg-brand-primary-hover text-slate-950'
+                          }`}
                           title="Agregar al Carrito"
                         >
                           <Plus className="h-4 w-4 stroke-[3px]" />
@@ -816,8 +859,22 @@ export default function POSPage() {
               cart.map((item) => (
                 <div key={item.id || item.productId} className="flex flex-col gap-2 p-3 bg-slate-950 border border-slate-800 rounded-lg">
                   <div className="flex justify-between items-start">
-                    <span className="text-xs font-bold text-white leading-tight max-w-[180px]">{item.name}</span>
-                    <span className="text-xs font-black text-brand-primary">${(item.price * item.quantity).toFixed(2)}</span>
+                    <div>
+                      <span className="text-xs font-bold text-white leading-tight max-w-[180px] block">{item.name}</span>
+                      {item.appliedPromo && (
+                        <span className="text-[9px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.2 rounded inline-flex items-center gap-0.5 mt-0.5">
+                          <Flame className="w-2.5 h-2.5 text-amber-400" /> {item.appliedPromo}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-black text-brand-primary block">${(item.price * item.quantity).toFixed(2)}</span>
+                      {item.originalPrice && item.originalPrice > item.price && (
+                        <span className="text-[9px] line-through text-slate-500 font-mono block">
+                          ${(item.originalPrice * item.quantity).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {item.modifiers && item.modifiers.length > 0 && (
                     <div className="flex flex-wrap gap-1">
@@ -2076,16 +2133,18 @@ export default function POSPage() {
           });
         };
 
-        const selectedModifiers = groups.flatMap(g =>
+        const selectedModifiers = (groups.flatMap(g =>
           (customizationSelections[g.id] || []).map(optId => {
             const opt = g.options.find(o => o.id === optId);
             if (!opt) return null;
             return { groupName: g.name, optionName: opt.name, price: opt.price, ingredientId: opt.ingredientId, ingredientQuantity: opt.ingredientQuantity };
-          }).filter(Boolean) as Array<{ groupName: string; optionName: string; price: number; ingredientId?: string | null; ingredientQuantity?: number | null }>
-        );
-
+          }).filter(Boolean)
+        ) as Array<{ groupName: string; optionName: string; price: number; ingredientId?: string | null; ingredientQuantity?: number | null }>);
+        const promo = calculateItemPriceRule(customizingProduct, 1, priceRules);
+        const basePrice = promo.hasPromo ? promo.effectiveUnitPrice : customizingProduct.price;
         const extraPrice = selectedModifiers.reduce((sum, m) => sum + m.price, 0);
-        const totalPrice = customizingProduct.price + extraPrice;
+        const totalPrice = basePrice + extraPrice;
+        const originalTotal = customizingProduct.price + extraPrice;
 
         const isValid = groups.every(g => {
           const selected = (customizationSelections[g.id] || []).length;
@@ -2097,6 +2156,8 @@ export default function POSPage() {
             id: customizingProduct.id,
             name: customizingProduct.name,
             price: totalPrice,
+            originalPrice: promo.hasPromo ? originalTotal : undefined,
+            appliedPromo: promo.hasPromo ? promo.badgeText : undefined,
             imageUrl: customizingProduct.imageUrl,
             modifiers: selectedModifiers,
           });

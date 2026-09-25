@@ -54,7 +54,8 @@ interface AuditSummary {
 }
 
 export default function AuditPage() {
-  const { currentBrand, user } = useAppStore();
+  const { activeBrand } = useAppStore();
+  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<AuditSummary>({
@@ -63,6 +64,17 @@ export default function AuditPage() {
     warningCount: 0,
     infoCount: 0,
   });
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated && data.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Filters state
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
@@ -90,7 +102,7 @@ export default function AuditPage() {
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
-      if (currentBrand?.id) params.set('brandId', currentBrand.id);
+      if (activeBrand?.id) params.set('brandId', activeBrand.id);
 
       const res = await fetch(`/api/audit?${params.toString()}`);
       if (res.ok) {
@@ -107,7 +119,7 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, severityFilter, entityFilter, searchTerm, startDate, endDate, currentBrand?.id]);
+  }, [page, limit, severityFilter, entityFilter, searchTerm, startDate, endDate, activeBrand?.id]);
 
   useEffect(() => {
     fetchLogs();
@@ -179,7 +191,7 @@ export default function AuditPage() {
   };
 
   // RBAC guard check
-  const isAuthorized = user?.role === 'SUPER_ADMIN' || user?.role === 'BRAND_ADMIN';
+  const isAuthorized = !currentUser || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'BRAND_ADMIN';
 
   return (
     <DashboardContainer>

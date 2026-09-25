@@ -18,11 +18,14 @@ export interface CartItem {
   notes?: string;
   modifiers?: CartModifier[];
   serviceStage?: string;
+  originalPrice?: number;
+  appliedPromo?: string;
 }
 
 interface BrandTheme {
   id: string;
   name: string;
+  slug?: string;
   primaryColor: string;
   secondaryColor: string;
   logoUrl?: string;
@@ -42,6 +45,8 @@ interface AppState {
     imageUrl?: string;
     notes?: string;
     modifiers?: CartModifier[];
+    originalPrice?: number;
+    appliedPromo?: string;
   }) => void;
   removeFromCart: (itemKey: string) => void;
   updateCartQty: (itemKey: string, qty: number) => void;
@@ -49,8 +54,8 @@ interface AppState {
   clearCart: () => void;
   
   // Notification system
-  notifications: Array<{ id: string; message: string; type: 'info' | 'success' | 'warning' }>;
-  addNotification: (message: string, type?: 'info' | 'success' | 'warning') => void;
+  notifications: Array<{ id: string; message: string; type: 'info' | 'success' | 'warning' | 'error' }>;
+  addNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   clearNotifications: () => void;
 }
 
@@ -84,6 +89,8 @@ export const useAppStore = create<AppState>((set) => ({
           quantity: 1,
           notes: product.notes,
           modifiers: product.modifiers,
+          originalPrice: product.originalPrice,
+          appliedPromo: product.appliedPromo,
         },
       ],
     };

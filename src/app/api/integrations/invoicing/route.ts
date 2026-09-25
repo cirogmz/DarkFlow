@@ -122,10 +122,10 @@ export async function PUT(req: NextRequest) {
 
     await recordAuditLog({
       action: 'UPDATE',
-      entity: 'Brand',
+      entityType: 'Brand',
       entityId: brandId,
       brandId: brandId,
-      userId: session.id,
+      userId: session.userId,
       details: {
         message: 'Configuración de Facturación CFDI 4.0 actualizada',
         rfc: updatedBrand.rfc,

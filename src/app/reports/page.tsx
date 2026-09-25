@@ -217,7 +217,7 @@ export default function ReportsPage() {
       cashReport.data.forEach((s) => {
         const openStr = new Date(s.openedAt).toLocaleString('es-MX');
         const closeStr = s.closedAt ? new Date(s.closedAt).toLocaleString('es-MX') : 'Abierto';
-        const diff = (s.actualBalance !== null && s.expectedBalance !== null) ? (s.actualBalance - s.expectedBalance) : 0;
+        const diff = (s.actualBalance != null && s.expectedBalance != null) ? (s.actualBalance - s.expectedBalance) : 0;
 
         csvContent += `"${s.id.slice(0, 8)}";"${s.brand.name}";"${s.user.name}";"${openStr}";"${closeStr}";${s.openingBalance.toFixed(2)};${s.cashSales.toFixed(2)};${s.cardSales.toFixed(2)};${s.appsSales.toFixed(2)};${(s.expectedBalance || 0).toFixed(2)};${(s.actualBalance || 0).toFixed(2)};${diff.toFixed(2)};"${s.status}"\n`;
       });
@@ -573,7 +573,7 @@ export default function ReportsPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-850">
                         {cashReport.data.map((s) => {
-                          const diff = (s.actualBalance !== null && s.expectedBalance !== null) ? (s.actualBalance - s.expectedBalance) : 0;
+                          const diff = (s.actualBalance != null && s.expectedBalance != null) ? (s.actualBalance - s.expectedBalance) : 0;
                           return (
                             <tr key={s.id} className="hover:bg-slate-900/50 transition-colors">
                               <td className="py-3 px-4 font-semibold text-white">{s.brand.name}</td>

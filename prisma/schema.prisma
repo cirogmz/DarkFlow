@@ -73,6 +73,7 @@ model Brand {
   attendanceRecords AttendanceRecord[]
   reservations   Reservation[]
   waitlistEntries WaitlistEntry[]
+  priceRules     PriceRule[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -657,5 +658,27 @@ model WaitlistEntry {
   @@index([tableId])
 }
 
+model PriceRule {
+  id              String    @id @default(uuid())
+  brandId         String
+  brand           Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  type            String    @default("PERCENTAGE_DISCOUNT") // PERCENTAGE_DISCOUNT, FIXED_PRICE, BUY_X_GET_Y
+  discountValue   Float     @default(0) // e.g. 20 for 20% off, 120 for $120.00 fixed
+  buyQty          Int?      @default(2) // for BUY_X_GET_Y: e.g. 2 in 2x1
+  getQty          Int?      @default(1) // for BUY_X_GET_Y: e.g. 1 in 2x1 (pay for 1)
+  daysOfWeek      String    @default("1,2,3,4,5") // Comma-separated: 0=Sun, 1=Mon, ..., 6=Sat
+  startTime       String    @default("17:00") // HH:mm
+  endTime         String    @default("20:00") // HH:mm
+  isActive        Boolean   @default(true)
+  appliesToAll    Boolean   @default(false)
+  categoryIds     String?   // Comma-separated or JSON list of category IDs
+  productIds      String?   // Comma-separated or JSON list of product IDs
+  zone            String?   // Optional: "Salón", "Terraza", "Barra", or null for all
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-
+  @@index([brandId])
+  @@index([isActive])
+}

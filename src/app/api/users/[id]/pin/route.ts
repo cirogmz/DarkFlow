@@ -3,10 +3,10 @@ import { prisma } from "@/lib/db";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
     const { pinCode } = body;
 
@@ -67,7 +67,7 @@ export async function POST(
 
 export async function PUT(
   req: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   return POST(req, context);
 }
