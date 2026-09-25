@@ -67,6 +67,7 @@ model Brand {
   invoiceNextFolio Int         @default(1)
   pacEnvironment String        @default("SANDBOX")
   invoices       Invoice[]
+  printers       Printer[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -557,3 +558,25 @@ model Invoice {
   @@index([uuid])
   @@index([rfcReceptor])
 }
+
+model Printer {
+  id               String    @id @default(uuid())
+  brandId          String
+  brand            Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name             String
+  connectionType   String    @default("NETWORK")
+  ipAddress        String    @default("192.168.1.200")
+  port             Int       @default(9100)
+  paperWidth       String    @default("80mm")
+  targetStation    String    @default("ALL")
+  autoPrintTrigger String    @default("ON_ORDER_CREATED")
+  isActive         Boolean   @default(true)
+  status           String    @default("ONLINE")
+  lastTestedAt     DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([brandId])
+}
+

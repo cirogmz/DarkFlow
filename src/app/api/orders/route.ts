@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { orderEvents } from '@/lib/events';
 import { createPaymentSession } from '@/lib/payments';
+import { generateKotBuffer, sendToNetworkPrinter } from '@/lib/escpos';
 
 interface OrderItemInput {
   productId: string;
@@ -303,6 +304,50 @@ export async function POST(req: NextRequest) {
       timestamp: new Date().toISOString(),
       order,
     });
+
+    // Silent automatic printing to configured network ESC/POS printers
+    (async () => {
+      try {
+        const autoPrinters = await prisma.printer.findMany({
+          where: {
+            brandId: order.brandId,
+            isActive: true,
+            autoPrintTrigger: 'ON_ORDER_CREATED',
+          },
+        });
+
+        if (autoPrinters.length > 0) {
+          const brand = await prisma.brand.findUnique({ where: { id: order.brandId } });
+          const processedOrder = {
+            ...order,
+            brand: brand || undefined,
+            items: order.items.map((it: any) => {
+              let parsedMods = [];
+              if (it.modifiers) {
+                try {
+                  parsedMods = typeof it.modifiers === 'string' ? JSON.parse(it.modifiers) : it.modifiers;
+                } catch {
+                  parsedMods = [];
+                }
+              }
+              return { ...it, selectedModifiers: parsedMods };
+            }),
+          };
+
+          for (const p of autoPrinters) {
+            if (p.connectionType === 'VIRTUAL') continue;
+            const kot = generateKotBuffer(processedOrder, p);
+            if (kot && kot.itemCount > 0) {
+              sendToNetworkPrinter(p.ipAddress, p.port, kot.buffer).catch((err) =>
+                console.error(`[AutoPrint] Error printing order to ${p.name}:`, err)
+              );
+            }
+          }
+        }
+      } catch (printErr) {
+        console.error('[AutoPrint] Error in auto-print background trigger:', printErr);
+      }
+    })();
 
     let paymentSession = null;
     if (paymentMethod === 'STRIPE' || paymentMethod === 'MERCADOPAGO') {

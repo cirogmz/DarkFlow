@@ -24,9 +24,34 @@ import {
   Zap,
   FileText,
   Building2,
-  QrCode
+  QrCode,
+  Printer,
+  Wifi,
+  WifiOff,
+  Plus,
+  Trash2,
+  Sliders,
+  Terminal,
+  Play,
+  Server
 } from 'lucide-react';
 import { TAX_REGIMES } from '@/lib/cfdi';
+
+interface PrinterData {
+  id: string;
+  brandId: string;
+  name: string;
+  connectionType: string;
+  ipAddress: string;
+  port: number;
+  paperWidth: string;
+  targetStation: string;
+  autoPrintTrigger: string;
+  isActive: boolean;
+  status: string;
+  lastTestedAt: string | null;
+  notes: string | null;
+}
 
 interface PaymentConfigData {
   id: string;
@@ -86,7 +111,24 @@ interface DeliveryMetrics {
 
 export default function IntegrationsPage() {
   const { activeBrand, addNotification } = useAppStore();
-  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING'>('SIMULATOR');
+  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING' | 'PRINTERS'>('SIMULATOR');
+
+  // Hardware Bridge / Printers State
+  const [printers, setPrinters] = useState<PrinterData[]>([]);
+  const [loadingPrinters, setLoadingPrinters] = useState(false);
+  const [testingPrinterId, setTestingPrinterId] = useState<string | null>(null);
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [editingPrinter, setEditingPrinter] = useState<PrinterData | null>(null);
+  const [printerName, setPrinterName] = useState('');
+  const [printerConnType, setPrinterConnType] = useState<'NETWORK' | 'VIRTUAL'>('NETWORK');
+  const [printerIp, setPrinterIp] = useState('192.168.1.200');
+  const [printerPort, setPrinterPort] = useState(9100);
+  const [printerWidth, setPrinterWidth] = useState<'80mm' | '58mm'>('80mm');
+  const [printerStation, setPrinterStation] = useState('ALL');
+  const [printerTrigger, setPrinterTrigger] = useState('ON_ORDER_CREATED');
+  const [printerNotes, setPrinterNotes] = useState('');
+  const [printerIsActive, setPrinterIsActive] = useState(true);
+  const [savingPrinter, setSavingPrinter] = useState(false);
 
   // Invoicing State (CFDI 4.0)
   const [invoicingRfc, setInvoicingRfc] = useState('');
@@ -521,6 +563,154 @@ export default function IntegrationsPage() {
     }
   };
 
+  const loadPrinters = useCallback(async () => {
+    if (!activeBrand?.id) return;
+    setLoadingPrinters(true);
+    try {
+      const res = await fetch('/api/printers', {
+        headers: { 'x-brand-id': activeBrand.id },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrinters(data.printers || []);
+      }
+    } catch (err) {
+      console.error('Error fetching printers', err);
+    } finally {
+      setLoadingPrinters(false);
+    }
+  }, [activeBrand?.id]);
+
+  useEffect(() => {
+    if (activeBrand?.id) {
+      loadPrinters();
+    }
+  }, [activeBrand?.id, loadPrinters]);
+
+  const openCreatePrinterModal = () => {
+    setEditingPrinter(null);
+    setPrinterName('');
+    setPrinterConnType('NETWORK');
+    setPrinterIp('192.168.1.200');
+    setPrinterPort(9100);
+    setPrinterWidth('80mm');
+    setPrinterStation('ALL');
+    setPrinterTrigger('ON_ORDER_CREATED');
+    setPrinterNotes('');
+    setPrinterIsActive(true);
+    setPrinterModalOpen(true);
+  };
+
+  const openEditPrinterModal = (p: PrinterData) => {
+    setEditingPrinter(p);
+    setPrinterName(p.name);
+    setPrinterConnType((p.connectionType as 'NETWORK' | 'VIRTUAL') || 'NETWORK');
+    setPrinterIp(p.ipAddress);
+    setPrinterPort(p.port);
+    setPrinterWidth((p.paperWidth as '80mm' | '58mm') || '80mm');
+    setPrinterStation(p.targetStation);
+    setPrinterTrigger(p.autoPrintTrigger);
+    setPrinterNotes(p.notes || '');
+    setPrinterIsActive(p.isActive);
+    setPrinterModalOpen(true);
+  };
+
+  const handleSavePrinter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeBrand?.id) return;
+    if (!printerName.trim()) {
+      addNotification('El nombre de la impresora es obligatorio', 'warning');
+      return;
+    }
+
+    setSavingPrinter(true);
+    try {
+      const payload = {
+        brandId: activeBrand.id,
+        name: printerName.trim(),
+        connectionType: printerConnType,
+        ipAddress: printerIp.trim(),
+        port: Number(printerPort) || 9100,
+        paperWidth: printerWidth,
+        targetStation: printerStation,
+        autoPrintTrigger: printerTrigger,
+        notes: printerNotes.trim(),
+        isActive: printerIsActive,
+      };
+
+      const url = editingPrinter ? `/api/printers/${editingPrinter.id}` : '/api/printers';
+      const method = editingPrinter ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'x-brand-id': activeBrand.id },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        addNotification(
+          editingPrinter ? 'Impresora actualizada correctamente' : 'Impresora registrada exitosamente',
+          'success'
+        );
+        setPrinterModalOpen(false);
+        loadPrinters();
+      } else {
+        addNotification(data.error || 'Error al guardar impresora', 'error');
+      }
+    } catch (err) {
+      console.error('Error saving printer', err);
+      addNotification('Error de conexión al guardar impresora', 'error');
+    } finally {
+      setSavingPrinter(false);
+    }
+  };
+
+  const handleDeletePrinter = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta impresora?')) return;
+    try {
+      const res = await fetch(`/api/printers/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        addNotification('Impresora eliminada', 'info');
+        loadPrinters();
+      } else {
+        addNotification('Error al eliminar impresora', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting printer', err);
+      addNotification('Error de conexión al eliminar impresora', 'error');
+    }
+  };
+
+  const handleTestPrinter = async (id: string, action: 'PRINT_TEST' | 'KICK_DRAWER' = 'PRINT_TEST') => {
+    setTestingPrinterId(id);
+    try {
+      const res = await fetch(`/api/printers/${id}/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addNotification(
+          action === 'KICK_DRAWER'
+            ? `Cajón abierto: ${data.message}`
+            : `Impresión exitosa: ${data.message} (${data.latencyMs || 0}ms)`,
+          'success'
+        );
+        loadPrinters();
+      } else {
+        addNotification(data.error || 'Fallo de conexión con la impresora', 'error');
+        loadPrinters();
+      }
+    } catch (err) {
+      console.error('Error testing printer', err);
+      addNotification('Error de red al comunicarse con el bridge de impresión', 'error');
+    } finally {
+      setTestingPrinterId(null);
+    }
+  };
+
   return (
     <DashboardContainer>
       <div className="space-y-6">
@@ -642,6 +832,17 @@ export default function IntegrationsPage() {
           >
             <FileText className="w-4 h-4 text-purple-400" />
             Facturación SAT CFDI 4.0 {invoicingCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-bold">{invoicingCount}</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab('PRINTERS')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'PRINTERS'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Printer className="w-4 h-4 text-cyan-400" />
+            Hardware Bridge & Impresoras {printers.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">{printers.length}</span>}
           </button>
         </div>
 
@@ -1575,6 +1776,419 @@ export default function IntegrationsPage() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 6: HARDWARE BRIDGE & PRINTERS */}
+        {activeTab === 'PRINTERS' && (
+          <div className="space-y-6">
+            {/* Header / Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <Printer className="w-5 h-5" />
+                  </span>
+                  <h3 className="text-lg font-bold text-white">Red de Impresoras Térmicas ESC/POS</h3>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Impresión desatendida por socket TCP directo (puerto 9100). Comanderas de cocina por estación, corte de papel automático y apertura de gaveta.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={loadPrinters}
+                  disabled={loadingPrinters}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-2 transition-all border border-slate-700"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPrinters ? 'animate-spin text-cyan-400' : ''}`} />
+                  Refrescar
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreatePrinterModal}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-cyan-900/30 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nueva Impresora LAN
+                </button>
+              </div>
+            </div>
+
+            {/* Architecture Banner */}
+            <div className="bg-slate-900/60 border border-cyan-500/20 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-cyan-950/20 via-slate-900/40 to-slate-900/20">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0">
+                  <Server className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    Hardware Bridge Directo (Zero-Dependency)
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">Socket TCP 9100</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                    DarkFlow se comunica directamente con cualquier impresora térmica LAN/WiFi (Epson, Star, Bixolon, Xprinter, Rongta) enviando comandos binarios ESC/POS nativos con control de corte y apertura de cajón.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-[11px] font-mono text-slate-300">
+                  Anchos: 80mm & 58mm
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-[11px] font-mono text-slate-300">
+                  Corte: GS V 66 0
+                </span>
+              </div>
+            </div>
+
+            {/* Printers Grid */}
+            {printers.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mx-auto flex items-center justify-center">
+                  <Printer className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-white">No hay impresoras registradas</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Agrega tu primera impresora de red especificando su dirección IP local (ej. 192.168.1.200) y asigna su estación de comanda.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openCreatePrinterModal}
+                  className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-cyan-900/30 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Agregar Impresora LAN
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {printers.map((p) => {
+                  const isTesting = testingPrinterId === p.id;
+                  const isOnline = p.status === 'ONLINE';
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`bg-slate-900 border rounded-2xl p-5 flex flex-col justify-between transition-all ${
+                        p.isActive
+                          ? 'border-slate-800 hover:border-slate-700 shadow-lg shadow-black/20'
+                          : 'border-slate-800/50 opacity-60'
+                      }`}
+                    >
+                      <div className="space-y-4">
+                        {/* Card Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`p-2 rounded-xl ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                              <Printer className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <h4 className="font-bold text-white text-sm">{p.name}</h4>
+                              <p className="font-mono text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                {p.connectionType === 'VIRTUAL' ? (
+                                  <span className="text-purple-400">Emulador Virtual</span>
+                                ) : (
+                                  <>
+                                    <span>{p.ipAddress}:{p.port}</span>
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                              isOnline
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></span>
+                              {p.status}
+                            </span>
+                            {!p.isActive && (
+                              <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider">Inactiva</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Specs Grid */}
+                        <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-500 block uppercase font-bold">Estación KDS</span>
+                            <span className="font-bold text-slate-200">{p.targetStation}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 block uppercase font-bold">Papel</span>
+                            <span className="font-mono font-bold text-cyan-400">{p.paperWidth}</span>
+                          </div>
+                          <div className="col-span-2 pt-1 border-t border-slate-800/60 flex items-center justify-between">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold">Disparador:</span>
+                            <span className="text-[11px] font-mono text-slate-300">
+                              {p.autoPrintTrigger === 'ON_ORDER_CREATED' ? 'Al Crear Pedido' :
+                               p.autoPrintTrigger === 'ON_STAGE_MARCHED' ? 'Al Marchar Tiempo' :
+                               p.autoPrintTrigger === 'ON_PAYMENT_CLOSED' ? 'Al Cobrar Ticket' : 'Manual'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Last tested info */}
+                        <div className="text-[11px] text-slate-500 flex items-center justify-between">
+                          <span>Última prueba:</span>
+                          <span className="font-mono text-slate-400">
+                            {p.lastTestedAt ? new Date(p.lastTestedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : 'Nunca'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="pt-4 mt-4 border-t border-slate-800 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleTestPrinter(p.id, 'PRINT_TEST')}
+                            disabled={isTesting}
+                            title="Enviar ticket de prueba ESC/POS"
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition-all"
+                          >
+                            <Play className={`w-3 h-3 text-cyan-400 ${isTesting ? 'animate-spin' : ''}`} />
+                            {isTesting ? 'Enviando...' : 'Prueba'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTestPrinter(p.id, 'KICK_DRAWER')}
+                            disabled={isTesting}
+                            title="Pulso de apertura de cajón (RJ11 / RJ12)"
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition-all"
+                          >
+                            <Terminal className="w-3 h-3 text-amber-400" />
+                            Cajón
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditPrinterModal(p)}
+                            title="Editar configuración"
+                            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-lg text-xs border border-slate-700 transition-all"
+                          >
+                            <Sliders className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePrinter(p.id)}
+                            title="Eliminar impresora"
+                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs border border-red-500/20 transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PRINTER MODAL (Create / Edit) */}
+        {printerModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl space-y-0">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <Printer className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-white text-base">
+                      {editingPrinter ? 'Editar Impresora Térmica' : 'Registrar Impresora de Red (ESC/POS)'}
+                    </h3>
+                    <p className="text-xs text-slate-400">Configuración de socket LAN y ruteo de comandas</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPrinterModalOpen(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Form Body */}
+              <form onSubmit={handleSavePrinter} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Nombre Descriptivo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={printerName}
+                    onChange={(e) => setPrinterName(e.target.value)}
+                    placeholder="Ej. Comandera Cocina Caliente, Barra Bebidas, Caja Principal"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Tipo de Conexión
+                    </label>
+                    <select
+                      value={printerConnType}
+                      onChange={(e) => setPrinterConnType(e.target.value as 'NETWORK' | 'VIRTUAL')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="NETWORK">Socket TCP / LAN</option>
+                      <option value="VIRTUAL">Emulador Virtual</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Ancho de Papel
+                    </label>
+                    <select
+                      value={printerWidth}
+                      onChange={(e) => setPrinterWidth(e.target.value as '80mm' | '58mm')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="80mm">80 mm (48 columnas)</option>
+                      <option value="58mm">58 mm (32 columnas)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {printerConnType === 'NETWORK' && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Dirección IP Local *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={printerIp}
+                        onChange={(e) => setPrinterIp(e.target.value)}
+                        placeholder="192.168.1.200"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Puerto TCP
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={printerPort}
+                        onChange={(e) => setPrinterPort(Number(e.target.value))}
+                        placeholder="9100"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Estación Asignada (KDS)
+                    </label>
+                    <select
+                      value={printerStation}
+                      onChange={(e) => setPrinterStation(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="ALL">TODAS (General)</option>
+                      <option value="COCINA">COCINA</option>
+                      <option value="PARRILLA">PARRILLA</option>
+                      <option value="BARRA">BARRA</option>
+                      <option value="POSTRES">POSTRES</option>
+                      <option value="ENSALADAS">ENSALADAS</option>
+                      <option value="CASHIER">CAJA / TICKETS</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Disparador Automático
+                    </label>
+                    <select
+                      value={printerTrigger}
+                      onChange={(e) => setPrinterTrigger(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="ON_ORDER_CREATED">Al Crear Pedido (Inmediato)</option>
+                      <option value="ON_STAGE_MARCHED">Al Marchar Tiempo KDS</option>
+                      <option value="ON_PAYMENT_CLOSED">Al Liquidar Pago</option>
+                      <option value="MANUAL">Solo Impresión Manual</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Notas u Observaciones
+                  </label>
+                  <input
+                    type="text"
+                    value={printerNotes}
+                    onChange={(e) => setPrinterNotes(e.target.value)}
+                    placeholder="Ubicación física, modelo o notas de instalación"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="printerActiveCheckbox"
+                    checked={printerIsActive}
+                    onChange={(e) => setPrinterIsActive(e.target.checked)}
+                    className="rounded bg-slate-950 border-slate-800 text-cyan-600 focus:ring-cyan-500 h-4 w-4"
+                  />
+                  <label htmlFor="printerActiveCheckbox" className="text-xs text-slate-300 font-semibold cursor-pointer">
+                    Impresora Habilitada para Operación en Vivo
+                  </label>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPrinterModalOpen(false)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingPrinter}
+                    className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-cyan-900/30 transition-all flex items-center gap-2"
+                  >
+                    {savingPrinter ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      editingPrinter ? 'Guardar Cambios' : 'Registrar Impresora'
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

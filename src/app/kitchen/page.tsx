@@ -18,7 +18,8 @@ import {
   Sparkles,
   Layers,
   Utensils,
-  Check
+  Check,
+  Wifi
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import { playKitchenChime } from '@/lib/sound';
@@ -103,6 +104,7 @@ export default function KitchenPage() {
   const [loading, setLoading] = useState(true);
   const [isThermalOpen, setIsThermalOpen] = useState(false);
   const [selectedOrderForPrint, setSelectedOrderForPrint] = useState<ThermalOrderData | null>(null);
+  const [printingNetworkOrderId, setPrintingNetworkOrderId] = useState<string | null>(null);
   
   // Real-time, Station & Audio state
   const [selectedStation, setSelectedStation] = useState('ALL');
@@ -320,6 +322,28 @@ export default function KitchenPage() {
       isOnTime,
       formattedDelay,
     };
+  };
+
+  const handleDirectNetworkPrint = async (orderId: string) => {
+    setPrintingNetworkOrderId(orderId);
+    try {
+      const res = await fetch('/api/printers/print-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, type: 'KOT' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addNotification(`Comanda despachada a ${data.dispatchedCount || 1} impresora(s) de red`, 'success');
+      } else {
+        addNotification(data.message || data.error || 'No hay impresoras disponibles o configuradas', 'warning');
+      }
+    } catch (err) {
+      console.error('Error triggering network print:', err);
+      addNotification('Error al contactar con el hardware bridge', 'error');
+    } finally {
+      setPrintingNetworkOrderId(null);
+    }
   };
 
   // Platform styling helper
@@ -792,16 +816,26 @@ export default function KitchenPage() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1.5">
-            {/* Print KOT */}
+            {/* Print KOT (Browser Dialog) */}
             <button
               onClick={() => {
                 setSelectedOrderForPrint(order as unknown as ThermalOrderData);
                 setIsThermalOpen(true);
               }}
               className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 cursor-pointer transition-colors"
-              title="Imprimir Comanda Térmica (KOT)"
+              title="Vista Previa e Imprimir en Navegador"
             >
               <Printer className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Direct Hardware Bridge ESC/POS LAN Print */}
+            <button
+              onClick={() => handleDirectNetworkPrint(order.id)}
+              disabled={printingNetworkOrderId === order.id}
+              className="p-1.5 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 hover:text-cyan-100 rounded-lg border border-cyan-800/60 cursor-pointer transition-colors"
+              title="Imprimir silencioso en Impresora Térmica de Red (ESC/POS)"
+            >
+              <Wifi className={`h-3.5 w-3.5 ${printingNetworkOrderId === order.id ? 'animate-pulse text-cyan-400' : ''}`} />
             </button>
 
             {/* Complete All Items button */}
