@@ -22,9 +22,11 @@ import {
   HeartHandshake,
   Tag,
   Radio,
-  ShieldAlert
+  ShieldAlert,
+  Clock
 } from 'lucide-react';
 import Link from 'next/link';
+import QuickClockModal from '@/components/QuickClockModal';
 
 interface UserSession {
   id: string;
@@ -50,6 +52,7 @@ export default function DashboardContainer({ children }: { children: React.React
   const [brands, setBrands] = useState<Array<{ id: string; name: string; primaryColor: string; secondaryColor: string; logoUrl?: string }>>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [brandDropdownOpen, setBrandDropdownOpen] = useState(false);
+  const [clockModalOpen, setClockModalOpen] = useState(false);
   
   const { activeBrand, setActiveBrand, notifications, addNotification } = useAppStore();
 
@@ -310,6 +313,16 @@ export default function DashboardContainer({ children }: { children: React.React
               </div>
             )}
 
+            {/* Quick Clock / Reloj Checador Button */}
+            <button
+              onClick={() => setClockModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer shadow-sm"
+              title="Abrir Reloj Checador (PIN de 4 dígitos)"
+            >
+              <Clock className="w-3.5 h-3.5 text-brand-primary animate-pulse" />
+              <span className="hidden sm:inline">Reloj Checador</span>
+            </button>
+
             {/* Brand Dropdown Select */}
             <div className="relative">
               <button
@@ -360,6 +373,9 @@ export default function DashboardContainer({ children }: { children: React.React
           {children}
         </main>
       </div>
+
+      {/* Global Quick Clock Modal */}
+      <QuickClockModal isOpen={clockModalOpen} onClose={() => setClockModalOpen(false)} />
     </div>
   );
 }

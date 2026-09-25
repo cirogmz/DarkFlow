@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
             },
           },
           deliveryProfile: true,
+          pinCode: true,
         },
         orderBy: [
           { role: 'asc' },
@@ -71,6 +72,7 @@ export async function GET(req: NextRequest) {
             },
           },
           deliveryProfile: true,
+          pinCode: true,
         },
         orderBy: [
           { role: 'asc' },

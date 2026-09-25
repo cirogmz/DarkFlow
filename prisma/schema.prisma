@@ -21,6 +21,8 @@ model User {
   productionBatches ProductionBatch[]
   warehouseTransfers WarehouseTransfer[]
   wasteLogs     WasteLog[]
+  pinCode       String?
+  attendanceRecords AttendanceRecord[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -68,6 +70,7 @@ model Brand {
   pacEnvironment String        @default("SANDBOX")
   invoices       Invoice[]
   printers       Printer[]
+  attendanceRecords AttendanceRecord[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -579,4 +582,27 @@ model Printer {
 
   @@index([brandId])
 }
+
+model AttendanceRecord {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId        String
+  brand          Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  clockIn        DateTime  @default(now())
+  clockOut       DateTime?
+  breakMinutes   Int       @default(0)
+  totalHours     Float?
+  status         String    @default("ACTIVE")
+  scheduledIn    DateTime?
+  scheduledOut   DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([userId])
+  @@index([status])
+}
+
 
