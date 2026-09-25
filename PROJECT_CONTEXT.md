@@ -453,6 +453,157 @@ darkflow/
 * ✅ **Fase 17 (Completada):** Almacén y Costeo Avanzado (Sub-recetas multinivel, órdenes de producción en cocina, bitácora clasificada de mermas con impacto financiero y traspasos internos entre bodegas).
 * ✅ **Fase 18 (Completada):** Facturación Fiscal Mexicana CFDI 4.0 (Motor Anexo 20 SAT, generación de XML con sellos SHA256 y Timbre Fiscal Digital, API `/api/invoices`, Portal Público `/facturacion` para comensales, avisos en tickets térmicos y tab en `/integrations`).
 * ✅ **Fase 19 (Completada):** KDS Avanzado (Semáforos SLA en tiempo real por comanda y platillo, comanda por tiempos de servicio con marcha interactiva, marcado de platillos por ítem y ruteo por estaciones de cocina).
+### 6.20. Reservaciones de Mesa, Lista de Espera & Estación de Hostess (`/tables`)
+* **Modelo de Datos Relacional (`Reservation` y `WaitlistEntry`)**:
+  - `Reservation`: Agendado de citas con `customerName`, `customerPhone`, `customerEmail`, `diners`, `reservationDate`, `durationMinutes`, `status` (`PENDING`, `CONFIRMED`, `SEATED`, `CANCELLED`, `NO_SHOW`), `tableId`, `zonePreference` y `notes`.
+  - `WaitlistEntry`: Turnos en puerta con `customerName`, `customerPhone`, `diners`, `estimatedWaitMinutes`, `status` (`WAITING`, `NOTIFIED`, `SEATED`, `CANCELLED`), `zonePreference`, `tableId`, `notifiedAt`, `seatedAt` y `notes`.
+  - Paridad de esquemas simultánea en SQLite local y PostgreSQL para producción.
+* **APIs REST y Asignación Atómica de Mesas**:
+  - `/api/reservations` (GET con filtros por fecha, teléfono y estado; POST con validación de traslapes y cupo).
+  - `/api/reservations/[id]` (PUT para confirmar, cancelar o sentar comensal). Al sentar a la reserva, se ejecuta una transacción que actualiza `Table.status = 'OCCUPIED'`.
+  - `/api/waitlist` (GET de lista activa en puerta `WAITING`/`NOTIFIED`, POST para dar de alta turnos).
+  - `/api/waitlist/[id]` (PUT para avisar que la mesa está lista con timestamp `notifiedAt` o sentar al comensal en mesa disponible cambiando su estado a `OCCUPIED`).
+  - `/api/tables`: Integración en el GET de mesas para adjuntar las reservaciones del día en curso.
+* **Estación de Hostess & Recepción (`/tables`)**:
+  - Selector de modo dual: **Salón & Mapa de Mesas** vs **Hostess & Puerta**.
+  - **Indicadores en Tiempo Real**: Tarjetas KPI de Mesas Libres, En Lista de Espera, Reservaciones Hoy y Tiempo Promedio de Espera.
+  - **Badges de Reservación en Mesas**: Las tarjetas del salón muestran alertas púrpuras `📅 Reserva: [HH:mm]` con el nombre del cliente y número de personas.
+  - **Tablero Split View**:
+    - Columna izquierda: **Lista de Espera en Puerta** con turnos cronológicos (#1, #2...), cronómetro de minutos transcurridos con semáforo de demora, avisos de mesa lista ("🔔 Avisar") y acción rápida "🪑 Sentar".
+    - Columna derecha: **Agenda de Reservaciones** con calendario selector de fecha, buscador por teléfono/nombre, estatus de confirmación y asignación de mesa.
+  - **Modales Táctiles**: Alta de reservaciones, registro de lista de espera con preferencias de zona y diálogo inteligente de asignación de mesas por capacidad recomendada.
+
+---
+
+## 7. Estructura de Directorios
+
+```text
+darkflow/
+├── prisma/
+│   ├── schema.prisma         # Esquema activo de Prisma (generado/conmutable)
+│   ├── schema.postgresql.prisma # Esquema para PostgreSQL / Supabase / Neon
+│   ├── schema.sqlite.prisma  # Esquema plantilla para SQLite local
+│   ├── seed.ts               # Semillero inicial de marcas, usuarios y menú
+│   └── dev.db                # Base de datos SQLite local
+├── public/                   # Activos públicos y logotipos
+├── scripts/
+│   └── switch-db.js          # Utilidad para conmutar entre PostgreSQL y SQLite
+├── src/
+│   ├── app/
+│   │   ├── api/              # Route Handlers (Backend REST)
+│   │   │   ├── attendance/   # Reloj checador de personal y turnos de asistencia
+│   │   │   ├── audit/        # Consulta y filtros de logs de auditoría forense
+│   │   │   ├── auth/         # Login, logout, me
+│   │   │   ├── brands/       # Consulta y creación de marcas
+│   │   │   ├── cash/         # Sesiones y cortes de caja
+│   │   │   ├── categories/   # Secciones de menú
+│   │   │   ├── combos/       # Paquetes y combos comerciales
+│   │   │   ├── coupons/      # Cupones de descuento y validación
+│   │   │   ├── customers/    # CRM de clientes y puntos de fidelidad
+│   │   │   ├── dashboard/    # KPIs y datos de gráficas
+│   │   │   ├── delivery-simulator/ # Simulador y webhooks de Uber Eats, Rappi, DiDi Food
+│   │   │   ├── drivers/      # Perfiles y estados de repartidores
+│   │   │   ├── health/       # Healthcheck activo de DB y uptime (/api/health)
+│   │   │   ├── integrations/ # Webhooks y configuración de pasarelas, delivery y fiscal
+│   │   │   ├── inventory/    # Insumos, compras, sub-recetas, mermas y bodegas
+│   │   │   ├── invoices/     # Emisión, consulta y descarga de CFDI 4.0 (XML/JSON)
+│   │   │   ├── orders/       # Listado, creación, ciclo de vida y stream SSE de pedidos
+│   │   │   ├── payments/     # Creación de sesiones de pago y confirmación sandbox
+│   │   │   ├── printers/     # Hardware bridge ESC/POS LAN/IP y configuración de comanderas
+│   │   │   ├── products/     # Catálogo de platillos por marca
+│   │   │   ├── public/       # APIs públicas para clientes (menú, órdenes, autofacturación)
+│   │   │   ├── reports/      # Agregados para reportes financieros y de inventario
+│   │   │   ├── reservations/ # Reservaciones de mesa y agenda de visitas
+│   │   │   ├── tables/       # Mesas físicas, estados, comensales y reubicación
+│   │   │   ├── users/        # Gestión de personal, credenciales, PIN y RBAC
+│   │   │   ├── waitlist/     # Lista de espera en puerta y turnos
+│   │   │   └── webhooks/     # Receptores de webhooks externos
+│   │   ├── audit/page.tsx    # Vista de Auditoría & Trazabilidad Forense de Seguridad
+│   │   ├── cash/page.tsx     # Vista de Corte de Caja
+│   │   ├── customers/page.tsx# Vista CRM de Clientes & Puntos de Fidelidad
+│   │   ├── delivery-simulator/page.tsx # Simulador de Delivery Apps
+│   │   ├── drivers/page.tsx  # Vista de Despacho y Choferes (En Vivo SSE)
+│   │   ├── facturacion/page.tsx # Portal Público de Auto-Facturación CFDI 4.0 para Comensales
+│   │   ├── integrations/page.tsx # Hub de Integraciones (Delivery Apps, Pasarelas, CFDI 4.0 e Impresoras)
+│   │   ├── inventory/page.tsx# Vista de Almacén, Compras y Fichas Técnicas
+│   │   ├── kitchen/page.tsx  # Vista KDS de Cocina en Tiempo Real (SSE + Campana)
+│   │   ├── login/page.tsx    # Vista de Login con accesos demo
+│   │   ├── m/[slug]/page.tsx # Menú Digital y Auto-Pedido Móvil para Comensales
+│   │   ├── menu/page.tsx     # Vista de Catálogo y Menú Digital (Administrador)
+│   │   ├── order-tracking/[id]/page.tsx # Rastreo en vivo del estado de la comanda
+│   │   ├── page.tsx          # Vista de Dashboard Principal
+│   │   ├── pos/page.tsx      # Vista de Punto de Venta con CRM, Tickets y Facturas
+│   │   ├── promotions/page.tsx# Vista de Gestión de Cupones y Combos
+│   │   ├── reports/page.tsx  # Vista de Reportes con Facturación PDF y Exportación Excel/CSV
+│   │   ├── tables/page.tsx   # Vista de Salón, Mesas, Hostess y Lista de Espera
+│   │   ├── users/page.tsx    # Vista de Personal, PINs y Control de Asistencia / Nómina
+│   │   ├── globals.css       # Estilos globales y tokens de Tailwind v4
+│   │   └── layout.tsx        # Layout raíz con BrandThemeProvider
+│   ├── components/
+│   │   ├── BrandThemeProvider.tsx # Inyector de variables CSS de marca
+│   │   ├── DashboardContainer.tsx # Layout con Sidebar, Topbar y Selector
+│   │   ├── InvoicePdfModal.tsx    # Modal universal de Factura Fiscal / Nota de Venta PDF (Carta/A4)
+│   │   ├── QuickClockModal.tsx    # Reloj Checador flotante con teclado PIN numérico
+│   │   └── ThermalTicketModal.tsx # Generador universal de tickets térmicos ESC/POS
+│   ├── lib/
+│   │   ├── audit.ts          # Helper resiliente para registro de auditoría y captura de IP
+│   │   ├── auth.ts           # Cifrado/Descifrado de sesión AES-256-GCM
+│   │   ├── cfdi.ts           # Motor Anexo 20 SAT CFDI 4.0, sellado criptográfico y QR
+│   │   ├── db.ts             # Instancia singleton de Prisma Client
+│   │   ├── escpos.ts         # Driver ESC/POS puro sobre sockets TCP 9100 y formateador binario
+│   │   ├── events.ts         # Singleton de EventEmitter para eventos reactivos
+│   │   ├── hash.ts           # Hash y verificación PBKDF2 de contraseñas
+│   │   ├── payments.ts       # Integración REST Stripe, Mercado Pago, Sandbox y confirmación atómica
+│   │   ├── sound.ts          # Sintetizador Web Audio API de campanas KDS
+│   │   └── store.ts          # Estado global Zustand (Carrito, Brand, Toasts)
+│   └── middleware.ts         # Protección perimetral de rutas privadas y acceso a rutas públicas
+├── .dockerignore             # Exclusiones de contexto para imagen Docker
+├── .env.example              # Plantilla documentada de variables de entorno
+├── Dockerfile                # Imagen multi-etapa (<180MB) optimizada para producción
+├── docker-compose.yml        # Stack completo con PostgreSQL 16 y App
+├── docker-entrypoint.sh      # Script de inicialización y auto-migración
+├── .gitignore
+├── package.json
+├── README.md
+└── tsconfig.json
+```
+
+---
+
+## 8. Reglas de Continuidad y Buenas Prácticas
+
+1. **Respeto a la Arquitectura Multi-Tenant:** Cualquier nueva consulta o mutación a la base de datos DEBE filtrar por `brandId` del usuario en sesión, excepto para vistas globales exclusivas de `SUPER_ADMIN`.
+2. **Atomicidad en Inventarios:** El descuento de stock de insumos por receta siempre debe ejecutarse dentro de un `$transaction` de Prisma para garantizar consistencia.
+3. **Cero Dependencias Inseguras:** Mantener la sesión basada en cookies HTTP-Only nativas de Node Crypto y evitar paquetes externos pesados para auth.
+4. **Tipado Estricto:** Evitar el uso de `any` en TypeScript; definir interfaces o usar tipos inferidos de Prisma.
+5. **Evolución sin Romper:** No reescribir módulos funcionales existentes; extender mediante componentes o factores adicionales documentados.
+6. **Inmutabilidad en Auditoría:** Los registros de `AuditLog` nunca deben ser modificados o eliminados; su inserción es resiliente y no bloqueante.
+
+---
+
+## 9. Estado Actual y Roadmap de Fases
+
+* ✅ **Fase 1 (Completada):** Core Foundations & Multi-Brand Hub.
+* ✅ **Fase 2 (Completada):** Salón Físico, Mapa de Mesas y Pre-cuentas.
+* ✅ **Fase 3 (Completada):** Personal, Roles y Control de Acceso (RBAC).
+* ✅ **Fase 4 (Completada):** Reportes Financieros y Exportación a Excel/CSV.
+* ✅ **Fase 5 (Completada):** Impresión Térmica ESC/POS de Comandas y Recibos (58mm/80mm).
+* ✅ **Fase 6 (Completada):** Módulo de Clientes & Programa de Puntos de Lealtad (CRM).
+* ✅ **Fase 7 (Completada):** Sincronización en Tiempo Real (SSE + Campana Sonora) para KDS y Despacho.
+* ✅ **Fase 8 (Completada):** Promociones Comerciales, Cupones de Descuento y Combos Dinámicos.
+* ✅ **Fase 9 (Completada):** Webhooks y Simulador de Delivery Apps (Uber Eats, Rappi, DiDi Food con comisiones y payout neto).
+* ✅ **Fase 10 (Completada):** Exportaciones Avanzadas en PDF (Comprobante de Venta y Factura Comercial CFDI con motor de impresión Carta/A4).
+* ✅ **Fase 11 (Completada):** Migración a PostgreSQL en producción (Supabase / Neon / Cloud SQL) y Contenerización con Docker.
+* ✅ **Fase 12 (Completada):** Menú Digital QR y Auto-Pedido Móvil para Comensales con Rastreo en Vivo.
+* ✅ **Fase 13 (Completada):** Auditoría Inmutable, Historial de Seguridad y Registro de Actividad (`/audit`, severidades `INFO`/`WARNING`/`CRITICAL`, exportación CSV e inspección forense).
+* ✅ **Fase 14 (Completada):** Pasarelas de Pago Digitales Integradas (Stripe y Mercado Pago con modo Sandbox, pagos móviles en /m/[slug], QR dinámico en POS, Webhooks unificados y conciliación SSE).
+* ✅ **Fase 15 (Completada):** Operativa de Salón Avanzada (Cuentas Divididas por partes iguales o platillos, Reubicación y Fusión atómica de mesas en `/tables`, y Control/Reparto equitativo de propinas en `/pos` y `/cash`).
+* ✅ **Fase 16 (Completada):** Modificadores Avanzados, Grupos de Extras y Términos de Cocina (Términos de carne, toppings adicionales, descuentos automáticos de inventario, modal táctil en POS y QR, badges en KDS y desglose en tickets térmicos).
+* ✅ **Fase 17 (Completada):** Almacén y Costeo Avanzado (Sub-recetas multinivel, órdenes de producción en cocina, bitácora clasificada de mermas con impacto financiero y traspasos internos entre bodegas).
+* ✅ **Fase 18 (Completada):** Facturación Fiscal Mexicana CFDI 4.0 (Motor Anexo 20 SAT, generación de XML con sellos SHA256 y Timbre Fiscal Digital, API `/api/invoices`, Portal Público `/facturacion` para comensales, avisos en tickets térmicos y tab en `/integrations`).
+* ✅ **Fase 19 (Completada):** KDS Avanzado (Semáforos SLA en tiempo real por comanda y platillo, comanda por tiempos de servicio con marcha interactiva, marcado de platillos por ítem y ruteo por estaciones de cocina).
 * ✅ **Fase 20 (Completada):** Hardware Bridge Local & Impresión Silenciosa Desatendida (Driver ESC/POS nativo sobre TCP socket en puerto 9100 sin binarios externos, comanderas de red por estación, apertura remota de cajón de dinero, auto-impresión en segundo plano y panel en `/integrations`).
 * ✅ **Fase 21 (Completada):** Control de Asistencia, Turnos de Personal & Reloj Checador (Modal flotante universal QuickClock con teclado numérico y autenticación PIN de 4 dígitos, modelo `AttendanceRecord`, APIs `/api/attendance/*`, cálculo automático de horas trabajadas descontando descansos, tablero en `/users` y exportación a CSV de nómina).
-* ⏳ **Fase 22 (Próxima):** Reservaciones de Mesa, Lista de Espera & Estación de Hostess (Recepción de comensales, gestión de turnos de espera con tiempos estimados, asignación inteligente de mesas por capacidad y alertas visuales en `/tables`).
+* ✅ **Fase 22 (Completada):** Reservaciones de Mesa, Lista de Espera & Estación de Hostess (Recepción de comensales, gestión de turnos de espera con tiempos estimados, asignación inteligente de mesas por capacidad, alertas visuales en `/tables`, y APIs `/api/reservations` y `/api/waitlist`).
+* ⏳ **Fase 23 (Siguiente):** Tarifas Dinámicas, Happy Hour & Promociones por Horario (Reglas de precios programados por día/hora, 2x1, precios fijos y descuentos automáticos en POS y Menú QR).
+
