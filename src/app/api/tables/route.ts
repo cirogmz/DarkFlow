@@ -28,6 +28,17 @@ export async function GET(req: NextRequest) {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
+        reservations: {
+          where: {
+            status: { in: ['CONFIRMED', 'PENDING'] },
+            reservationDate: {
+              gte: new Date(new Date().setHours(0, 0, 0, 0)),
+              lte: new Date(new Date().setHours(23, 59, 59, 999)),
+            },
+          },
+          orderBy: { reservationDate: 'asc' },
+          take: 2,
+        },
       },
       orderBy: [
         { zone: 'asc' },

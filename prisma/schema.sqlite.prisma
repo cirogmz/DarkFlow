@@ -71,6 +71,8 @@ model Brand {
   invoices       Invoice[]
   printers       Printer[]
   attendanceRecords AttendanceRecord[]
+  reservations   Reservation[]
+  waitlistEntries WaitlistEntry[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -94,6 +96,8 @@ model Table {
   brandId   String
   brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
   orders    Order[]
+  reservations Reservation[]
+  waitlistEntries WaitlistEntry[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -604,5 +608,54 @@ model AttendanceRecord {
   @@index([userId])
   @@index([status])
 }
+
+model Reservation {
+  id              String    @id @default(uuid())
+  brandId         String
+  brand           Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerName    String
+  customerPhone   String?
+  customerEmail   String?
+  diners          Int       @default(2)
+  reservationDate DateTime
+  durationMinutes Int       @default(90)
+  status          String    @default("CONFIRMED")
+  tableId         String?
+  table           Table?    @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  zonePreference  String?   @default("ANY")
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([reservationDate])
+  @@index([status])
+  @@index([tableId])
+}
+
+model WaitlistEntry {
+  id                    String    @id @default(uuid())
+  brandId               String
+  brand                 Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerName          String
+  customerPhone         String?
+  diners                Int       @default(2)
+  estimatedWaitMinutes  Int       @default(15)
+  status                String    @default("WAITING")
+  zonePreference        String?   @default("ANY")
+  tableId               String?
+  table                 Table?    @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  notifiedAt            DateTime?
+  seatedAt              DateTime?
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([tableId])
+}
+
 
 
