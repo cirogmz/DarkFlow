@@ -86,12 +86,15 @@ export async function POST(req: NextRequest) {
       redeemedPoints = 0,
       discount = 0,
       couponCode,
+      giftCardCode,
+      giftCardPin,
       paymentMethod = 'CASH',
       paymentStatus: explicitPaymentStatus,
       items
     } = await req.json();
 
-    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD'));
+    const isGiftCardPay = paymentMethod === 'GIFT_CARD' || paymentMethod === 'MONEDERO';
+    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD' || isGiftCardPay));
     const finalPaymentStatus = explicitPaymentStatus || (isDirectPaid ? 'PAID' : 'PENDING');
     const finalPaidAt = isDirectPaid ? new Date() : null;
 
@@ -285,6 +288,77 @@ export async function POST(req: NextRequest) {
         await tx.table.update({
           where: { id: tableId },
           data: { status: 'OCCUPIED' },
+        });
+      }
+
+      // If paid via gift card or monedero, debit atomically
+      if (isGiftCardPay && giftCardCode) {
+        const cleanCardCode = String(giftCardCode).trim().toUpperCase();
+        const card = await tx.giftCard.findFirst({
+          where: { OR: [{ code: cleanCardCode }, { id: cleanCardCode }] },
+        });
+
+        if (!card) {
+          throw new Error('Tarjeta de regalo o monedero no encontrado');
+        }
+        if (card.status === 'BLOCKED') {
+          throw new Error('La tarjeta de regalo o monedero está bloqueada para transacciones');
+        }
+        if (card.status === 'EXPIRED' || (card.expiresAt && new Date() > new Date(card.expiresAt))) {
+          throw new Error('La tarjeta de regalo o monedero ha expirado');
+        }
+        if (card.pin && String(giftCardPin).trim() !== card.pin) {
+          throw new Error('El PIN de seguridad de la tarjeta de regalo es incorrecto');
+        }
+        if (card.balance < total) {
+          throw new Error(
+            `Saldo insuficiente en tarjeta. Saldo disponible: $${card.balance.toFixed(2)}, Total de comanda: $${total.toFixed(2)}`
+          );
+        }
+
+        const balanceBefore = card.balance;
+        const balanceAfter = parseFloat((balanceBefore - total).toFixed(2));
+        await tx.giftCard.update({
+          where: { id: card.id },
+          data: {
+            balance: balanceAfter,
+            status: balanceAfter <= 0 ? 'DEPLETED' : 'ACTIVE',
+          },
+        });
+
+        await tx.giftCardTransaction.create({
+          data: {
+            giftCardId: card.id,
+            type: 'DEBIT',
+            amount: total,
+            balanceBefore,
+            balanceAfter,
+            orderId: newOrder.id,
+            notes: `Pago comanda #${newOrder.orderNumber}`,
+          },
+        });
+
+        // Set paidAmount on order and create PaymentTransaction
+        await tx.order.update({
+          where: { id: newOrder.id },
+          data: {
+            paidAmount: total,
+            paymentStatus: 'PAID',
+            paidAt: new Date(),
+          },
+        });
+
+        await tx.paymentTransaction.create({
+          data: {
+            orderId: newOrder.id,
+            brandId: activeBrandId,
+            gateway: 'GIFT_CARD',
+            status: 'PAID',
+            amount: total,
+            currency: 'MXN',
+            method: 'MONEDERO_ELECTRONICO',
+            notes: `Tarjeta: ${card.code}`,
+          },
         });
       }
 

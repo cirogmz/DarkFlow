@@ -221,7 +221,17 @@ export default function POSPage() {
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD'>('CASH');
+  const [posGiftCardCode, setPosGiftCardCode] = useState('');
+  const [posGiftCardPin, setPosGiftCardPin] = useState('');
+  const [posGiftCardInfo, setPosGiftCardInfo] = useState<{
+    code: string;
+    balance: number;
+    status: string;
+    customer?: { name: string } | null;
+  } | null>(null);
+  const [validatingGiftCard, setValidatingGiftCard] = useState(false);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [paymentSessionModal, setPaymentSessionModal] = useState<{ isOpen: boolean; order: any; paymentSession: any } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -446,6 +456,34 @@ export default function POSPage() {
     addNotification('Cupón removido del pedido', 'info');
   };
 
+  const handleVerifyGiftCard = async () => {
+    if (!posGiftCardCode.trim()) return;
+    setValidatingGiftCard(true);
+    setGiftCardError(null);
+    try {
+      const res = await fetch(`/api/gift-cards/${encodeURIComponent(posGiftCardCode.trim())}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setGiftCardError(data.error || 'Tarjeta o monedero no encontrado');
+        setPosGiftCardInfo(null);
+      } else {
+        setPosGiftCardInfo(data.card);
+        if (data.card.status !== 'ACTIVE') {
+          setGiftCardError(`La tarjeta se encuentra en estado ${data.card.status}`);
+        } else if (data.card.balance <= 0) {
+          setGiftCardError('La tarjeta no cuenta con saldo disponible ($0.00)');
+        } else {
+          setGiftCardError(null);
+        }
+      }
+    } catch {
+      setGiftCardError('Error de red al consultar saldo de la tarjeta');
+      setPosGiftCardInfo(null);
+    } finally {
+      setValidatingGiftCard(false);
+    }
+  };
+
   // Handle adding combo items to cart
   const handleAddComboToCart = (combo: PosCombo) => {
     const ratio = combo.originalPrice > 0 ? (combo.price / combo.originalPrice) : 1;
@@ -524,6 +562,18 @@ export default function POSPage() {
       return;
     }
 
+    if (paymentMethod === 'GIFT_CARD') {
+      if (!posGiftCardCode.trim()) {
+        alert('Por favor ingresa el código del monedero electrónico o tarjeta de regalo');
+        return;
+      }
+      if (posGiftCardInfo && posGiftCardInfo.balance < cartTotal) {
+        if (!confirm(`El saldo disponible ($${posGiftCardInfo.balance.toFixed(2)}) es menor que el total de la orden ($${cartTotal.toFixed(2)}). Se debitará el saldo disponible. ¿Deseas continuar?`)) {
+          return;
+        }
+      }
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/orders', {
@@ -542,6 +592,8 @@ export default function POSPage() {
           discount: liveCouponDiscount + loyaltyDiscount,
           couponCode: appliedCoupon ? appliedCoupon.code : null,
           paymentMethod,
+          giftCardCode: paymentMethod === 'GIFT_CARD' ? posGiftCardCode.trim() : undefined,
+          giftCardPin: paymentMethod === 'GIFT_CARD' ? (posGiftCardPin.trim() || undefined) : undefined,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -556,12 +608,16 @@ export default function POSPage() {
       if (res.ok) {
         const data = await res.json();
         setPlacedOrder(data.order);
-        addNotification(`Pedido ${data.order.orderNumber} creado (${paymentMethod})`, 'success');
+        addNotification(`Pedido ${data.order.orderNumber} creado (${paymentMethod === 'GIFT_CARD' ? 'Monedero / Gift Card' : paymentMethod})`, 'success');
         clearCart();
         setIsCheckoutOpen(false);
         // Clear checkout form and coupon
         handleClearCustomer();
         handleRemoveCoupon();
+        setPosGiftCardCode('');
+        setPosGiftCardPin('');
+        setPosGiftCardInfo(null);
+        setGiftCardError(null);
         setSelectedTableId('');
         setDiners(2);
         setTip(0);
@@ -1348,7 +1404,7 @@ export default function POSPage() {
                 <label className="text-xs font-bold text-slate-300 block">
                   Método de Cobro
                 </label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('CASH')}
@@ -1400,7 +1456,86 @@ export default function POSPage() {
                     <Wallet className="w-3.5 h-3.5 text-sky-400" />
                     <span className="text-[10px] leading-tight">Mercado Pago</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('GIFT_CARD')}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer col-span-2 sm:col-span-1 ${
+                      paymentMethod === 'GIFT_CARD'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <Coins className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[10px] leading-tight">Monedero</span>
+                  </button>
                 </div>
+
+                {/* Monedero / Gift Card Code & Verification */}
+                {paymentMethod === 'GIFT_CARD' && (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/40 space-y-2.5 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-amber-400" /> Monedero / Tarjeta Prepago
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">Saldo en Caja</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Código (ej. GF-XXXX-XXXX)"
+                        value={posGiftCardCode}
+                        onChange={(e) => {
+                          setPosGiftCardCode(e.target.value.toUpperCase());
+                          setPosGiftCardInfo(null);
+                          setGiftCardError(null);
+                        }}
+                        className="flex-1 bg-slate-950 border border-slate-750 rounded-xl px-3 py-2 text-xs font-mono text-amber-200 placeholder-slate-500 outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyGiftCard}
+                        disabled={!posGiftCardCode.trim() || validatingGiftCard}
+                        className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
+                      >
+                        {validatingGiftCard ? '...' : 'Verificar'}
+                      </button>
+                    </div>
+
+                    <input
+                      type="password"
+                      maxLength={6}
+                      placeholder="PIN de Seguridad (si aplica)"
+                      value={posGiftCardPin}
+                      onChange={(e) => setPosGiftCardPin(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-750 rounded-xl px-3 py-1.5 text-xs font-mono text-white placeholder-slate-500 outline-none focus:border-amber-500"
+                    />
+
+                    {posGiftCardInfo && (
+                      <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-emerald-400 uppercase font-bold block">
+                            Titular: {posGiftCardInfo.customer?.name || 'Al Portador'}
+                          </span>
+                          <span className="text-xs text-slate-300">
+                            Saldo Disponible:
+                          </span>
+                        </div>
+                        <span className="text-base font-black text-emerald-400 font-mono">
+                          ${posGiftCardInfo.balance.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    {giftCardError && (
+                      <div className="p-2 rounded-lg bg-red-950/40 border border-red-800/40 text-[11px] text-red-400 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        {giftCardError}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Selector de Propina en Checkout */}

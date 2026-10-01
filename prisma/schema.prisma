@@ -74,6 +74,7 @@ model Brand {
   reservations   Reservation[]
   waitlistEntries WaitlistEntry[]
   priceRules     PriceRule[]
+  giftCards      GiftCard[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -299,6 +300,7 @@ model Customer {
   brandId       String?
   brand         Brand?    @relation(fields: [brandId], references: [id])
   orders        Order[]
+  giftCards     GiftCard[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -681,4 +683,46 @@ model PriceRule {
 
   @@index([brandId])
   @@index([isActive])
+}
+
+model GiftCard {
+  id             String                @id @default(uuid())
+  code           String                @unique // e.g. "GC-8849-2024"
+  pin            String?               // Optional security PIN (4 digits)
+  brandId        String
+  brand          Brand                 @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  initialBalance Float                 @default(0)
+  balance        Float                 @default(0)
+  status         String                @default("ACTIVE") // ACTIVE, DEPLETED, BLOCKED, EXPIRED
+  expiresAt      DateTime?
+  cardType       String                @default("DIGITAL") // DIGITAL, PHYSICAL, VIP_WALLET
+  notes          String?
+  transactions   GiftCardTransaction[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([brandId])
+  @@index([code])
+  @@index([status])
+  @@index([customerId])
+}
+
+model GiftCardTransaction {
+  id            String    @id @default(uuid())
+  giftCardId    String
+  giftCard      GiftCard  @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+  type          String    // RECHARGE, DEBIT, REFUND, CASHBACK, ADJUSTMENT
+  amount        Float     // Amount transacted
+  balanceBefore Float
+  balanceAfter  Float
+  orderId       String?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([giftCardId])
+  @@index([type])
+  @@index([createdAt])
 }

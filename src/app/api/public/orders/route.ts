@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
       notes,
       couponCode,
       paymentMethod = 'CASH',
+      giftCardCode,
+      giftCardPin,
       items,
     } = body;
 
@@ -219,9 +221,10 @@ export async function POST(request: NextRequest) {
       }
 
       const calculatedSla = dbProducts.reduce((max, p) => Math.max(max, p.targetPrepTime || 10), 10);
+      const isGiftCardPay = paymentMethod === 'GIFT_CARD' || paymentMethod === 'MONEDERO';
 
       // 4. Create Order
-      return await tx.order.create({
+      const createdOrder = await tx.order.create({
         data: {
           orderNumber,
           source: orderType === 'DINE_IN' ? 'DINE_IN' : 'TAKEAWAY',
@@ -233,6 +236,7 @@ export async function POST(request: NextRequest) {
           tax,
           tip: 0,
           total,
+          paidAmount: isGiftCardPay ? total : 0,
           brandId: brand.id,
           tableId: matchedTable ? matchedTable.id : null,
           customerId,
@@ -240,7 +244,8 @@ export async function POST(request: NextRequest) {
           couponCode: validatedCoupon ? validatedCoupon.code : null,
           discountAmount,
           paymentMethod,
-          paymentStatus: 'PENDING',
+          paymentStatus: isGiftCardPay ? 'PAID' : 'PENDING',
+          paidAt: isGiftCardPay ? new Date() : null,
           prepTimeTarget: calculatedSla,
           currentStage: 'STARTER',
           items: {
@@ -277,6 +282,71 @@ export async function POST(request: NextRequest) {
           brand: true,
         },
       });
+
+      // If paid via gift card or monedero, debit atomically
+      if (isGiftCardPay && giftCardCode) {
+        const cleanCardCode = String(giftCardCode).trim().toUpperCase();
+        const card = await tx.giftCard.findFirst({
+          where: { 
+            OR: [{ code: cleanCardCode }, { id: cleanCardCode }],
+            brandId: brand.id,
+          },
+        });
+
+        if (!card) {
+          throw new Error('Tarjeta de regalo o monedero no encontrado en este restaurante');
+        }
+        if (card.status === 'BLOCKED') {
+          throw new Error('La tarjeta de regalo o monedero está bloqueada para transacciones');
+        }
+        if (card.status === 'EXPIRED' || (card.expiresAt && new Date() > new Date(card.expiresAt))) {
+          throw new Error('La tarjeta de regalo o monedero ha expirado');
+        }
+        if (card.pin && String(giftCardPin).trim() !== card.pin) {
+          throw new Error('PIN de seguridad incorrecto para esta tarjeta de regalo');
+        }
+
+        const debitAmount = Math.min(card.balance, total);
+        if (debitAmount <= 0) {
+          throw new Error('La tarjeta de regalo no tiene saldo suficiente ($0.00)');
+        }
+
+        const newBalance = parseFloat((card.balance - debitAmount).toFixed(2));
+        const newStatus = newBalance <= 0 ? 'DEPLETED' : 'ACTIVE';
+
+        await tx.giftCard.update({
+          where: { id: card.id },
+          data: {
+            balance: newBalance,
+            status: newStatus,
+          },
+        });
+
+        await tx.giftCardTransaction.create({
+          data: {
+            giftCardId: card.id,
+            type: 'REDEMPTION',
+            amount: debitAmount,
+            balanceBefore: card.balance,
+            balanceAfter: newBalance,
+            orderId: createdOrder.id,
+            notes: `Pago de pedido ${createdOrder.orderNumber} en línea`,
+          },
+        });
+
+        await tx.paymentTransaction.create({
+          data: {
+            orderId: createdOrder.id,
+            brandId: brand.id,
+            amount: debitAmount,
+            gateway: 'GIFT_CARD',
+            status: 'COMPLETED',
+            gatewayPaymentId: `GC-${card.code}-${Date.now()}`,
+          },
+        });
+      }
+
+      return createdOrder;
     });
 
     // 5. If online payment (STRIPE / MERCADOPAGO), generate payment session

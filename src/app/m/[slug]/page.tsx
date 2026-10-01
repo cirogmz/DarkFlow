@@ -19,6 +19,8 @@ import {
   MessageSquare,
   CreditCard,
   Wallet,
+  Coins,
+  Lock,
   CheckCircle2,
   ShieldCheck,
   Flame
@@ -171,7 +173,16 @@ export default function PublicMenuPage({
   const [selectedTableNumber, setSelectedTableNumber] = useState(queryTable);
   const [orderNotes, setOrderNotes] = useState('');
   const [couponCode, setCouponCode] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'STRIPE' | 'MERCADOPAGO'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD'>('CASH');
+  const [dinerGiftCardCode, setDinerGiftCardCode] = useState('');
+  const [dinerGiftCardPin, setDinerGiftCardPin] = useState('');
+  const [dinerGiftCardInfo, setDinerGiftCardInfo] = useState<{
+    code: string;
+    balance: number;
+    status: string;
+  } | null>(null);
+  const [validatingGiftCard, setValidatingGiftCard] = useState(false);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
   const [onlinePaymentModal, setOnlinePaymentModal] = useState<{
     isOpen: boolean;
     orderId: string;
@@ -331,6 +342,34 @@ export default function PublicMenuPage({
   );
 
   // Submit Order
+  const handleVerifyDinerGiftCard = async () => {
+    if (!dinerGiftCardCode.trim()) return;
+    setValidatingGiftCard(true);
+    setGiftCardError(null);
+    try {
+      const res = await fetch(`/api/gift-cards/${encodeURIComponent(dinerGiftCardCode.trim())}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setGiftCardError(data.error || 'Tarjeta no encontrada');
+        setDinerGiftCardInfo(null);
+      } else {
+        setDinerGiftCardInfo(data.card);
+        if (data.card.status !== 'ACTIVE') {
+          setGiftCardError(`La tarjeta se encuentra en estado ${data.card.status}`);
+        } else if (data.card.balance <= 0) {
+          setGiftCardError('La tarjeta no tiene saldo disponible ($0.00)');
+        } else {
+          setGiftCardError(null);
+        }
+      }
+    } catch {
+      setGiftCardError('Error al consultar saldo');
+      setDinerGiftCardInfo(null);
+    } finally {
+      setValidatingGiftCard(false);
+    }
+  };
+
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
@@ -341,6 +380,13 @@ export default function PublicMenuPage({
     if (orderType === 'DINE_IN' && !selectedTableNumber) {
       alert('Por favor selecciona el número de mesa en la que te encuentras.');
       return;
+    }
+
+    if (paymentMethod === 'GIFT_CARD') {
+      if (!dinerGiftCardCode.trim()) {
+        alert('Por favor introduce el código de tu monedero o tarjeta de regalo.');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -357,6 +403,8 @@ export default function PublicMenuPage({
           notes: orderNotes.trim() || undefined,
           couponCode: couponCode.trim() || undefined,
           paymentMethod,
+          giftCardCode: paymentMethod === 'GIFT_CARD' ? dinerGiftCardCode.trim() : undefined,
+          giftCardPin: paymentMethod === 'GIFT_CARD' ? (dinerGiftCardPin.trim() || undefined) : undefined,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -374,8 +422,10 @@ export default function PublicMenuPage({
       setCart([]);
       setIsCartOpen(false);
 
-      // If online payment (STRIPE or MERCADOPAGO), show payment modal/simulator
-      if (paymentMethod !== 'CASH' && data.paymentSession) {
+      // If paid via Gift Card, order is already PAID
+      if (paymentMethod === 'GIFT_CARD') {
+        router.push(`/order-tracking/${data.order.id}?paid=true`);
+      } else if (paymentMethod !== 'CASH' && data.paymentSession) {
         setOnlinePaymentModal({
           isOpen: true,
           orderId: data.order.id,
@@ -1148,7 +1198,7 @@ export default function PublicMenuPage({
                   <label className="text-xs text-slate-300 font-bold block mb-2">
                     Forma de Pago
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('CASH')}
@@ -1159,7 +1209,7 @@ export default function PublicMenuPage({
                       }`}
                     >
                       <span className="text-base">💵</span>
-                      <span className="text-[10px] leading-tight">Efectivo / Mesero</span>
+                      <span className="text-[10px] leading-tight">Efectivo</span>
                     </button>
 
                     <button
@@ -1172,7 +1222,7 @@ export default function PublicMenuPage({
                       }`}
                     >
                       <CreditCard className="w-4 h-4 text-indigo-400" />
-                      <span className="text-[10px] leading-tight">Tarjeta (Stripe)</span>
+                      <span className="text-[10px] leading-tight">Stripe</span>
                     </button>
 
                     <button
@@ -1187,7 +1237,77 @@ export default function PublicMenuPage({
                       <Wallet className="w-4 h-4 text-sky-400" />
                       <span className="text-[10px] leading-tight">Mercado Pago</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('GIFT_CARD')}
+                      className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition ${
+                        paymentMethod === 'GIFT_CARD'
+                          ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <Coins className="w-4 h-4 text-amber-400" />
+                      <span className="text-[10px] leading-tight">Monedero</span>
+                    </button>
                   </div>
+
+                  {/* Monedero / Tarjeta Prepago Input */}
+                  {paymentMethod === 'GIFT_CARD' && (
+                    <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2 mt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                          <Coins className="w-3.5 h-3.5 text-amber-400" /> Tarjeta de Regalo / Monedero
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Código (ej. GF-XXXX-XXXX)"
+                          value={dinerGiftCardCode}
+                          onChange={(e) => {
+                            setDinerGiftCardCode(e.target.value.toUpperCase());
+                            setDinerGiftCardInfo(null);
+                            setGiftCardError(null);
+                          }}
+                          className="flex-1 bg-slate-900 border border-slate-750 rounded-xl px-3 py-1.5 text-xs font-mono text-amber-200 placeholder-slate-500 outline-none focus:border-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleVerifyDinerGiftCard}
+                          disabled={!dinerGiftCardCode.trim() || validatingGiftCard}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
+                        >
+                          {validatingGiftCard ? '...' : 'Consultar'}
+                        </button>
+                      </div>
+
+                      <input
+                        type="password"
+                        maxLength={6}
+                        placeholder="PIN de Seguridad (si aplica)"
+                        value={dinerGiftCardPin}
+                        onChange={(e) => setDinerGiftCardPin(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-1.5 text-xs font-mono text-white placeholder-slate-500 outline-none focus:border-amber-500"
+                      />
+
+                      {dinerGiftCardInfo && (
+                        <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-between">
+                          <span className="text-xs text-slate-300">Saldo Disponible:</span>
+                          <span className="text-sm font-black text-emerald-400 font-mono">
+                            ${dinerGiftCardInfo.balance.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      {giftCardError && (
+                        <div className="p-2 rounded-lg bg-red-950/40 border border-red-800/40 text-[11px] text-red-400 flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                          {giftCardError}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
