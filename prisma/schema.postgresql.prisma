@@ -24,6 +24,10 @@ model User {
   pinCode       String?
   attendanceRecords AttendanceRecord[]
   inventoryAudits InventoryAudit[]
+  requestedRequisitions InternalRequisition[] @relation("RequisitionRequester")
+  approvedRequisitions  InternalRequisition[] @relation("RequisitionApprover")
+  dispatchedRequisitions InternalRequisition[] @relation("RequisitionDispatcher")
+  receivedRequisitions  InternalRequisition[] @relation("RequisitionReceiver")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -77,6 +81,7 @@ model Brand {
   priceRules     PriceRule[]
   giftCards      GiftCard[]
   inventoryAudits InventoryAudit[]
+  internalRequisitions InternalRequisition[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -163,6 +168,7 @@ model Ingredient {
   warehouseTransfers WarehouseTransfer[]
   wasteLogs        WasteLog[]
   auditItems       InventoryAuditItem[]
+  requisitionItems RequisitionItem[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -516,6 +522,8 @@ model Warehouse {
   transfersTo   WarehouseTransfer[] @relation("TransferDestination")
   wasteLogs     WasteLog[]
   inventoryAudits InventoryAudit[]
+  requisitionsFrom InternalRequisition[] @relation("RequisitionSourceWarehouse")
+  requisitionsTo   InternalRequisition[] @relation("RequisitionDestWarehouse")
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
@@ -836,3 +844,60 @@ model InventoryAuditItem {
   @@index([auditId])
   @@index([ingredientId])
 }
+
+model InternalRequisition {
+  id                  String            @id @default(uuid())
+  brandId             String
+  brand               Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  folio               String            // REQ-0001
+  type                String            @default("WAREHOUSE_TRANSFER") // WAREHOUSE_TRANSFER, PURCHASE_REQUEST
+  urgency             String            @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  status              String            @default("SUBMITTED") // DRAFT, SUBMITTED, APPROVED, REJECTED, DISPATCHED, RECEIVED, CANCELLED
+  fromWarehouseId     String?
+  fromWarehouse       Warehouse?        @relation("RequisitionSourceWarehouse", fields: [fromWarehouseId], references: [id], onDelete: SetNull)
+  toWarehouseId       String?
+  toWarehouse         Warehouse?        @relation("RequisitionDestWarehouse", fields: [toWarehouseId], references: [id], onDelete: SetNull)
+  requestedById       String?
+  requestedBy         User?             @relation("RequisitionRequester", fields: [requestedById], references: [id])
+  approvedById        String?
+  approvedBy          User?             @relation("RequisitionApprover", fields: [approvedById], references: [id])
+  approvedAt          DateTime?
+  dispatchedById      String?
+  dispatchedBy        User?             @relation("RequisitionDispatcher", fields: [dispatchedById], references: [id])
+  dispatchedAt        DateTime?
+  dispatchGuide       String?           // GUIA-0001
+  receivedById        String?
+  receivedBy          User?             @relation("RequisitionReceiver", fields: [receivedById], references: [id])
+  receivedAt          DateTime?
+  totalEstimatedCost  Float             @default(0)
+  totalDiscrepancyCost Float            @default(0)
+  notes               String?
+  rejectionReason     String?
+  items               RequisitionItem[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([brandId])
+  @@index([folio])
+  @@index([status])
+}
+
+model RequisitionItem {
+  id             String              @id @default(uuid())
+  requisitionId  String
+  requisition    InternalRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  ingredientId   String
+  ingredient     Ingredient          @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  requestedQty   Float
+  approvedQty    Float               @default(0)
+  dispatchedQty  Float               @default(0)
+  receivedQty    Float               @default(0)
+  discrepancyQty Float               @default(0)
+  unitCost       Float               @default(0)
+  notes          String?
+  createdAt      DateTime            @default(now())
+
+  @@index([requisitionId])
+  @@index([ingredientId])
+}
+

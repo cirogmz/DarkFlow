@@ -17,9 +17,11 @@ import {
   Flame,
   X,
   Edit3,
-  Scale
+  Scale,
+  FileText
 } from 'lucide-react';
 import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
+import RequisitionsTab from '@/components/inventory/RequisitionsTab';
 
 interface Ingredient {
   id: string;
@@ -166,7 +168,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -749,6 +751,14 @@ export default function InventoryPage() {
             }`}
           >
             <Scale className="h-4 w-4 text-amber-400" /> Auditoría & Food Cost
+          </button>
+          <button
+            onClick={() => setActiveTab('requisitions')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'requisitions' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <FileText className="h-4 w-4 text-indigo-400" /> Requisiciones & Despacho
           </button>
         </div>
 
@@ -1513,6 +1523,15 @@ export default function InventoryPage() {
         {/* TAB 7: COST AUDIT & FOOD COST */}
         {activeTab === 'audit' && (
           <FoodCostAuditTab
+            ingredients={ingredients}
+            warehouses={warehouses}
+            onRefreshAll={fetchInventoryData}
+          />
+        )}
+
+        {/* TAB 8: REQUISITIONS & DISPATCH */}
+        {activeTab === 'requisitions' && (
+          <RequisitionsTab
             ingredients={ingredients}
             warehouses={warehouses}
             onRefreshAll={fetchInventoryData}
