@@ -361,21 +361,25 @@ model DeliveryProfile {
 }
 
 model Customer {
-  id            String    @id @default(uuid())
-  name          String
-  phone         String    @unique
-  email         String?
-  address       String?
-  notes         String?
-  totalOrders   Int       @default(0)
-  totalSpent    Float     @default(0.0)
-  loyaltyPoints Int       @default(0)
-  brandId       String?
-  brand         Brand?    @relation(fields: [brandId], references: [id])
-  orders        Order[]
-  giftCards     GiftCard[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String     @id @default(uuid())
+  name             String
+  phone            String     @unique
+  email            String?
+  address          String?
+  notes            String?
+  birthDate        String?
+  tier             String     @default("BRONZE")
+  pointsMultiplier Float      @default(1.0)
+  tierDiscountPct  Float      @default(0.0)
+  totalOrders      Int        @default(0)
+  totalSpent       Float      @default(0.0)
+  loyaltyPoints    Int        @default(0)
+  brandId          String?
+  brand            Brand?     @relation(fields: [brandId], references: [id])
+  orders           Order[]
+  giftCards        GiftCard[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
 
 model Coupon {

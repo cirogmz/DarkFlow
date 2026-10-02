@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { orderEvents } from '@/lib/events';
 import { createPaymentSession } from '@/lib/payments';
 import { generateKotBuffer, sendToNetworkPrinter } from '@/lib/escpos';
+import { determineCustomerTier, calculateLoyaltyPointsEarned } from '@/lib/loyaltyTiers';
 
 interface OrderItemInput {
   productId: string;
@@ -180,7 +181,11 @@ export async function POST(req: NextRequest) {
 
         if (existingCustomer) {
           linkedCustomerId = existingCustomer.id;
-          const newPoints = Math.max(0, existingCustomer.loyaltyPoints - numRedeemedPoints + pointsEarned);
+          const updatedTotalSpent = existingCustomer.totalSpent + total;
+          const updatedTotalOrders = existingCustomer.totalOrders + 1;
+          const newTier = determineCustomerTier(updatedTotalSpent, updatedTotalOrders);
+          const earned = calculateLoyaltyPointsEarned(total, existingCustomer.pointsMultiplier || newTier.pointsMultiplier);
+          const newPoints = Math.max(0, existingCustomer.loyaltyPoints - numRedeemedPoints + earned);
 
           await tx.customer.update({
             where: { id: existingCustomer.id },
@@ -190,9 +195,14 @@ export async function POST(req: NextRequest) {
               totalOrders: { increment: 1 },
               totalSpent: { increment: total },
               loyaltyPoints: newPoints,
+              tier: newTier.id,
+              pointsMultiplier: newTier.pointsMultiplier,
+              tierDiscountPct: newTier.discountPct,
             },
           });
         } else {
+          const newTier = determineCustomerTier(total, 1);
+          const earned = calculateLoyaltyPointsEarned(total, newTier.pointsMultiplier);
           const newCustomer = await tx.customer.create({
             data: {
               name: customerName.trim(),
@@ -201,7 +211,10 @@ export async function POST(req: NextRequest) {
               brandId: activeBrandId,
               totalOrders: 1,
               totalSpent: total,
-              loyaltyPoints: Math.max(0, pointsEarned - numRedeemedPoints),
+              loyaltyPoints: Math.max(0, earned - numRedeemedPoints),
+              tier: newTier.id,
+              pointsMultiplier: newTier.pointsMultiplier,
+              tierDiscountPct: newTier.discountPct,
             },
           });
           linkedCustomerId = newCustomer.id;

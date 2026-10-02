@@ -29,10 +29,23 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Cake,
+  Gift,
+  Award,
+  Zap,
+  Info
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { GiftCardDTO, GiftCardTransactionDTO, generateGiftCardCode } from '@/lib/giftCards';
+import {
+  LOYALTY_TIERS,
+  LoyaltyTierId,
+  LoyaltyTierConfig,
+  TierProgress,
+  BirthdayAnalysis,
+  TIER_ORDER,
+} from '@/lib/loyaltyTiers';
 
 interface OrderItem {
   id: string;
@@ -63,6 +76,10 @@ interface Customer {
   email?: string | null;
   address?: string | null;
   notes?: string | null;
+  birthDate?: string | null;
+  tier: string;
+  pointsMultiplier: number;
+  tierDiscountPct: number;
   totalOrders: number;
   totalSpent: number;
   loyaltyPoints: number;
@@ -74,6 +91,9 @@ interface Customer {
     primaryColor: string;
   } | null;
   orders: CustomerOrder[];
+  tierConfig?: LoyaltyTierConfig;
+  tierProgress?: TierProgress;
+  birthdayInfo?: BirthdayAnalysis;
 }
 
 interface CRMStats {
@@ -82,6 +102,11 @@ interface CRMStats {
   totalPoints: number;
   totalSpent: number;
   averageSpent: number;
+  bronzeCount?: number;
+  silverCount?: number;
+  goldCount?: number;
+  platinumCount?: number;
+  birthdayCount?: number;
 }
 
 export default function CustomersPage() {
@@ -98,7 +123,7 @@ export default function CustomersPage() {
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'vip' | 'recent'>('all');
+  const [filterType, setFilterType] = useState<string>('all');
 
   // Gift Card State
   const [giftCards, setGiftCards] = useState<GiftCardDTO[]>([]);
@@ -137,6 +162,7 @@ export default function CustomersPage() {
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showTierBenefitsModal, setShowTierBenefitsModal] = useState(false);
   const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [pointsAdjustment, setPointsAdjustment] = useState<number>(0);
@@ -149,6 +175,8 @@ export default function CustomersPage() {
     email: '',
     address: '',
     notes: '',
+    birthDate: '',
+    tier: 'BRONZE',
     initialPoints: 0,
   });
 
@@ -240,6 +268,8 @@ export default function CustomersPage() {
         email: '',
         address: '',
         notes: '',
+        birthDate: '',
+        tier: 'BRONZE',
         initialPoints: 0,
       });
       fetchCustomers();
@@ -264,6 +294,10 @@ export default function CustomersPage() {
           email: editingCustomer.email,
           address: editingCustomer.address,
           notes: editingCustomer.notes,
+          birthDate: editingCustomer.birthDate,
+          tier: editingCustomer.tier,
+          pointsMultiplier: editingCustomer.pointsMultiplier,
+          tierDiscountPct: editingCustomer.tierDiscountPct,
         }),
       });
 
@@ -453,13 +487,23 @@ export default function CustomersPage() {
 
           <div className="flex items-center gap-2.5">
             {activeMainTab === 'crm' ? (
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
-              >
-                <Plus className="h-5 w-5 stroke-[2.5]" />
-                Nuevo Cliente
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowTierBenefitsModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-sm hover:border-amber-500/40"
+                  title="Ver reglas, multiplicadores y descuentos de los niveles VIP"
+                >
+                  <Award className="h-4 w-4 text-amber-400" />
+                  Niveles VIP & Beneficios
+                </button>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="h-5 w-5 stroke-[2.5]" />
+                  Nuevo Cliente
+                </button>
+              </div>
             ) : (
               <>
                 <button
@@ -518,281 +562,461 @@ export default function CustomersPage() {
 
         {activeMainTab === 'crm' && (
           <>
-            {/* Stats KPIs Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition-all">
+            {/* VIP Tier & CRM Stats Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative overflow-hidden group hover:border-slate-700 transition-all">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Clientes</p>
-                    <h3 className="text-2xl sm:text-3xl font-black text-white mt-1">{stats.totalCustomers}</h3>
-                <span className="text-xs text-slate-500 mt-1 inline-block">Registrados en el sistema</span>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Clientes</p>
+                    <h3 className="text-xl sm:text-2xl font-black text-white mt-0.5">{stats.totalCustomers}</h3>
+                    <span className="text-[10px] text-slate-500 mt-0.5 inline-block">Base CRM</span>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <Users className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-cyan-500" />
               </div>
-              <div className="h-12 w-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                <Users className="h-6 w-6" />
-              </div>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-cyan-500" />
-          </div>
 
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                  <Crown className="h-3.5 w-3.5" /> Clientes VIP (3+ Pedidos)
-                </p>
-                <h3 className="text-2xl sm:text-3xl font-black text-amber-400 mt-1">{stats.vipCustomers}</h3>
-                <span className="text-xs text-slate-500 mt-1 inline-block">
-                  {stats.totalCustomers > 0 
-                    ? `${Math.round((stats.vipCustomers / stats.totalCustomers) * 100)}% de fidelidad` 
-                    : '0% de fidelidad'}
-                </span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Crown className="h-6 w-6" />
-              </div>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-amber-500 to-orange-500" />
-          </div>
-
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-                  <Coins className="h-3.5 w-3.5" /> Puntos en Circulación
-                </p>
-                <h3 className="text-2xl sm:text-3xl font-black text-purple-400 mt-1">
-                  {stats.totalPoints.toLocaleString()} pts
-                </h3>
-                <span className="text-xs text-slate-500 mt-1 inline-block">1 pt por cada $10 gastados</span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                <Sparkles className="h-6 w-6" />
-              </div>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500" />
-          </div>
-
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-                  <TrendingUp className="h-3.5 w-3.5" /> Ticket Promedio LTV
-                </p>
-                <h3 className="text-2xl sm:text-3xl font-black text-emerald-400 mt-1">
-                  ${stats.averageSpent.toFixed(2)}
-                </h3>
-                <span className="text-xs text-slate-500 mt-1 inline-block">
-                  Total LTV: ${stats.totalSpent.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                <TrendingUp className="h-6 w-6" />
-              </div>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
-          </div>
-        </div>
-
-        {/* Search & Filter Bar */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-          <form onSubmit={handleSearch} className="relative w-full md:w-96">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nombre o teléfono..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
-            />
-          </form>
-
-          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-            <button
-              onClick={() => { setFilterType('all'); }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                filterType === 'all'
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              Todos ({stats.totalCustomers})
-            </button>
-            <button
-              onClick={() => { setFilterType('vip'); }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                filterType === 'vip'
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <Crown className="h-3.5 w-3.5" /> Clientes VIP ({stats.vipCustomers})
-            </button>
-            <button
-              onClick={() => { setFilterType('recent'); }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                filterType === 'recent'
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <Clock className="h-3.5 w-3.5" /> Actividad Reciente
-            </button>
-            <button
-              onClick={() => fetchCustomers()}
-              className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors ml-auto md:ml-0"
-              title="Refrescar lista"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {/* Customer List */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-            <RefreshCw className="h-8 w-8 animate-spin text-amber-400" />
-            <p className="text-sm font-medium">Cargando base de clientes...</p>
-          </div>
-        ) : customers.length === 0 ? (
-          <div className="bg-slate-900/50 border border-slate-800 border-dashed rounded-2xl p-12 text-center">
-            <Users className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-white mb-1">No se encontraron clientes</h3>
-            <p className="text-sm text-slate-400 max-w-md mx-auto mb-6">
-              {searchQuery 
-                ? `No hay coincidencias para "${searchQuery}". Intenta con otro término de búsqueda.`
-                : 'Aún no hay clientes registrados o que coincidan con el filtro seleccionado.'}
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-sm hover:bg-amber-400 transition-colors"
-            >
-              <Plus className="h-4 w-4 stroke-[2.5]" />
-              Registrar Primer Cliente
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {customers.map((customer) => {
-              const isVIP = customer.totalOrders >= 3;
-              return (
-                <div
-                  key={customer.id}
-                  className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 group relative"
-                >
-                  {/* Top Bar inside Card */}
+              {/* Bronce */}
+              <div 
+                onClick={() => setFilterType('BRONZE')}
+                className={`bg-slate-900/90 border rounded-2xl p-4 relative overflow-hidden cursor-pointer transition-all ${
+                  filterType === 'BRONZE' ? 'border-amber-700 bg-amber-950/20 shadow-md shadow-amber-950/30' : 'border-slate-800 hover:border-amber-700/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                          isVIP 
-                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
-                            : 'bg-slate-800 text-slate-300 border border-slate-700'
-                        }`}>
-                          {customer.name.substring(0, 2).toUpperCase()}
+                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1">
+                      🥉 Bronce
+                    </p>
+                    <h3 className="text-xl sm:text-2xl font-black text-white mt-0.5">{stats.bronzeCount ?? 0}</h3>
+                    <span className="text-[10px] text-slate-400 mt-0.5 inline-block">1.0x pts</span>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-amber-800/10 border border-amber-800/30 flex items-center justify-center text-base">
+                    🥉
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-amber-700" />
+              </div>
+
+              {/* Plata */}
+              <div 
+                onClick={() => setFilterType('SILVER')}
+                className={`bg-slate-900/90 border rounded-2xl p-4 relative overflow-hidden cursor-pointer transition-all ${
+                  filterType === 'SILVER' ? 'border-slate-300 bg-slate-800/40 shadow-md shadow-slate-700/30' : 'border-slate-800 hover:border-slate-500'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                      🥈 Plata
+                    </p>
+                    <h3 className="text-xl sm:text-2xl font-black text-white mt-0.5">{stats.silverCount ?? 0}</h3>
+                    <span className="text-[10px] text-slate-400 mt-0.5 inline-block">1.25x • 5% off</span>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-slate-300/10 border border-slate-300/30 flex items-center justify-center text-base">
+                    🥈
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-slate-300" />
+              </div>
+
+              {/* Oro */}
+              <div 
+                onClick={() => setFilterType('GOLD')}
+                className={`bg-slate-900/90 border rounded-2xl p-4 relative overflow-hidden cursor-pointer transition-all ${
+                  filterType === 'GOLD' ? 'border-amber-400 bg-amber-950/30 shadow-md shadow-amber-500/20' : 'border-slate-800 hover:border-amber-400/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                      🥇 Oro
+                    </p>
+                    <h3 className="text-xl sm:text-2xl font-black text-amber-400 mt-0.5">{stats.goldCount ?? 0}</h3>
+                    <span className="text-[10px] text-slate-400 mt-0.5 inline-block">1.5x • 10% off</span>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-base">
+                    🥇
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-amber-400" />
+              </div>
+
+              {/* Platino */}
+              <div 
+                onClick={() => setFilterType('PLATINUM')}
+                className={`bg-slate-900/90 border rounded-2xl p-4 relative overflow-hidden cursor-pointer transition-all ${
+                  filterType === 'PLATINUM' ? 'border-cyan-400 bg-cyan-950/30 shadow-md shadow-cyan-500/20' : 'border-slate-800 hover:border-cyan-400/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1">
+                      💎 Platino VIP
+                    </p>
+                    <h3 className="text-xl sm:text-2xl font-black text-cyan-300 mt-0.5">{stats.platinumCount ?? 0}</h3>
+                    <span className="text-[10px] text-cyan-400/80 mt-0.5 inline-block">2.0x • 15% off</span>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-base shadow-sm shadow-cyan-500/20">
+                    💎
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-cyan-400" />
+              </div>
+
+              {/* Cumpleaños del Mes */}
+              <div 
+                onClick={() => setFilterType('birthdays')}
+                className={`bg-slate-900/90 border rounded-2xl p-4 relative overflow-hidden cursor-pointer transition-all ${
+                  filterType === 'birthdays' ? 'border-pink-500 bg-pink-950/30 shadow-md shadow-pink-500/20' : 'border-slate-800 hover:border-pink-500/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-pink-400 uppercase tracking-wider flex items-center gap-1">
+                      🎂 Cumpleaños
+                    </p>
+                    <h3 className="text-xl sm:text-2xl font-black text-pink-300 mt-0.5">{stats.birthdayCount ?? 0}</h3>
+                    <span className="text-[10px] text-slate-400 mt-0.5 inline-block">En este mes</span>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400">
+                    <Cake className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-pink-500 to-rose-500" />
+              </div>
+            </div>
+
+            {/* Search & Filter Bar */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+              <form onSubmit={handleSearch} className="relative w-full md:w-80">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o teléfono..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </form>
+
+              <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                <button
+                  onClick={() => setFilterType('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    filterType === 'all'
+                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  Todos ({stats.totalCustomers})
+                </button>
+                <button
+                  onClick={() => setFilterType('BRONZE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    filterType === 'BRONZE'
+                      ? 'bg-amber-700 text-white shadow-md shadow-amber-700/20'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  🥉 Bronce ({stats.bronzeCount ?? 0})
+                </button>
+                <button
+                  onClick={() => setFilterType('SILVER')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    filterType === 'SILVER'
+                      ? 'bg-slate-300 text-slate-950 shadow-md shadow-slate-300/20'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  🥈 Plata ({stats.silverCount ?? 0})
+                </button>
+                <button
+                  onClick={() => setFilterType('GOLD')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    filterType === 'GOLD'
+                      ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  🥇 Oro ({stats.goldCount ?? 0})
+                </button>
+                <button
+                  onClick={() => setFilterType('PLATINUM')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    filterType === 'PLATINUM'
+                      ? 'bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/20'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  💎 Platino ({stats.platinumCount ?? 0})
+                </button>
+                <button
+                  onClick={() => setFilterType('birthdays')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    filterType === 'birthdays'
+                      ? 'bg-pink-500 text-slate-950 shadow-md shadow-pink-500/20'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <Cake className="h-3.5 w-3.5 text-pink-400" />
+                  Cumpleaños ({stats.birthdayCount ?? 0})
+                </button>
+                <button
+                  onClick={() => setFilterType('recent')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    filterType === 'recent'
+                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                      : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <Clock className="h-3.5 w-3.5" /> Recientes
+                </button>
+                <button
+                  onClick={() => fetchCustomers()}
+                  className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors ml-auto md:ml-0 cursor-pointer"
+                  title="Refrescar lista"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Customer List */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
+                <RefreshCw className="h-8 w-8 animate-spin text-amber-400" />
+                <p className="text-sm font-medium">Cargando base de clientes...</p>
+              </div>
+            ) : customers.length === 0 ? (
+              <div className="bg-slate-900/50 border border-slate-800 border-dashed rounded-2xl p-12 text-center">
+                <Users className="h-12 w-12 text-slate-600 mx-auto mb-3" />
+                <h3 className="text-lg font-bold text-white mb-1">No se encontraron clientes</h3>
+                <p className="text-sm text-slate-400 max-w-md mx-auto mb-6">
+                  {searchQuery 
+                    ? `No hay coincidencias para "${searchQuery}". Intenta con otro término de búsqueda.`
+                    : 'Aún no hay clientes registrados o que coincidan con el filtro seleccionado.'}
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-sm hover:bg-amber-400 transition-colors cursor-pointer"
+                >
+                  <Plus className="h-4 w-4 stroke-[2.5]" />
+                  Registrar Primer Cliente
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {customers.map((customer) => {
+                  const tier = customer.tierConfig || LOYALTY_TIERS[customer.tier as LoyaltyTierId] || LOYALTY_TIERS.BRONZE;
+                  const isPlatinum = tier.id === 'PLATINUM';
+                  const isGold = tier.id === 'GOLD';
+                  const isSilver = tier.id === 'SILVER';
+                  const isBirthdayMonth = customer.birthdayInfo?.isBirthdayThisMonth;
+
+                  return (
+                    <div
+                      key={customer.id}
+                      className={`bg-slate-900 border rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 group relative ${
+                        isPlatinum
+                          ? 'border-cyan-500/40 hover:border-cyan-400 shadow-lg shadow-cyan-500/5'
+                          : isGold
+                          ? 'border-amber-400/40 hover:border-amber-300 shadow-md shadow-amber-400/5'
+                          : isSilver
+                          ? 'border-slate-700 hover:border-slate-500'
+                          : 'border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {/* Top Bar inside Card */}
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`h-11 w-11 rounded-2xl flex items-center justify-center font-bold text-sm relative ${
+                              isPlatinum
+                                ? 'bg-cyan-950/60 text-cyan-300 ring-2 ring-cyan-400/50'
+                                : isGold
+                                ? 'bg-amber-950/60 text-amber-300 ring-2 ring-amber-400/50'
+                                : isSilver
+                                ? 'bg-slate-800 text-slate-200 ring-1 ring-slate-400/50'
+                                : 'bg-amber-950/30 text-amber-500 ring-1 ring-amber-800/40'
+                            }`}>
+                              {customer.name.substring(0, 2).toUpperCase()}
+                              <span className="absolute -bottom-1 -right-1 text-xs">
+                                {tier.icon}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-white text-base group-hover:text-amber-400 transition-colors">
+                                  {customer.name}
+                                </h3>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                <span className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3 text-slate-400" /> {customer.phone}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Tier Badge & Loyalty Points */}
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black ${tier.badgeClass}`}>
+                              {tier.badge}
+                            </span>
+                            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[11px] font-bold">
+                              <Sparkles className="h-3 w-3 text-purple-400" />
+                              <span>{customer.loyaltyPoints} pts</span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-white text-base group-hover:text-amber-400 transition-colors">
-                              {customer.name}
-                            </h3>
-                            {isVIP && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                <Crown className="h-2.5 w-2.5" /> VIP
+
+                        {/* VIP Multiplier & Perks Pill */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+                            <Zap className="h-3 w-3" /> {customer.pointsMultiplier || tier.pointsMultiplier}x Puntos
+                          </span>
+                          {(customer.tierDiscountPct > 0 || tier.discountPct > 0) && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-bold">
+                              <Award className="h-3 w-3" /> {customer.tierDiscountPct || tier.discountPct}% Desc. VIP
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Birthday Alert if this month */}
+                        {isBirthdayMonth && (
+                          <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-pink-950/40 border border-pink-500/30 text-pink-300 text-xs font-semibold mb-3">
+                            <div className="flex items-center gap-1.5">
+                              <Cake className="h-3.5 w-3.5 text-pink-400" />
+                              <span>Cumpleaños: {customer.birthdayInfo?.formattedBirthDate || customer.birthDate}</span>
+                            </div>
+                            {customer.birthdayInfo?.isBirthdayThisWeek && (
+                              <span className="px-2 py-0.5 bg-pink-500 text-slate-950 text-[10px] font-black rounded-full animate-pulse">
+                                ¡Esta semana! 🎁
                               </span>
                             )}
                           </div>
-                          <span className="text-xs text-slate-500 flex items-center gap-1">
-                            <Phone className="h-3 w-3 text-slate-400" /> {customer.phone}
-                          </span>
+                        )}
+
+                        {/* Details section */}
+                        <div className="space-y-1.5 text-xs text-slate-400 bg-slate-950/60 rounded-xl p-3 mb-3">
+                          {customer.email && (
+                            <div className="flex items-center gap-2 truncate">
+                              <Mail className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
+                              <span className="truncate">{customer.email}</span>
+                            </div>
+                          )}
+                          {customer.birthDate && !isBirthdayMonth && (
+                            <div className="flex items-center gap-2 text-slate-400">
+                              <Cake className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
+                              <span>Cumpleaños: {customer.birthdayInfo?.formattedBirthDate || customer.birthDate}</span>
+                            </div>
+                          )}
+                          {customer.address ? (
+                            <div className="flex items-start gap-2">
+                              <MapPin className="h-3.5 w-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
+                              <span className="line-clamp-1">{customer.address}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-slate-600 italic">
+                              <MapPin className="h-3.5 w-3.5 text-slate-600 flex-shrink-0" />
+                              <span>Sin dirección registrada</span>
+                            </div>
+                          )}
+                          {customer.notes && (
+                            <div className="flex items-start gap-2 text-amber-400/90 pt-1 border-t border-slate-800/80">
+                              <FileText className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                              <span className="line-clamp-2 italic">{customer.notes}</span>
+                            </div>
+                          )}
                         </div>
+
+                        {/* Tier Progress Bar */}
+                        {customer.tierProgress?.nextTier ? (
+                          <div className="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800/70 mb-3">
+                            <div className="flex justify-between items-center text-[10px] mb-1.5">
+                              <span className="text-slate-400 flex items-center gap-1 font-semibold">
+                                <TrendingUp className="h-3 w-3 text-amber-400" />
+                                Hacia {customer.tierProgress.nextTier.badge}
+                              </span>
+                              <span className="font-mono text-amber-400 font-bold">
+                                {customer.tierProgress.overallProgressPct}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-300"
+                                style={{ width: `${customer.tierProgress.overallProgressPct}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                              <span>Faltan ${customer.tierProgress.spentRemaining.toFixed(0)}</span>
+                              <span>o {customer.tierProgress.ordersRemaining} pedidos</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-cyan-950/30 rounded-xl p-2.5 border border-cyan-500/20 mb-3 flex items-center justify-between text-[11px] text-cyan-300 font-bold">
+                            <span className="flex items-center gap-1.5">
+                              💎 Nivel Máximo VIP Platino
+                            </span>
+                            <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full font-mono">
+                              2.0x • 15% Desc
+                            </span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Loyalty Badge */}
-                      <div className="flex flex-col items-end">
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-bold">
-                          <Sparkles className="h-3 w-3 text-purple-400" />
-                          <span>{customer.loyaltyPoints} pts</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Details section */}
-                    <div className="space-y-1.5 text-xs text-slate-400 bg-slate-950/60 rounded-xl p-3 mb-4">
-                      {customer.email && (
-                        <div className="flex items-center gap-2 truncate">
-                          <Mail className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
-                          <span className="truncate">{customer.email}</span>
-                        </div>
-                      )}
-                      {customer.address ? (
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-3.5 w-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{customer.address}</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-slate-600 italic">
-                          <MapPin className="h-3.5 w-3.5 text-slate-600 flex-shrink-0" />
-                          <span>Sin dirección registrada</span>
-                        </div>
-                      )}
-                      {customer.notes && (
-                        <div className="flex items-start gap-2 text-amber-400/90 pt-1 border-t border-slate-800/80">
-                          <FileText className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-2 italic">{customer.notes}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Bottom Stats & Actions */}
-                  <div>
-                    <div className="grid grid-cols-2 gap-2 text-center py-2.5 px-3 bg-slate-950 rounded-xl border border-slate-800/80 mb-4">
+                      {/* Bottom Stats & Actions */}
                       <div>
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase">Pedidos</p>
-                        <p className="text-sm font-bold text-white flex items-center justify-center gap-1 mt-0.5">
-                          <ShoppingBag className="h-3.5 w-3.5 text-blue-400" />
-                          {customer.totalOrders}
-                        </p>
-                      </div>
-                      <div className="border-l border-slate-800">
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase">Total Gastado</p>
-                        <p className="text-sm font-bold text-emerald-400 mt-0.5">
-                          ${customer.totalSpent.toFixed(2)}
-                        </p>
+                        <div className="grid grid-cols-2 gap-2 text-center py-2 px-3 bg-slate-950 rounded-xl border border-slate-800/80 mb-3">
+                          <div>
+                            <p className="text-[10px] text-slate-500 font-semibold uppercase">Pedidos</p>
+                            <p className="text-sm font-bold text-white flex items-center justify-center gap-1 mt-0.5">
+                              <ShoppingBag className="h-3.5 w-3.5 text-blue-400" />
+                              {customer.totalOrders}
+                            </p>
+                          </div>
+                          <div className="border-l border-slate-800">
+                            <p className="text-[10px] text-slate-500 font-semibold uppercase">Total Gastado</p>
+                            <p className="text-sm font-bold text-emerald-400 mt-0.5">
+                              ${customer.totalSpent.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            onClick={() => setSelectedCustomerForHistory(customer)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Clock className="h-3.5 w-3.5 text-amber-400" />
+                            Historial & Puntos
+                          </button>
+
+                          <button
+                            onClick={() => setEditingCustomer(customer)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                            title="Editar cliente"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteCustomer(customer.id, customer.name)}
+                            className="p-1.5 bg-slate-800 hover:bg-red-950/30 text-slate-400 hover:text-red-400 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar cliente"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
-                      <button
-                        onClick={() => setSelectedCustomerForHistory(customer)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg transition-colors"
-                      >
-                        <Clock className="h-3.5 w-3.5 text-amber-400" />
-                        Historial & Puntos
-                      </button>
-
-                      <button
-                        onClick={() => setEditingCustomer(customer)}
-                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors"
-                        title="Editar cliente"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        onClick={() => handleDeleteCustomer(customer.id, customer.name)}
-                        className="p-1.5 bg-slate-800 hover:bg-red-950/30 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
-                        title="Eliminar cliente"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  );
+                })}
+              </div>
+            )}
       </>
     )}
 
@@ -1557,6 +1781,36 @@ export default function CustomersPage() {
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                      <Cake className="h-3.5 w-3.5 text-pink-400" /> Fecha de Nacimiento
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.birthDate}
+                      onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                      <Award className="h-3.5 w-3.5 text-amber-400" /> Nivel de Lealtad
+                    </label>
+                    <select
+                      value={formData.tier}
+                      onChange={(e) => setFormData({ ...formData, tier: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="BRONZE">Bronce 🥉 (Base 1.0x)</option>
+                      <option value="SILVER">Plata 🥈 (1.25x pts, 5% desc)</option>
+                      <option value="GOLD">Oro 🥇 (1.5x pts, 10% desc)</option>
+                      <option value="PLATINUM">Platino VIP 💎 (2.0x pts, 15% desc)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                     <Sparkles className="h-3.5 w-3.5" /> Puntos Iniciales de Bienvenida
@@ -1677,6 +1931,75 @@ export default function CustomersPage() {
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                      <Cake className="h-3.5 w-3.5 text-pink-400" /> Fecha de Nacimiento
+                    </label>
+                    <input
+                      type="date"
+                      value={editingCustomer.birthDate || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, birthDate: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                      <Award className="h-3.5 w-3.5 text-amber-400" /> Nivel de Lealtad VIP
+                    </label>
+                    <select
+                      value={editingCustomer.tier || 'BRONZE'}
+                      onChange={(e) => {
+                        const newT = e.target.value as LoyaltyTierId;
+                        const cfg = LOYALTY_TIERS[newT] || LOYALTY_TIERS.BRONZE;
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          tier: newT,
+                          pointsMultiplier: cfg.pointsMultiplier,
+                          tierDiscountPct: cfg.discountPct,
+                        });
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="BRONZE">Bronce 🥉 (Base 1.0x)</option>
+                      <option value="SILVER">Plata 🥈 (1.25x pts, 5% desc)</option>
+                      <option value="GOLD">Oro 🥇 (1.5x pts, 10% desc)</option>
+                      <option value="PLATINUM">Platino VIP 💎 (2.0x pts, 15% desc)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Multiplicador de Puntos (x)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="1"
+                      max="5"
+                      value={editingCustomer.pointsMultiplier ?? 1.0}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, pointsMultiplier: parseFloat(e.target.value) || 1.0 })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Descuento VIP Automático (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="100"
+                      value={editingCustomer.tierDiscountPct ?? 0.0}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, tierDiscountPct: parseFloat(e.target.value) || 0.0 })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                   <button
                     type="button"
@@ -1710,17 +2033,25 @@ export default function CustomersPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-bold text-white">{selectedCustomerForHistory.name}</h3>
-                      {selectedCustomerForHistory.totalOrders >= 3 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                          VIP
+                      {selectedCustomerForHistory.tierConfig && (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black ${selectedCustomerForHistory.tierConfig.badgeClass}`}>
+                          {selectedCustomerForHistory.tierConfig.badge}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 flex items-center gap-2">
+                    <p className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
                       <span>Tel: {selectedCustomerForHistory.phone}</span>
                       <span>•</span>
                       <span>Total Gastado: ${selectedCustomerForHistory.totalSpent.toFixed(2)}</span>
+                      <span>•</span>
+                      <span>{selectedCustomerForHistory.totalOrders} pedidos</span>
                     </p>
+                    {selectedCustomerForHistory.birthdayInfo?.isBirthdayThisMonth && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-pink-400 font-semibold">
+                        <Cake className="h-3.5 w-3.5" />
+                        <span>¡Cumpleaños: {selectedCustomerForHistory.birthdayInfo.formattedBirthDate}! Recompensa recomendada activa.</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button
@@ -1858,6 +2189,108 @@ export default function CustomersPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Modal: VIP Tiers & Benefits Reference */}
+        {showTierBenefitsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-950/40">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <Award className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-white">Programa de Lealtad & Niveles VIP</h3>
+                    <p className="text-xs text-slate-400">
+                      Reglas de calificación automática, multiplicadores de puntos y beneficios exclusivos Soft Restaurant
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTierBenefitsModal(false)}
+                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {TIER_ORDER.map((tierId) => {
+                    const tier = LOYALTY_TIERS[tierId];
+                    return (
+                      <div
+                        key={tierId}
+                        className={`rounded-2xl border p-5 flex flex-col justify-between bg-slate-950/70 transition-all ${
+                          tierId === 'PLATINUM'
+                            ? 'border-cyan-500/40 shadow-lg shadow-cyan-500/10'
+                            : tierId === 'GOLD'
+                            ? 'border-amber-400/40 shadow-md shadow-amber-400/10'
+                            : tierId === 'SILVER'
+                            ? 'border-slate-700'
+                            : 'border-slate-800'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-3xl">{tier.icon}</span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${tier.badgeClass}`}>
+                              {tier.name}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 mb-4 pb-3 border-b border-slate-800">
+                            <div className="text-xs text-slate-400">Requisito mínimo:</div>
+                            <div className="text-sm font-bold text-white">
+                              {tier.minSpent > 0 ? `$${tier.minSpent.toLocaleString('es-MX')} MXN` : 'Sin consumo mínimo'}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {tier.minOrders > 0 ? `o ${tier.minOrders} pedidos acumulados` : 'Nivel de bienvenida'}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mb-4">
+                            <div className="flex items-center justify-between text-xs bg-slate-900 rounded-lg p-2 border border-slate-800">
+                              <span className="text-slate-400">Multiplicador:</span>
+                              <span className="font-black text-emerald-400">{tier.pointsMultiplier}x Pts</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs bg-slate-900 rounded-lg p-2 border border-slate-800">
+                              <span className="text-slate-400">Descuento Auto:</span>
+                              <span className="font-black text-amber-400">{tier.discountPct}% OFF</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              Beneficios:
+                            </div>
+                            <ul className="space-y-1">
+                              {tier.perks.map((perk, idx) => (
+                                <li key={idx} className="text-[11px] text-slate-300 flex items-start gap-1.5">
+                                  <span className="text-amber-400 text-xs mt-0.5">•</span>
+                                  <span>{perk}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-blue-500/10 border border-slate-800 rounded-2xl p-5">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
+                    <Cake className="h-4 w-4 text-pink-400" />
+                    Club de Cumpleaños & Reglas de Fidelización Automatizada
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Al registrar la fecha de nacimiento de tus clientes, el sistema identifica automáticamente a los cumpleañeros de la semana y del mes. Además, cuando un cliente alcanza el umbral de consumo o número de pedidos mediante caja o pedidos online, el sistema promueve automáticamente su estatus al siguiente nivel VIP, aumentando su tasa de acumulación de puntos y su descuento automático sin intervención manual.
+                  </p>
                 </div>
               </div>
             </div>

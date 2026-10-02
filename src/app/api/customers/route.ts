@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import {
+  determineCustomerTier,
+  calculateNextTierProgress,
+  checkBirthdayCelebration,
+  LOYALTY_TIERS,
+  LoyaltyTierId,
+} from '@/lib/loyaltyTiers';
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,7 +22,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get('q');
     const brandId = searchParams.get('brandId') || (session.activeBrandId as string | undefined);
-    const filter = searchParams.get('filter'); // 'all', 'vip', 'recent'
+    const filter = searchParams.get('filter'); // 'all', 'vip', 'recent', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'birthdays'
 
     const whereClause: Prisma.CustomerWhereInput = {};
 
@@ -40,10 +47,16 @@ export async function GET(req: NextRequest) {
     }
 
     if (filter === 'vip') {
-      whereClause.totalOrders = { gte: 3 };
+      whereClause.OR = [
+        { totalOrders: { gte: 5 } },
+        { totalSpent: { gte: 2500 } },
+        { tier: { in: ['SILVER', 'GOLD', 'PLATINUM'] } },
+      ];
+    } else if (filter && ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'].includes(filter)) {
+      whereClause.tier = filter;
     }
 
-    const customers = await prisma.customer.findMany({
+    let customers = await prisma.customer.findMany({
       where: whereClause,
       include: {
         brand: {
@@ -65,11 +78,75 @@ export async function GET(req: NextRequest) {
       orderBy: filter === 'recent' ? { updatedAt: 'desc' } : { totalSpent: 'desc' },
     });
 
+    // Evaluate auto-tier promotions and augment with tier progress and birthday info
+    const now = new Date();
+    const augmentedCustomers = await Promise.all(
+      customers.map(async (c) => {
+        const correctTier = determineCustomerTier(c.totalSpent, c.totalOrders);
+        let currentTier = c.tier as LoyaltyTierId;
+
+        // Auto-upgrade tier if customer has earned higher tier but DB has lower
+        if (
+          (currentTier === 'BRONZE' && correctTier.id !== 'BRONZE') ||
+          (currentTier === 'SILVER' && (correctTier.id === 'GOLD' || correctTier.id === 'PLATINUM')) ||
+          (currentTier === 'GOLD' && correctTier.id === 'PLATINUM')
+        ) {
+          try {
+            await prisma.customer.update({
+              where: { id: c.id },
+              data: {
+                tier: correctTier.id,
+                pointsMultiplier: correctTier.pointsMultiplier,
+                tierDiscountPct: correctTier.discountPct,
+              },
+            });
+            currentTier = correctTier.id;
+            c.tier = correctTier.id;
+            c.pointsMultiplier = correctTier.pointsMultiplier;
+            c.tierDiscountPct = correctTier.discountPct;
+          } catch (e) {
+            console.error('Error auto-upgrading customer tier:', e);
+          }
+        }
+
+        const tierConfig = LOYALTY_TIERS[currentTier] || LOYALTY_TIERS.BRONZE;
+        const tierProgress = calculateNextTierProgress(c.totalSpent, c.totalOrders);
+        const birthdayInfo = checkBirthdayCelebration(c.birthDate, now);
+
+        return {
+          ...c,
+          tierConfig,
+          tierProgress,
+          birthdayInfo,
+        };
+      })
+    );
+
+    // Apply birthdays filter in-memory if requested
+    let finalCustomers = augmentedCustomers;
+    if (filter === 'birthdays') {
+      finalCustomers = augmentedCustomers.filter(c => c.birthdayInfo.isBirthdayThisMonth);
+    }
+
     // Compute stats
     const totalCustomers = await prisma.customer.count();
     const vipCount = await prisma.customer.count({
-      where: { totalOrders: { gte: 3 } },
+      where: {
+        OR: [
+          { totalOrders: { gte: 5 } },
+          { totalSpent: { gte: 2500 } },
+          { tier: { in: ['SILVER', 'GOLD', 'PLATINUM'] } },
+        ],
+      },
     });
+
+    const bronzeCount = await prisma.customer.count({ where: { tier: 'BRONZE' } });
+    const silverCount = await prisma.customer.count({ where: { tier: 'SILVER' } });
+    const goldCount = await prisma.customer.count({ where: { tier: 'GOLD' } });
+    const platinumCount = await prisma.customer.count({ where: { tier: 'PLATINUM' } });
+
+    const birthdayCount = augmentedCustomers.filter(c => c.birthdayInfo.isBirthdayThisMonth).length;
+
     const aggregates = await prisma.customer.aggregate({
       _sum: {
         loyaltyPoints: true,
@@ -81,13 +158,18 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({
-      customers,
+      customers: finalCustomers,
       stats: {
         totalCustomers,
         vipCustomers: vipCount,
         totalPoints: aggregates._sum.loyaltyPoints || 0,
         totalSpent: aggregates._sum.totalSpent || 0,
         averageSpent: aggregates._avg.totalSpent || 0,
+        bronzeCount,
+        silverCount,
+        goldCount,
+        platinumCount,
+        birthdayCount,
       },
     });
   } catch (error: unknown) {
@@ -106,7 +188,16 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await req.json();
-    const { name, phone, email, address, notes, initialPoints = 0 } = data;
+    const {
+      name,
+      phone,
+      email,
+      address,
+      notes,
+      birthDate,
+      initialPoints = 0,
+      tier = 'BRONZE',
+    } = data;
 
     if (!name || !phone) {
       return NextResponse.json({ error: 'Nombre y teléfono son obligatorios' }, { status: 400 });
@@ -122,6 +213,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ya existe un cliente registrado con este teléfono' }, { status: 409 });
     }
 
+    const tierKey = (tier in LOYALTY_TIERS ? tier : 'BRONZE') as LoyaltyTierId;
+    const tierConfig = LOYALTY_TIERS[tierKey];
+
     const customer = await prisma.customer.create({
       data: {
         name: name.trim(),
@@ -129,6 +223,10 @@ export async function POST(req: NextRequest) {
         email: email ? email.trim() : null,
         address: address ? address.trim() : null,
         notes: notes ? notes.trim() : null,
+        birthDate: birthDate ? birthDate.trim() : null,
+        tier: tierConfig.id,
+        pointsMultiplier: tierConfig.pointsMultiplier,
+        tierDiscountPct: tierConfig.discountPct,
         loyaltyPoints: parseInt(String(initialPoints), 10) || 0,
         brandId: session.activeBrandId || null,
       },
@@ -151,7 +249,19 @@ export async function PATCH(req: NextRequest) {
     }
 
     const data = await req.json();
-    const { id, name, phone, email, address, notes, pointsAdjustment } = data;
+    const {
+      id,
+      name,
+      phone,
+      email,
+      address,
+      notes,
+      birthDate,
+      tier,
+      pointsMultiplier,
+      tierDiscountPct,
+      pointsAdjustment,
+    } = data;
 
     if (!id) {
       return NextResponse.json({ error: 'ID de cliente requerido' }, { status: 400 });
@@ -180,6 +290,21 @@ export async function PATCH(req: NextRequest) {
       updatedPoints = Math.max(0, updatedPoints + pointsAdjustment);
     }
 
+    // If tier is explicitly modified, sync multipliers unless explicitly provided
+    let newTier = customer.tier;
+    let newMultiplier = customer.pointsMultiplier;
+    let newDiscount = customer.tierDiscountPct;
+
+    if (tier && tier in LOYALTY_TIERS) {
+      const tConfig = LOYALTY_TIERS[tier as LoyaltyTierId];
+      newTier = tConfig.id;
+      newMultiplier = pointsMultiplier !== undefined ? Number(pointsMultiplier) : tConfig.pointsMultiplier;
+      newDiscount = tierDiscountPct !== undefined ? Number(tierDiscountPct) : tConfig.discountPct;
+    } else {
+      if (pointsMultiplier !== undefined) newMultiplier = Number(pointsMultiplier);
+      if (tierDiscountPct !== undefined) newDiscount = Number(tierDiscountPct);
+    }
+
     const updated = await prisma.customer.update({
       where: { id },
       data: {
@@ -188,6 +313,10 @@ export async function PATCH(req: NextRequest) {
         email: email !== undefined ? (email ? email.trim() : null) : customer.email,
         address: address !== undefined ? (address ? address.trim() : null) : customer.address,
         notes: notes !== undefined ? (notes ? notes.trim() : null) : customer.notes,
+        birthDate: birthDate !== undefined ? (birthDate ? birthDate.trim() : null) : customer.birthDate,
+        tier: newTier,
+        pointsMultiplier: newMultiplier,
+        tierDiscountPct: newDiscount,
         loyaltyPoints: updatedPoints,
       },
     });

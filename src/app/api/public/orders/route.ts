@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { orderEvents } from '@/lib/events';
 import { createPaymentSession } from '@/lib/payments';
+import { determineCustomerTier, calculateLoyaltyPointsEarned } from '@/lib/loyaltyTiers';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,9 +149,12 @@ export async function POST(request: NextRequest) {
         where: { phone: cleanPhone },
       });
 
-      const earnedPoints = Math.floor(total / 10);
-
       if (existingCustomer) {
+        const updatedTotalSpent = existingCustomer.totalSpent + total;
+        const updatedTotalOrders = existingCustomer.totalOrders + 1;
+        const newTier = determineCustomerTier(updatedTotalSpent, updatedTotalOrders);
+        const earnedPoints = calculateLoyaltyPointsEarned(total, existingCustomer.pointsMultiplier || newTier.pointsMultiplier);
+
         const updated = await prisma.customer.update({
           where: { id: existingCustomer.id },
           data: {
@@ -158,10 +162,15 @@ export async function POST(request: NextRequest) {
             totalOrders: { increment: 1 },
             totalSpent: { increment: total },
             loyaltyPoints: { increment: earnedPoints },
+            tier: newTier.id,
+            pointsMultiplier: newTier.pointsMultiplier,
+            tierDiscountPct: newTier.discountPct,
           },
         });
         customerId = updated.id;
       } else {
+        const newTier = determineCustomerTier(total, 1);
+        const earnedPoints = calculateLoyaltyPointsEarned(total, newTier.pointsMultiplier);
         const created = await prisma.customer.create({
           data: {
             name: customerName.trim(),
@@ -170,6 +179,9 @@ export async function POST(request: NextRequest) {
             totalOrders: 1,
             totalSpent: total,
             loyaltyPoints: earnedPoints,
+            tier: newTier.id,
+            pointsMultiplier: newTier.pointsMultiplier,
+            tierDiscountPct: newTier.discountPct,
           },
         });
         customerId = created.id;
