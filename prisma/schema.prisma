@@ -23,6 +23,7 @@ model User {
   wasteLogs     WasteLog[]
   pinCode       String?
   attendanceRecords AttendanceRecord[]
+  inventoryAudits InventoryAudit[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -75,6 +76,7 @@ model Brand {
   waitlistEntries WaitlistEntry[]
   priceRules     PriceRule[]
   giftCards      GiftCard[]
+  inventoryAudits InventoryAudit[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -160,6 +162,7 @@ model Ingredient {
   warehouseStocks  WarehouseStock[]
   warehouseTransfers WarehouseTransfer[]
   wasteLogs        WasteLog[]
+  auditItems       InventoryAuditItem[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -512,6 +515,7 @@ model Warehouse {
   transfersFrom WarehouseTransfer[] @relation("TransferSource")
   transfersTo   WarehouseTransfer[] @relation("TransferDestination")
   wasteLogs     WasteLog[]
+  inventoryAudits InventoryAudit[]
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
@@ -789,4 +793,46 @@ model GiftCardTransaction {
   @@index([giftCardId])
   @@index([type])
   @@index([createdAt])
+}
+
+model InventoryAudit {
+  id                    String               @id @default(uuid())
+  brandId               String
+  brand                 Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  auditNumber           String
+  type                  String               @default("BLIND") // BLIND, FULL, PARTIAL
+  status                String               @default("COMPLETED") // DRAFT, COMPLETED, APPLIED, CANCELLED
+  warehouseId           String?
+  warehouse             Warehouse?           @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  totalExpectedValue    Float                @default(0)
+  totalCountedValue     Float                @default(0)
+  totalDiscrepancyValue Float                @default(0)
+  notes                 String?
+  conductedById         String?
+  conductedBy           User?                @relation(fields: [conductedById], references: [id])
+  appliedAt             DateTime?
+  items                 InventoryAuditItem[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([brandId])
+  @@index([auditNumber])
+}
+
+model InventoryAuditItem {
+  id              String         @id @default(uuid())
+  auditId         String
+  audit           InventoryAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  ingredientId    String
+  ingredient      Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  expectedStock   Float
+  countedStock    Float
+  discrepancy     Float          // countedStock - expectedStock
+  unitCost        Float
+  discrepancyCost Float          // discrepancy * unitCost
+  notes           String?
+  createdAt       DateTime       @default(now())
+
+  @@index([auditId])
+  @@index([ingredientId])
 }

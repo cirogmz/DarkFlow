@@ -16,8 +16,10 @@ import {
   ChefHat,
   Flame,
   X,
-  Edit3
+  Edit3,
+  Scale
 } from 'lucide-react';
+import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
 
 interface Ingredient {
   id: string;
@@ -164,7 +166,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -739,6 +741,14 @@ export default function InventoryPage() {
             }`}
           >
             <Utensils className="h-4 w-4" /> Fichas de Platillos
+          </button>
+          <button
+            onClick={() => setActiveTab('audit')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'audit' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Scale className="h-4 w-4 text-amber-400" /> Auditoría & Food Cost
           </button>
         </div>
 
@@ -1498,6 +1508,15 @@ export default function InventoryPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB 7: COST AUDIT & FOOD COST */}
+        {activeTab === 'audit' && (
+          <FoodCostAuditTab
+            ingredients={ingredients}
+            warehouses={warehouses}
+            onRefreshAll={fetchInventoryData}
+          />
         )}
 
         {/* MODAL: ADD INGREDIENT */}
