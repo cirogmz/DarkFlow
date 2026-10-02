@@ -20,6 +20,12 @@ export async function GET(req: NextRequest) {
       },
       include: {
         user: true,
+        movements: {
+          orderBy: { createdAt: 'desc' },
+        },
+        cuts: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -31,9 +37,28 @@ export async function GET(req: NextRequest) {
       },
       include: {
         user: true,
+        cuts: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
       orderBy: { closedAt: 'desc' },
       take: 10,
+    });
+
+    // Find recent cuts for brand
+    const recentCuts = await prisma.cashCut.findMany({
+      where: {
+        cashSession: { brandId: session.activeBrandId },
+      },
+      include: {
+        cashSession: {
+          select: {
+            user: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { cutAt: 'desc' },
+      take: 20,
     });
 
     // Calculate currently aggregated sales for the active session if open
@@ -45,24 +70,35 @@ export async function GET(req: NextRequest) {
           createdAt: {
             gte: activeSession.openedAt,
           },
-          status: 'DELIVERED', // Count completed orders
         },
       });
+
+      const completedOrders = orders.filter((o) => o.status === 'DELIVERED');
+      const canceledOrders = orders.filter((o) => o.status === 'CANCELLED');
 
       let cashSales = 0;
       let cardSales = 0;
       let appsSales = 0;
+      let giftCardSales = 0;
+      let transfersSales = 0;
       let tipsCash = 0;
       let tipsCard = 0;
+      let discountsTotal = 0;
 
-      orders.forEach((order) => {
+      completedOrders.forEach((order) => {
         const tipVal = order.tip || 0;
+        discountsTotal += (order.discountAmount || 0);
+
         if (order.source === 'UBER_EATS' || order.source === 'RAPPI' || order.source === 'DIDI_FOOD') {
           appsSales += order.total;
+        } else if (order.paymentMethod === 'GIFT_CARD' || order.paymentMethod === 'MONEDERO') {
+          giftCardSales += order.total;
+        } else if (order.paymentMethod === 'TRANSFERENCIA') {
+          transfersSales += order.total;
         } else if (order.paymentMethod === 'CASH') {
           cashSales += order.total;
           tipsCash += tipVal;
-        } else if (order.paymentMethod === 'TERMINAL' || order.paymentMethod === 'STRIPE' || order.paymentMethod === 'MERCADOPAGO') {
+        } else if (order.paymentMethod === 'TERMINAL' || order.paymentMethod === 'CARD' || order.paymentMethod === 'STRIPE' || order.paymentMethod === 'MERCADOPAGO') {
           cardSales += order.total;
           tipsCard += tipVal;
         } else if (order.source === 'WEB') {
@@ -81,20 +117,35 @@ export async function GET(req: NextRequest) {
         bar: parseFloat((tipsTotal * 0.10).toFixed(2)),
       };
 
+      const cashInTotal = activeSession.movements.filter((m) => m.type === 'IN').reduce((acc, m) => acc + m.amount, 0);
+      const cashOutTotal = activeSession.movements.filter((m) => m.type === 'OUT').reduce((acc, m) => acc + m.amount, 0);
+
+      const expectedCash = parseFloat((activeSession.openingBalance + cashSales + cashInTotal - cashOutTotal).toFixed(2));
+      const totalSales = parseFloat((cashSales + cardSales + appsSales + giftCardSales + transfersSales).toFixed(2));
+
       activeAggregates = {
         cashSales: parseFloat(cashSales.toFixed(2)),
         cardSales: parseFloat(cardSales.toFixed(2)),
         appsSales: parseFloat(appsSales.toFixed(2)),
-        totalSales: parseFloat((cashSales + cardSales + appsSales).toFixed(2)),
+        giftCardSales: parseFloat(giftCardSales.toFixed(2)),
+        transfersSales: parseFloat(transfersSales.toFixed(2)),
+        totalSales,
+        cashInTotal: parseFloat(cashInTotal.toFixed(2)),
+        cashOutTotal: parseFloat(cashOutTotal.toFixed(2)),
+        expectedCash,
+        expectedBalance: expectedCash,
+        ordersCount: completedOrders.length,
+        discountsTotal: parseFloat(discountsTotal.toFixed(2)),
+        canceledOrdersCount: canceledOrders.length,
+        canceledAmount: parseFloat(canceledOrders.reduce((sum, o) => sum + o.total, 0).toFixed(2)),
         tipsCash: parseFloat(tipsCash.toFixed(2)),
         tipsCard: parseFloat(tipsCard.toFixed(2)),
         tipsTotal,
         tipDistribution,
-        expectedBalance: parseFloat((activeSession.openingBalance + cashSales).toFixed(2)),
       };
     }
 
-    return NextResponse.json({ activeSession, activeAggregates, pastSessions });
+    return NextResponse.json({ activeSession, activeAggregates, pastSessions, recentCuts });
   } catch (error: unknown) {
     console.error('Error fetching cash sessions:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });

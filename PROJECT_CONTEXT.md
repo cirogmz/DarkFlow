@@ -106,10 +106,14 @@ El esquema relacional en [`prisma/schema.prisma`](file:///prisma/schema.prisma) 
 11. **`OrderItem`**: Líneas de producto dentro de una comanda (`orderId`, `productId`, `quantity`, `price`, `notes`).
 12. **`Purchase`**: Registro histórico de compras de mercancía (`ingredientId`, `quantity`, `cost`, `supplier`, `purchaseDate`, `brandId`).
 13. **`CashSession`**: Turnos de caja / arqueos (`brandId`, `userId`, `openedAt`, `closedAt`, `openingBalance`, `closingBalance`, `expectedBalance`, `actualBalance`, `cashSales`, `cardSales`, `appsSales`, `status`, `notes`).
-14. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
-15. **`Coupon`**: Cupones de descuento configurables (`id`, `code`, `description`, `discountType`, `discountValue`, `minOrderAmount`, `maxDiscount`, `usageLimit`, `usedCount`, `startDate`, `endDate`, `isActive`, `brandId`).
-16. **`Combo`**: Paquetes de platillos promocionales (`id`, `name`, `description`, `price`, `imageUrl`, `isActive`, `brandId`, `items`).
-17. **`ComboItem`**: Detalle de productos y cantidades que componen un `Combo` (`comboId`, `productId`, `quantity`).
+14. **`CashMovement`**: Entradas de cambio y sangrías/retiros de seguridad de efectivo vinculados al turno (`id`, `sessionId`, `type`, `amount`, `reason`, `authorizedBy`, `createdAt`).
+15. **`CashCut`**: Registro inmutable de arqueos parciales (Corte X) y cierres definitivos (Corte Z) con desglose de denominaciones (`id`, `sessionId`, `type`, `cutNumber`, `expectedAmount`, `actualAmount`, `difference`, `denominations`, `salesSummary`, `createdAt`).
+16. **`GiftCard`**: Tarjetas de regalo, saldo prepago y monederos digitales (`id`, `brandId`, `code`, `initialBalance`, `currentBalance`, `pinHash`, `status`, `notes`).
+17. **`GiftCardTransaction`**: Kardex y auditoría de débitos y recargas de tarjetas de regalo (`id`, `giftCardId`, `type`, `amount`, `balanceBefore`, `balanceAfter`, `orderId`, `notes`).
+18. **`DeliveryProfile`**: Perfil operativo de repartidores vinculado a un `User` (`vehicleType`, `plateNumber`, `status`).
+19. **`Coupon`**: Cupones de descuento configurables (`id`, `code`, `description`, `discountType`, `discountValue`, `minOrderAmount`, `maxDiscount`, `usageLimit`, `usedCount`, `startDate`, `endDate`, `isActive`, `brandId`).
+20. **`Combo`**: Paquetes de platillos promocionales (`id`, `name`, `description`, `price`, `imageUrl`, `isActive`, `brandId`, `items`).
+21. **`ComboItem`**: Detalle de productos y cantidades que componen un `Combo` (`comboId`, `productId`, `quantity`).
 
 ---
 
@@ -607,5 +611,6 @@ darkflow/
 * ✅ **Fase 22 (Completada):** Reservaciones de Mesa, Lista de Espera & Estación de Hostess (Recepción de comensales, gestión de turnos de espera con tiempos estimados, asignación inteligente de mesas por capacidad, alertas visuales en `/tables`, y APIs `/api/reservations` y `/api/waitlist`).
 * ✅ **Fase 23 (Completada):** Tarifas Dinámicas, Happy Hour & Promociones por Horario (Reglas de precios programados por día de la semana y ventanas de horario, soporte para 2x1, 3x2, precios fijos y descuentos porcentuales automáticos evaluados en tiempo real en POS y Menú Digital QR de comensales `/m/[slug]`, badges llameantes `🔥 ACTIVO AHORA`, cálculo dinámico de ahorro y panel de administración en `/promotions`).
 * ✅ **Fase 24 (Completada):** Monedero Electrónico, Saldo Prepago & Tarjetas de Regalo (Modelos `GiftCard` y `GiftCardTransaction` con paridad dual SQLite/PostgreSQL, emisión de tarjetas digitales/físicas/VIP con PIN de seguridad y vigencia, recargas con registro de método de pago, débitos atómicos directos en transacciones Prisma contra pedidos de POS y auto-pedido móvil `/m/[slug]`, auditoría/kardex transaccional con balance antes/después, y módulo visual integrado en `/customers` con KPIs y diseño de tarjeta VIP metálica).
-* ⏳ **Fase 25 (Siguiente):** Cortes de Caja Ciego, Arqueo Parcial "Corte X", Cierre Oficial "Corte Z" & Reporte Z Fiscal (Validación ciega de efectivo ingresado por cajero para evitar fraudes, retiro parcial de fondo y ticket Z de liquidación definitiva).
+* ✅ **Fase 25 (Completada):** Cortes de Caja Ciego, Arqueo Parcial "Corte X", Cierre Oficial "Corte Z" & Reporte Z Fiscal (Modelos `CashMovement` y `CashCut` vinculados al turno `CashSession`; conteo de efectivo a ciegas con desglose por denominaciones de billetes $1000-$20, monedas $10-$0.50 y vouchers; flujo de movimientos con entradas de cambio y sangrías/retiros de seguridad con motivo y supervisor; Corte X parcial a mitad de turno sin cierre de sesión; Corte Z definitivo con folio fiscal consecutivo `Z-XXXX`, sellado inmutable del balance esperado vs contado, bitácora de auditoría crítica ante descuadres y panel ejecutivo en `/cash` con visualización/impresión térmica ESC/POS 80mm tanto en navegador como comanderas de red TCP 9100).
+* ⏳ **Fase 26 (Siguiente):** Auditoría de Costos & Receta Teórica vs Consumo Real (Comparativa de consumos teóricos por fichas técnicas vs existencias físicas de inventario en inventarios ciegos, detección de fugas/mermas no registradas, variaciones de precios en compras de insumos, cálculo de costo estándar vs costo promedio ponderado y semáforos de rentabilidad por platillo).
 

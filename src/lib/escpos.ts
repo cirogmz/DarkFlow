@@ -593,3 +593,19 @@ export function testPrinterConnection(
     }
   });
 }
+
+/**
+ * Converts formatted monospace ticket text into an ESC/POS binary buffer
+ * with hardware initialization, text sanitization, feed, and cut commands.
+ */
+export function generateRawTicketBuffer(ticketText: string): Buffer {
+  const parts: Buffer[] = [
+    COMMANDS.HW_INIT,
+    COMMANDS.TXT_NORMAL,
+    COMMANDS.TXT_ALIGN_LT,
+    Buffer.from(sanitizeEscposText(ticketText) + "\n\n\n\n"),
+    COMMANDS.PAPER_PART_CUT,
+  ];
+  return Buffer.concat(parts);
+}
+

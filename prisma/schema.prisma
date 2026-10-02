@@ -257,25 +257,89 @@ model Purchase {
 }
 
 model CashSession {
-  id             String            @id @default(uuid())
-  brandId        String
-  brand          Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User              @relation(fields: [userId], references: [id])
-  openedAt       DateTime          @default(now())
-  closedAt       DateTime?
-  openingBalance Float
-  closingBalance Float?
+  id              String            @id @default(uuid())
+  brandId         String
+  brand           Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User              @relation(fields: [userId], references: [id])
+  openedAt        DateTime          @default(now())
+  closedAt        DateTime?
+  openingBalance  Float
+  closingBalance  Float?
   expectedBalance Float?
-  actualBalance  Float?
-  status         String            @default("OPEN")
-  cashSales      Float             @default(0)
-  cardSales      Float             @default(0)
-  appsSales      Float             @default(0)
-  tipsTotal      Float             @default(0)
-  tipsCash       Float             @default(0)
-  tipsCard       Float             @default(0)
-  notes          String?
+  actualBalance   Float?
+  status          String            @default("OPEN")
+  cashSales       Float             @default(0)
+  cardSales       Float             @default(0)
+  appsSales       Float             @default(0)
+  giftCardSales   Float             @default(0)
+  transfersSales  Float             @default(0)
+  cashInTotal     Float             @default(0)
+  cashOutTotal    Float             @default(0)
+  canceledTotal   Float             @default(0)
+  discountsTotal  Float             @default(0)
+  tipsTotal       Float             @default(0)
+  tipsCash        Float             @default(0)
+  tipsCard        Float             @default(0)
+  consecutiveZ    Int?
+  blindCount      String?
+  notes           String?
+  movements       CashMovement[]
+  cuts            CashCut[]
+}
+
+model CashMovement {
+  id            String      @id @default(uuid())
+  cashSessionId String
+  cashSession   CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  type          String      // "IN" (Entrada/Cambio) o "OUT" (Retiro/Sangria)
+  amount        Float
+  reason        String
+  category      String?     // "CHANGE_FLOAT", "SAFE_DROP", "EXPENSE", "SUPPLIER_PAYMENT", "OTHER"
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime    @default(now())
+}
+
+model CashCut {
+  id                  String      @id @default(uuid())
+  cashSessionId       String
+  cashSession         CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  cutType             String      // "CORTE_X" o "CORTE_Z"
+  cutNumber           String      // ej. "X-001" o "Z-0042"
+  consecutive         Int
+  openedAt            DateTime
+  cutAt               DateTime    @default(now())
+  openingBalance      Float
+  cashSales           Float       @default(0)
+  cardSales           Float       @default(0)
+  appsSales           Float       @default(0)
+  giftCardSales       Float       @default(0)
+  transfersSales      Float       @default(0)
+  totalSales          Float       @default(0)
+  cashInTotal         Float       @default(0)
+  cashOutTotal        Float       @default(0)
+  expectedCash        Float
+  expectedTotal       Float
+  declaredCash        Float
+  declaredCard        Float       @default(0)
+  declaredOther       Float       @default(0)
+  totalDeclared       Float
+  cashDifference      Float       // declaredCash - expectedCash (positivo = sobrante, negativo = faltante)
+  totalDifference     Float
+  denominations       String?     // JSON con conteo de billetes y monedas
+  ordersCount         Int         @default(0)
+  discountsTotal      Float       @default(0)
+  canceledOrdersCount Int         @default(0)
+  canceledAmount      Float       @default(0)
+  tipsTotal           Float       @default(0)
+  tipsCash            Float       @default(0)
+  tipsCard            Float       @default(0)
+  printedAt           DateTime?
+  notes               String?
+  createdById         String?
+  createdByName       String?
+  createdAt           DateTime    @default(now())
 }
 
 model DeliveryProfile {
