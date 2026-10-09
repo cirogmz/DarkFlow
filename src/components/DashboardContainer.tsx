@@ -24,7 +24,8 @@ import {
   Radio,
   ShieldAlert,
   Clock,
-  Smartphone
+  Smartphone,
+  TabletSmartphone
 } from 'lucide-react';
 import Link from 'next/link';
 import QuickClockModal from '@/components/QuickClockModal';
@@ -148,6 +149,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'POS Ventas', path: '/pos', icon: ShoppingBag, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Salón & Mesas', path: '/tables', icon: LayoutGrid, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
+    { name: 'Comandero Móvil', path: '/waiter', icon: TabletSmartphone, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER', 'WAITER'] },
     { name: 'KDS Cocina', path: '/kitchen', icon: Flame, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'KITCHEN'] },
     { name: 'Menú & Catálogo', path: '/menu', icon: UtensilsCrossed, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Inventario', path: '/inventory', icon: Package, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },

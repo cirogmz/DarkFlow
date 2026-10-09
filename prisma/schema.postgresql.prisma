@@ -31,6 +31,8 @@ model User {
   securityIncidents     SecurityIncident[]
   driverSettlements     DriverSettlement[] @relation("SettledDriver")
   cashierSettlements    DriverSettlement[] @relation("SettlementCashier")
+  waiterOrders          Order[]            @relation("WaiterOrders")
+  assignedTables        Table[]            @relation("AssignedWaiterTables")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -110,6 +112,8 @@ model Table {
   zone      String    @default("Salón")
   brandId   String
   brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  assignedWaiterId String?
+  assignedWaiter   User?     @relation("AssignedWaiterTables", fields: [assignedWaiterId], references: [id])
   orders    Order[]
   reservations Reservation[]
   waitlistEntries WaitlistEntry[]
@@ -211,6 +215,8 @@ model Order {
   total        Float
   driverId     String?
   driver       User?        @relation("DeliveryDriver", fields: [driverId], references: [id])
+  waiterId     String?
+  waiter       User?        @relation("WaiterOrders", fields: [waiterId], references: [id])
   tableId      String?
   table        Table?       @relation(fields: [tableId], references: [id])
   diners       Int?         @default(1)
@@ -269,6 +275,7 @@ model OrderItem {
   serviceStage String?   @default("MAIN")
   startedAt    DateTime?
   finishedAt   DateTime?
+  servedAt     DateTime?
 }
 
 model Purchase {
