@@ -329,6 +329,24 @@ El POS valida si hay inventario suficiente para preparar el plato antes de agreg
 * **Métricas KDS en Vivo**:
   - Indicador de % de Cumplimiento de SLA del turno y cronómetro de preparación.
 
+### 6.20. Auditoría Antifraude & Prevención de Fugas de Ingresos (Loss Prevention Engine)
+* **Monitoreo Proactivo de Vulnerabilidades Críticas**:
+  - Detección automática de la vulnerabilidad clásica de restaurantes: cancelación o anulación de platillos tras la impresión del ticket de pre-cuenta (`POST_PREBILL_CANCEL`).
+  - Alerta inmediata ante reapertura de comandas ya liquidadas (`REOPEN_SETTLED_ORDER`).
+  - Detección de descuentos excesivos fuera de política (`EXCESSIVE_DISCOUNT`, >20% o >$200 MXN sin autorización).
+  - Vigilancia de transferencias anómalas entre mesas (`SUSPICIOUS_TRANSFER`) y aperturas de cajón sin venta (`DRAWER_POP_NO_SALE`).
+* **Modelo de Datos y Paridad Multi-Tenant (`SecurityIncident`)**:
+  - Tabla `SecurityIncident` vinculada a `Brand`, `User` y `Order` con campos de tipo, severidad (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), estado de dictamen (`FLAGGED`, `UNDER_REVIEW`, `JUSTIFIED`, `CONFIRMED_FRAUD`), monto en riesgo, notas de resolución y timestamp.
+  - Campos `prebillPrintedAt` y `prebillPrintedCount` en modelo `Order` con paridad dual SQLite / PostgreSQL.
+* **Motor Analítico & Scoring (`src/lib/lossPrevention.ts`)**:
+  - Algoritmo de cálculo de Índice de Riesgo Antifraude (0 a 100) con clasificación semafórica (`BAJO`, `MODERADO`, `CRÍTICO`).
+  - Agregación en tiempo real de monto financiero en riesgo ($ MXN) y conteos por tipología.
+* **Panel Forense & Dictamen Gerencial (`/audit`)**:
+  - Pestaña interactiva "Prevención de Fugas & Antifraude" con 5 KPI Cards ejecutivas (Índice Antifraude, Monto en Riesgo, Post Pre-cuenta, Descuentos Excesivos, Por Dictaminar).
+  - Filtros reactivos por tipo de incidente, severidad y estado.
+  - Modal de dictamen gerencial para aplicar resolución (`JUSTIFICADO`, `EN INVESTIGACIÓN`, `FRAUDE CONFIRMADO`) con notas de auditoría inmutables.
+  - Exportación forense a formato CSV con codificación UTF-8 BOM.
+
 ---
 
 ## 7. Estructura de Directorios
@@ -620,5 +638,6 @@ darkflow/
 * ✅ **Fase 28 (Completada):** Niveles de Lealtad VIP (Tier Status: Bronze, Silver, Gold, Platinum) & Descuentos Automatizados por Fidelidad (Campos `tier`, `birthDate`, `pointsMultiplier` y `tierDiscountPct` en `Customer` con paridad dual SQLite/PostgreSQL; motor en `src/lib/loyaltyTiers.ts` con umbrales por consumo LTV acumulado o número de pedidos; multiplicadores acelerados de 1.0x hasta 2.0x puntos y descuentos VIP automáticos del 5% al 15%; detección de Club de Cumpleaños con alertas de semana y mes; promociones automáticas de nivel al cerrar comandas en POS y pedidos online; filtros por nivel y modal de beneficios en `/customers`).
 * ✅ **Fase 29 (Completada):** Encuestas de Satisfacción, Calificación NPS (Net Promoter Score) & Reseñas de Servicio en Menú Digital QR con Alertas Inmediatas de Recuperación de Clientes (Modelo `SatisfactionSurvey` con paridad dual SQLite/PostgreSQL y relaciones con `Order`, `Brand` y `Customer`; motor analítico en `src/lib/surveys.ts` con cálculo estandarizado de NPS de -100 a +100 y clasificación en Promotores, Pasivos y Detractores; widget interactivo en vivo en `/order-tracking/[id]` con 5 estrellas, escala 0-10 NPS, desglose por Sabor, Rapidez, Servicio e Higiene, chips de etiquetas rápidas y estado de agradecimiento; logging automático en `AuditLog` ante comensales detractores; pestaña ejecutiva en `/reports` con KPI cards de NPS, semáforo de calidad, desglose por áreas, filtros reactivos, bitácora detallada de reseñas, exportación a Excel y modal de gestión/resolución gerencial de quejas).
 * ✅ **Fase 30 (Completada):** Dashboard Ejecutivo Móvil para Propietarios (DarkFlow Mobile Owner Hub / PWA) con KPIs en tiempo real multimarca, alertas inmediatas de descuadres de caja y monitoreo remoto de operaciones desde smartphone (Soporte PWA standalone con `manifest.json` y meta tags de aplicación nativa en `/hub`; endpoint de telemetría ultrarrápido `/api/hub` con cálculo de venta en vivo del día, tendencia vs ayer, ticket promedio, distribución por métodos de pago y comandas activas en cocina; control remoto de cocinas con switch táctil de activación/pausa de marcas en `/api/hub/toggle-brand`; watchdog de alertas críticas para dueños con detección de descuadres de caja, quejas de comensales NPS sin resolver, insumos bajo mínimo y pedidos retrasados; vista de cajas y turnos con historial de cortes; botón para exportar o compartir reporte diario en 1 toque por WhatsApp a grupos de socios; barra de navegación móvil fija y acceso desde el sidebar principal).
-* ⏳ **Fase 31 (Siguiente):** Auditoría Antifraude & Prevención de Fugas de Ingresos (Loss Prevention & Anti-Fraud Engine) con monitoreo de cancelaciones sospechosas tras pre-cuenta, reaperturas de cuentas cerradas, descuentos excesivos y transferencias anómalas de platillos.
+* ✅ **Fase 31 (Completada):** Auditoría Antifraude & Prevención de Fugas de Ingresos (Loss Prevention & Anti-Fraud Engine) con monitoreo proactivo de cancelaciones sospechosas tras pre-cuenta, reaperturas de cuentas cerradas, descuentos excesivos (>20%) y transferencias anómalas de platillos (Modelos `SecurityIncident` y campos `prebillPrintedAt`, `prebillPrintedCount` en `Order` con paridad dual SQLite/PostgreSQL; motor de scoring antifraude 0-100 en `src/lib/lossPrevention.ts`; APIs `/api/audit/loss-prevention` y adjudicación `/api/audit/loss-prevention/[id]`; disparador automático ante cancelación de comandas con pre-cuenta impresa; marcado asíncrono en comanda térmica en `/tables`; panel forense rediseñado en `/audit` con KPIs de riesgo financiero, filtros por severidad/estado, dictamen gerencial JUSTIFIED/UNDER_REVIEW/CONFIRMED_FRAUD y exportación a CSV con UTF-8 BOM).
+* ⏳ **Fase 32 (Siguiente):** Facturación Global de Cierre Diario / Fin de Mes (CFDI 4.0 Público en General con RFC genérico XAXX010101000) & Cancelación Fiscal con Acuse SAT según normativa fiscal del SAT mexicana.
 

@@ -1965,6 +1965,14 @@ export default function TablesPage() {
                     });
                     setThermalInitialMode('CUSTOMER');
                     setIsThermalOpen(true);
+                    // Loss Prevention: Register prebill printing in database
+                    if (ord?.id) {
+                      fetch(`/api/orders/${ord.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ markPrebillPrinted: true }),
+                      }).catch(() => {});
+                    }
                   }}
                   className="py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-xs rounded-lg shadow flex items-center justify-center gap-1.5 cursor-pointer"
                 >

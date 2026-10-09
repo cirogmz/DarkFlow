@@ -28,6 +28,7 @@ model User {
   approvedRequisitions  InternalRequisition[] @relation("RequisitionApprover")
   dispatchedRequisitions InternalRequisition[] @relation("RequisitionDispatcher")
   receivedRequisitions  InternalRequisition[] @relation("RequisitionReceiver")
+  securityIncidents     SecurityIncident[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -83,6 +84,7 @@ model Brand {
   inventoryAudits InventoryAudit[]
   internalRequisitions InternalRequisition[]
   surveys        SatisfactionSurvey[]
+  securityIncidents SecurityIncident[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -230,6 +232,9 @@ model Order {
   invoiceId    String?      @unique
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   survey       SatisfactionSurvey?
+  prebillPrintedAt DateTime?
+  prebillPrintedCount Int     @default(0)
+  securityIncidents SecurityIncident[]
   prepTimeTarget Int?       @default(15)
   cookingStartedAt DateTime?
   cookingFinishedAt DateTime?
@@ -935,6 +940,34 @@ model SatisfactionSurvey {
 
   @@index([brandId])
   @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SecurityIncident {
+  id              String    @id @default(uuid())
+  brandId         String
+  brand           Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderId         String?
+  order           Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type            String    // "POST_PREBILL_CANCEL", "REOPEN_SETTLED_ORDER", "EXCESSIVE_DISCOUNT", "SUSPICIOUS_TRANSFER", "UNAUTHORIZED_VOID", "DRAWER_POP_NO_SALE"
+  severity        String    @default("HIGH") // "CRITICAL", "HIGH", "MEDIUM", "LOW"
+  description     String
+  amountAtRisk    Float     @default(0)
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  userName        String?
+  status          String    @default("FLAGGED") // "FLAGGED", "UNDER_REVIEW", "JUSTIFIED", "CONFIRMED_FRAUD"
+  resolutionNotes String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  metadata        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([type])
+  @@index([severity])
   @@index([status])
   @@index([createdAt])
 }

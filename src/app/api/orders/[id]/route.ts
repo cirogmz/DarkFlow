@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { orderEvents } from '@/lib/events';
 import { recordAuditLog } from '@/lib/audit';
+import { createSecurityIncident } from '@/lib/lossPrevention';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const { status, driverId, currentStage, itemUpdates } = await req.json();
+    const { status, driverId, currentStage, itemUpdates, markPrebillPrinted } = await req.json();
     const { id } = await params;
     const orderId = id;
 
@@ -103,6 +104,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (driverId !== undefined) {
       updateData.driver = driverId ? { connect: { id: driverId } } : { disconnect: true };
+    }
+    if (markPrebillPrinted) {
+      updateData.prebillPrintedAt = new Date();
+      updateData.prebillPrintedCount = { increment: 1 };
     }
 
     const updatedOrder = await prisma.$transaction(async (tx) => {
@@ -244,6 +249,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         userId: session.userId,
         req,
       });
+
+      // Loss Prevention Anti-Fraud Check: Void after Pre-bill Print
+      if (order.prebillPrintedAt) {
+        await createSecurityIncident({
+          brandId: updatedOrder.brandId,
+          orderId: updatedOrder.id,
+          type: 'POST_PREBILL_CANCEL',
+          severity: 'CRITICAL',
+          description: `Comanda #${updatedOrder.orderNumber} por $${updatedOrder.total.toFixed(2)} cancelada DESPUÉS de imprimir la pre-cuenta (${order.prebillPrintedCount} impresiones). Posible retención indebida de efectivo.`,
+          amountAtRisk: updatedOrder.total,
+          userId: session.userId,
+          userName: session.email,
+        });
+      }
     } else if (status && status !== order.status) {
       await recordAuditLog({
         action: 'ORDER_STATUS_CHANGED',
