@@ -82,6 +82,7 @@ model Brand {
   giftCards      GiftCard[]
   inventoryAudits InventoryAudit[]
   internalRequisitions InternalRequisition[]
+  surveys        SatisfactionSurvey[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -228,6 +229,7 @@ model Order {
   paymentTransactions PaymentTransaction[]
   invoiceId    String?      @unique
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  survey       SatisfactionSurvey?
   prepTimeTarget Int?       @default(15)
   cookingStartedAt DateTime?
   cookingFinishedAt DateTime?
@@ -378,6 +380,7 @@ model Customer {
   brand            Brand?     @relation(fields: [brandId], references: [id])
   orders           Order[]
   giftCards        GiftCard[]
+  surveys          SatisfactionSurvey[]
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 }
@@ -903,5 +906,36 @@ model RequisitionItem {
 
   @@index([requisitionId])
   @@index([ingredientId])
+}
+
+model SatisfactionSurvey {
+  id                 String    @id @default(uuid())
+  orderId            String    @unique
+  order              Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  brandId            String
+  brand              Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerId         String?
+  customer           Customer? @relation(fields: [customerId], references: [id])
+  overallRating      Int       // 1 a 5 estrellas
+  npsScore           Int       // 0 a 10 (Net Promoter Score)
+  foodRating         Int?      // 1 a 5 estrellas
+  serviceRating      Int?      // 1 a 5 estrellas
+  speedRating        Int?      // 1 a 5 estrellas
+  cleanlinessRating  Int?      // 1 a 5 estrellas
+  tags               String?   // JSON array de etiquetas (ej: ["Comida deliciosa", "Servicio rapido"])
+  comment            String?
+  customerName       String?
+  customerPhone      String?
+  status             String    @default("RESOLVED") // "RESOLVED" o "PENDING_RESOLUTION"
+  resolutionNotes    String?
+  resolvedAt         DateTime?
+  resolvedById       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
 }
 

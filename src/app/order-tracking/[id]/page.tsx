@@ -12,7 +12,13 @@ import {
   CreditCard,
   Wallet,
   ShieldCheck,
-  Check
+  Check,
+  Star,
+  Heart,
+  AlertTriangle,
+  Send,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface OrderItemData {
@@ -52,6 +58,12 @@ interface OrderTrackingData {
     zone: string;
   } | null;
   items: OrderItemData[];
+  survey?: {
+    overallRating: number;
+    npsScore: number;
+    status: string;
+    comment?: string | null;
+  } | null;
 }
 
 export default function OrderTrackingPage({
@@ -67,12 +79,32 @@ export default function OrderTrackingPage({
   const [paying, setPaying] = useState(false);
   const [payModal, setPayModal] = useState<'STRIPE' | 'MERCADOPAGO' | null>(null);
 
+  // Survey States
+  const [surveyRating, setSurveyRating] = useState(5);
+  const [surveyNps, setSurveyNps] = useState(10);
+  const [surveyFoodRating, setSurveyFoodRating] = useState(5);
+  const [surveyServiceRating, setSurveyServiceRating] = useState(5);
+  const [surveySpeedRating, setSurveySpeedRating] = useState(5);
+  const [surveyCleanlinessRating, setSurveyCleanlinessRating] = useState(5);
+  const [surveyTags, setSurveyTags] = useState<string[]>([]);
+  const [surveyComment, setSurveyComment] = useState('');
+  const [surveySubmitting, setSurveySubmitting] = useState(false);
+  const [surveySubmitted, setSurveySubmitted] = useState<{
+    overallRating: number;
+    npsScore: number;
+    status: string;
+  } | null>(null);
+  const [showSubRatings, setShowSubRatings] = useState(false);
+
   const fetchOrder = React.useCallback(async () => {
     try {
       const res = await fetch(`/api/public/orders/${id}`);
       if (res.ok) {
         const data = await res.json();
         setOrder(data.order);
+        if (data.order.survey) {
+          setSurveySubmitted(data.order.survey);
+        }
         setLastRefreshed(new Date());
       }
     } catch (err) {
@@ -108,6 +140,39 @@ export default function OrderTrackingPage({
       alert('Error de conexión con la pasarela de pagos');
     } finally {
       setPaying(false);
+    }
+  };
+
+  const handleSubmitSurvey = async () => {
+    if (!order) return;
+    setSurveySubmitting(true);
+    try {
+      const res = await fetch('/api/public/surveys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          overallRating: surveyRating,
+          npsScore: surveyNps,
+          foodRating: surveyFoodRating,
+          serviceRating: surveyServiceRating,
+          speedRating: surveySpeedRating,
+          cleanlinessRating: surveyCleanlinessRating,
+          tags: surveyTags,
+          comment: surveyComment,
+          customerName: order.customerName,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSurveySubmitted(data.survey);
+      } else {
+        alert(data.error || 'Error al enviar encuesta');
+      }
+    } catch {
+      alert('Error de conexión al enviar la encuesta');
+    } finally {
+      setSurveySubmitting(false);
     }
   };
 
@@ -418,6 +483,244 @@ export default function OrderTrackingPage({
             </div>
           </div>
         </div>
+
+        {/* Diner Satisfaction & NPS Survey Widget */}
+        {surveySubmitted ? (
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-5 space-y-3 shadow-xl relative overflow-hidden">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Heart className="w-5 h-5 fill-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">¡Gracias por tu valoración!</h3>
+                <p className="text-xs text-slate-400">
+                  Tu opinión nos ayuda a ofrecerte una experiencia excepcional en cada visita.
+                </p>
+              </div>
+            </div>
+            <div className="bg-slate-950/70 rounded-xl p-3 border border-slate-800 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400">Calificación:</span>
+                <div className="flex text-amber-400">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      className={`w-3.5 h-3.5 ${
+                        s <= (surveySubmitted.overallRating || 5)
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'text-slate-700'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400">NPS:</span>
+                <span className="font-bold text-emerald-400 font-mono">
+                  {surveySubmitted.npsScore}/10
+                </span>
+              </div>
+            </div>
+            {surveySubmitted.status === 'PENDING_RESOLUTION' && (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <span>
+                  Hemos notificado a la gerencia sobre tu experiencia. Nuestro equipo revisará tu caso para garantizar la máxima calidad en tu próxima orden.
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                </div>
+                <h2 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Califica tu Experiencia
+                </h2>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                1 Minuto
+              </span>
+            </div>
+
+            {/* Overall Star Rating */}
+            <div className="text-center space-y-2">
+              <p className="text-xs text-slate-300 font-medium">¿Qué tal estuvo tu pedido en general?</p>
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setSurveyRating(star)}
+                    className="p-1 text-slate-600 hover:scale-110 active:scale-95 transition-transform"
+                  >
+                    <Star
+                      className={`w-7 h-7 ${
+                        star <= surveyRating
+                          ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                          : 'text-slate-700 hover:text-slate-500'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] font-bold text-amber-400">
+                {surveyRating === 5 && '¡Excelente, me encantó!'}
+                {surveyRating === 4 && 'Muy bueno'}
+                {surveyRating === 3 && 'Aceptable'}
+                {surveyRating === 2 && 'Decepcionante'}
+                {surveyRating === 1 && 'Pésimo'}
+              </p>
+            </div>
+
+            {/* NPS Question (0 to 10 scale) */}
+            <div className="space-y-2 pt-2 border-t border-slate-800/80">
+              <p className="text-xs text-slate-300 font-medium text-center">
+                ¿Recomendarías {order.brand.name} a amigos o familiares?
+              </p>
+              <div className="grid grid-cols-11 gap-1">
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => {
+                  const isSelected = surveyNps === score;
+                  const isPromoter = score >= 9;
+                  const isPassive = score >= 7 && score <= 8;
+                  return (
+                    <button
+                      key={score}
+                      type="button"
+                      onClick={() => setSurveyNps(score)}
+                      className={`py-2 rounded-lg font-bold text-xs transition-all ${
+                        isSelected
+                          ? isPromoter
+                            ? 'bg-emerald-500 text-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.5)] scale-105'
+                            : isPassive
+                            ? 'bg-amber-500 text-slate-950 shadow-[0_0_10px_rgba(245,158,11,0.5)] scale-105'
+                            : 'bg-rose-500 text-white shadow-[0_0_10px_rgba(244,63,94,0.5)] scale-105'
+                          : 'bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                      }`}
+                    >
+                      {score}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-500 px-1 font-medium">
+                <span>0 = Nada probable</span>
+                <span className={surveyNps >= 9 ? 'text-emerald-400 font-bold' : surveyNps >= 7 ? 'text-amber-400 font-bold' : 'text-rose-400 font-bold'}>
+                  {surveyNps >= 9 ? '💚 Promotor' : surveyNps >= 7 ? '💛 Pasivo' : '🚨 Detractor'}
+                </span>
+                <span>10 = Seguro que sí</span>
+              </div>
+            </div>
+
+            {/* Quick Feedback Chips / Tags */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+              <label className="text-[11px] text-slate-400 block font-medium">Aspectos a destacar:</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(surveyRating >= 4 ? [
+                  'Comida deliciosa',
+                  'Excelente presentación',
+                  'Entrega súper rápida',
+                  'Atención de 10',
+                  'Porciones generosas',
+                  'Empaque impecable'
+                ] : [
+                  'Comida fría',
+                  'Demora excesiva',
+                  'Faltó un producto',
+                  'Falta de sazón',
+                  'Empaque dañado',
+                  'Atención deficiente'
+                ]).map((tag) => {
+                  const active = surveyTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        setSurveyTags(prev => active ? prev.filter(t => t !== tag) : [...prev, tag]);
+                      }}
+                      className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
+                        active
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-semibold'
+                          : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {active ? '✓ ' : '+ '}{tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Detailed Star Ratings (Accordion) */}
+            <div className="pt-2 border-t border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setShowSubRatings(!showSubRatings)}
+                className="w-full flex items-center justify-between text-xs text-slate-400 hover:text-slate-200 transition py-1"
+              >
+                <span>Detalles por área (Sabor, Rapidez, Servicio...)</span>
+                {showSubRatings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showSubRatings && (
+                <div className="mt-2 space-y-2.5 bg-slate-950/70 p-3 rounded-xl border border-slate-800 text-xs">
+                  {[
+                    { label: 'Sabor de la Comida', val: surveyFoodRating, set: setSurveyFoodRating },
+                    { label: 'Tiempo & Rapidez', val: surveySpeedRating, set: setSurveySpeedRating },
+                    { label: 'Atención & Servicio', val: surveyServiceRating, set: setSurveyServiceRating },
+                    { label: 'Higiene & Empaque', val: surveyCleanlinessRating, set: setSurveyCleanlinessRating },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center justify-between">
+                      <span className="text-slate-300">{item.label}</span>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => item.set(s)}
+                            className="p-0.5 text-slate-600 hover:scale-110 transition-transform"
+                          >
+                            <Star
+                              className={`w-4 h-4 ${
+                                s <= item.val ? 'fill-amber-400 text-amber-400' : 'text-slate-800'
+                              }`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Comments */}
+            <div className="space-y-1">
+              <textarea
+                value={surveyComment}
+                onChange={(e) => setSurveyComment(e.target.value)}
+                placeholder="Cuéntanos más detalles o sugerencias para el equipo..."
+                rows={2}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 resize-none"
+              />
+            </div>
+
+            {/* Submit button */}
+            <button
+              type="button"
+              onClick={handleSubmitSurvey}
+              disabled={surveySubmitting}
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-lg shadow-amber-500/20 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              {surveySubmitting ? 'Enviando reseña...' : 'Enviar Calificación'}
+            </button>
+          </div>
+        )}
 
         {/* Back / Re-order Action */}
         <div className="pt-2">
