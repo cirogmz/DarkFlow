@@ -97,6 +97,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updateData.cookingStartedAt = new Date();
       } else if (status === 'READY' && !order.cookingFinishedAt) {
         updateData.cookingFinishedAt = new Date();
+      } else if (status === 'ON_THE_WAY' && !order.dispatchedAt) {
+        updateData.dispatchedAt = new Date();
+      } else if (status === 'DELIVERED' && !order.deliveredAt) {
+        updateData.deliveredAt = new Date();
       }
     }
     if (currentStage) {

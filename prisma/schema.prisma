@@ -29,6 +29,8 @@ model User {
   dispatchedRequisitions InternalRequisition[] @relation("RequisitionDispatcher")
   receivedRequisitions  InternalRequisition[] @relation("RequisitionReceiver")
   securityIncidents     SecurityIncident[]
+  driverSettlements     DriverSettlement[] @relation("SettledDriver")
+  cashierSettlements    DriverSettlement[] @relation("SettlementCashier")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -85,6 +87,7 @@ model Brand {
   internalRequisitions InternalRequisition[]
   surveys        SatisfactionSurvey[]
   securityIncidents SecurityIncident[]
+  driverSettlements DriverSettlement[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -237,6 +240,12 @@ model Order {
   prebillPrintedAt DateTime?
   prebillPrintedCount Int     @default(0)
   securityIncidents SecurityIncident[]
+  driverSettlementId String?
+  driverSettlement   DriverSettlement? @relation(fields: [driverSettlementId], references: [id])
+  driverSettled      Boolean           @default(false)
+  deliveryFee        Float             @default(0)
+  dispatchedAt       DateTime?
+  deliveredAt        DateTime?
   prepTimeTarget Int?       @default(15)
   cookingStartedAt DateTime?
   cookingFinishedAt DateTime?
@@ -304,6 +313,7 @@ model CashSession {
   notes           String?
   movements       CashMovement[]
   cuts            CashCut[]
+  driverSettlements DriverSettlement[]
 }
 
 model CashMovement {
@@ -361,12 +371,15 @@ model CashCut {
 }
 
 model DeliveryProfile {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vehicleType String
-  plateNumber String?
-  status      String   @default("AVAILABLE")
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleType        String
+  plateNumber        String?
+  phoneNumber        String?
+  activeCashFloat    Float    @default(0)
+  commissionPerOrder Float    @default(0)
+  status             String   @default("AVAILABLE")
 }
 
 model Customer {
@@ -981,5 +994,37 @@ model SecurityIncident {
   @@index([severity])
   @@index([status])
   @@index([createdAt])
+}
+
+model DriverSettlement {
+  id                 String       @id @default(uuid())
+  settlementNumber   String
+  brandId            String
+  brand              Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  driverId           String
+  driver             User         @relation("SettledDriver", fields: [driverId], references: [id])
+  cashierId          String?
+  cashier            User?        @relation("SettlementCashier", fields: [cashierId], references: [id])
+  cashSessionId      String?
+  cashSession        CashSession? @relation(fields: [cashSessionId], references: [id])
+  totalOrders        Int          @default(0)
+  totalCashExpected  Float        @default(0)
+  totalCashTurnedIn  Float        @default(0)
+  cashDifference     Float        @default(0)
+  totalTips          Float        @default(0)
+  totalCommissions   Float        @default(0)
+  cashFloatReturned  Float        @default(0)
+  netCashToCashier   Float        @default(0)
+  status             String       @default("SETTLED") // "PENDING", "SETTLED", "CANCELLED"
+  notes              String?
+  settledAt          DateTime     @default(now())
+  orders             Order[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([brandId])
+  @@index([driverId])
+  @@index([status])
+  @@index([settledAt])
 }
 
