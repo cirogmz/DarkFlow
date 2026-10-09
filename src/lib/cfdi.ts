@@ -36,6 +36,38 @@ export const PAYMENT_FORMS = [
   { code: '99', name: '99 - Por definir' },
 ];
 
+export const RFC_GENERICO_NACIONAL = 'XAXX010101000';
+export const RFC_GENERICO_EXTRANJERO = 'XEXX010101000';
+
+export const GLOBAL_PERIODICITIES = [
+  { code: '01', name: '01 - Diario' },
+  { code: '02', name: '02 - Semanal' },
+  { code: '03', name: '03 - Quincenal' },
+  { code: '04', name: '04 - Mensual' },
+];
+
+export const GLOBAL_MONTHS = [
+  { code: '01', name: '01 - Enero' },
+  { code: '02', name: '02 - Febrero' },
+  { code: '03', name: '03 - Marzo' },
+  { code: '04', name: '04 - Abril' },
+  { code: '05', name: '05 - Mayo' },
+  { code: '06', name: '06 - Junio' },
+  { code: '07', name: '07 - Julio' },
+  { code: '08', name: '08 - Agosto' },
+  { code: '09', name: '09 - Septiembre' },
+  { code: '10', name: '10 - Octubre' },
+  { code: '11', name: '11 - Noviembre' },
+  { code: '12', name: '12 - Diciembre' },
+];
+
+export const CANCELLATION_REASONS = [
+  { code: '01', name: '01 - Comprobante emitido con errores con relación' },
+  { code: '02', name: '02 - Comprobante emitido con errores sin relación' },
+  { code: '03', name: '03 - No se llevó a cabo la operación' },
+  { code: '04', name: '04 - Operación nominativa relacionada en una factura global' },
+];
+
 /**
  * Valida si un RFC mexicano tiene la estructura reglamentaria del SAT
  * Persona Física: 4 letras + 6 dígitos fecha + 3 homoclave = 13 caracteres
@@ -67,6 +99,7 @@ export interface ReceptorFiscal {
 }
 
 export interface ConceptoFiscal {
+  noIdentificacion?: string;
   claveProdServ?: string;
   claveUnidad?: string;
   unidad?: string;
@@ -79,11 +112,18 @@ export interface ConceptoFiscal {
   importeIva: number;
 }
 
+export interface InformacionGlobal {
+  periodicidad: string; // "01", "02", "03", "04"
+  meses: string;        // "01" a "12"
+  año: number;
+}
+
 export interface ComprobanteParams {
   serie?: string;
   folio: number;
   emisor: EmisorFiscal;
   receptor: ReceptorFiscal;
+  informacionGlobal?: InformacionGlobal;
   conceptos: ConceptoFiscal[];
   formaPago?: string;
   metodoPago?: string;
@@ -153,8 +193,9 @@ export function generateCfdi40(params: ComprobanteParams): TimbreFiscalResult {
       const claveProd = c.claveProdServ || '90101503';
       const claveUni = c.claveUnidad || 'E48';
       const uni = c.unidad || 'Servicio';
+      const noIdentAttr = c.noIdentificacion ? ` NoIdentificacion="${escapeXml(c.noIdentificacion)}"` : '';
 
-      return `    <cfdi:Concepto ClaveProdServ="${claveProd}" Cantidad="${c.cantidad.toFixed(2)}" ClaveUnidad="${claveUni}" Unidad="${uni}" Descripcion="${escapeXml(
+      return `    <cfdi:Concepto ClaveProdServ="${claveProd}"${noIdentAttr} Cantidad="${c.cantidad.toFixed(2)}" ClaveUnidad="${claveUni}" Unidad="${uni}" Descripcion="${escapeXml(
         c.descripcion
       )}" ValorUnitario="${cVal}" Importe="${cSub}" ObjetoImp="02">
       <cfdi:Impuestos>
@@ -166,10 +207,14 @@ export function generateCfdi40(params: ComprobanteParams): TimbreFiscalResult {
     })
     .join('\n');
 
+  const informacionGlobalXml = params.informacionGlobal
+    ? `  <cfdi:InformacionGlobal Periodicidad="${params.informacionGlobal.periodicidad}" Meses="${params.informacionGlobal.meses}" Año="${params.informacionGlobal.año}" />\n`
+    : '';
+
   // XML Completo CFDI 4.0 con TimbreFiscalDigital
   const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd http://www.sat.gob.mx/TimbreFiscalDigital http://www.sat.gob.mx/sitio_internet/cfd/TimbreFiscalDigital/TimbreFiscalDigitalv11.xsd" Version="4.0" Serie="${serie}" Folio="${params.folio}" Fecha="${fechaIso}" Sello="${selloDigital}" FormaPago="${formaPago}" NoCertificado="${noCertificadoEmisor}" Certificado="${noCertificadoEmisor}" SubTotal="${subtotalStr}" Descuento="${descStr}" Moneda="MXN" Total="${totalStr}" TipoDeComprobante="I" Exportacion="01" MetodoPago="${metodoPago}" LugarExpedicion="${params.emisor.codigoPostal}">
-  <cfdi:Emisor Rfc="${params.emisor.rfc.toUpperCase()}" Nombre="${escapeXml(params.emisor.nombre.toUpperCase())}" RegimenFiscal="${params.emisor.regimenFiscal}" />
+${informacionGlobalXml}  <cfdi:Emisor Rfc="${params.emisor.rfc.toUpperCase()}" Nombre="${escapeXml(params.emisor.nombre.toUpperCase())}" RegimenFiscal="${params.emisor.regimenFiscal}" />
   <cfdi:Receptor Rfc="${params.receptor.rfc.toUpperCase()}" Nombre="${escapeXml(params.receptor.nombre.toUpperCase())}" DomicilioFiscalReceptor="${params.receptor.codigoPostal}" RegimenFiscalReceptor="${params.receptor.regimenFiscal}" UsoCFDI="${params.receptor.usoCfdi}" />
   <cfdi:Conceptos>
 ${conceptosXml}
@@ -195,6 +240,62 @@ ${conceptosXml}
     cadenaOriginalSat,
     qrSatUrl,
     xmlContent,
+  };
+}
+
+export interface CancellationAcuseParams {
+  uuid: string;
+  rfcEmisor: string;
+  motivo: string; // "01", "02", "03", "04"
+  folioSustitucion?: string | null;
+  total: number;
+}
+
+export interface CancellationAcuseResult {
+  acuseXml: string;
+  fechaCancelacion: string;
+  selloSatCancelacion: string;
+  estatusSat: string;
+}
+
+/**
+ * Genera el XML oficial de Acuse de Cancelación de CFDI conforme al protocolo del SAT
+ */
+export function generateCancellationAcuse(params: CancellationAcuseParams): CancellationAcuseResult {
+  const now = new Date();
+  const fechaIso = now.toISOString().slice(0, 19);
+  const digest = `${params.uuid}|${params.rfcEmisor}|${params.motivo}|${params.total.toFixed(2)}|${fechaIso}`;
+  const selloSatCancelacion = crypto.createHash('sha256').update(digest).digest('base64');
+  const estatusSat = 'Cancelado';
+
+  const sustitucionXml = params.motivo === '01' && params.folioSustitucion
+    ? `\n      <FolioSustitucion>${escapeXml(params.folioSustitucion)}</FolioSustitucion>`
+    : '';
+
+  const acuseXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Acuse xmlns="http://cancelacfd.sat.gob.mx" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Fecha="${fechaIso}" RfcEmisor="${params.rfcEmisor}">
+  <Folios>
+    <UUID>${params.uuid}</UUID>
+    <EstatusUUID>201</EstatusUUID>
+    <Motivo>${params.motivo}</Motivo>${sustitucionXml}
+    <Respuesta>${estatusSat}</Respuesta>
+  </Folios>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+      <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+      <DigestValue>${crypto.createHash('sha256').update(params.uuid + fechaIso).digest('base64')}</DigestValue>
+    </SignedInfo>
+    <SignatureValue>${selloSatCancelacion}</SignatureValue>
+  </Signature>
+</Acuse>`;
+
+  return {
+    acuseXml,
+    fechaCancelacion: fechaIso,
+    selloSatCancelacion,
+    estatusSat,
   };
 }
 

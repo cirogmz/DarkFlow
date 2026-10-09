@@ -231,6 +231,8 @@ model Order {
   paymentTransactions PaymentTransaction[]
   invoiceId    String?      @unique
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  globalInvoiceId String?
+  globalInvoice Invoice?    @relation("GlobalInvoiceOrders", fields: [globalInvoiceId], references: [id])
   survey       SatisfactionSurvey?
   prebillPrintedAt DateTime?
   prebillPrintedCount Int     @default(0)
@@ -628,6 +630,11 @@ model Invoice {
   brand                 Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
   orderId               String?   @unique
   order                 Order?
+  isGlobal              Boolean   @default(false)
+  globalPeriodicity     String?
+  globalMonth           String?
+  globalYear            Int?
+  globalOrders          Order[]   @relation("GlobalInvoiceOrders")
   rfcReceptor           String
   nombreReceptor        String
   regimenFiscalReceptor String
@@ -649,6 +656,10 @@ model Invoice {
   qrSatUrl              String
   xmlContent            String
   status                String    @default("TIMBRADO")
+  cancellationReason    String?
+  replacementUuid       String?
+  cancellationDate      DateTime?
+  cancellationAcuse     String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 

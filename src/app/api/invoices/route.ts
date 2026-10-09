@@ -16,20 +16,34 @@ export async function GET(req: NextRequest) {
     const activeBrandId = session.activeBrandId as string;
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('q') || '';
+    const typeFilter = searchParams.get('type') || 'ALL'; // 'ALL', 'GLOBAL', 'INDIVIDUAL'
+    const statusFilter = searchParams.get('status') || 'ALL'; // 'ALL', 'TIMBRADO', 'CANCELADO'
+
+    const whereClause: Record<string, unknown> = {
+      brandId: activeBrandId,
+      ...(query
+        ? {
+            OR: [
+              { uuid: { contains: query } },
+              { rfcReceptor: { contains: query } },
+              { nombreReceptor: { contains: query } },
+            ],
+          }
+        : {}),
+    };
+
+    if (typeFilter === 'GLOBAL') {
+      whereClause.isGlobal = true;
+    } else if (typeFilter === 'INDIVIDUAL') {
+      whereClause.isGlobal = false;
+    }
+
+    if (statusFilter !== 'ALL') {
+      whereClause.status = statusFilter;
+    }
 
     const invoices = await prisma.invoice.findMany({
-      where: {
-        brandId: activeBrandId,
-        ...(query
-          ? {
-              OR: [
-                { uuid: { contains: query } },
-                { rfcReceptor: { contains: query } },
-                { nombreReceptor: { contains: query } },
-              ],
-            }
-          : {}),
-      },
+      where: whereClause,
       include: {
         order: {
           select: {
@@ -39,9 +53,12 @@ export async function GET(req: NextRequest) {
             customerName: true,
           },
         },
+        _count: {
+          select: { globalOrders: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 60,
     });
 
     return NextResponse.json({ invoices });

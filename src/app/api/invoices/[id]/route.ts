@@ -27,6 +27,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             createdAt: true,
           },
         },
+        globalOrders: {
+          select: {
+            id: true,
+            orderNumber: true,
+            total: true,
+          },
+        },
       },
     });
 
@@ -40,6 +47,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         headers: {
           'Content-Type': 'application/xml; charset=utf-8',
           'Content-Disposition': `attachment; filename="${invoice.serie}-${invoice.folio}_${invoice.uuid}.xml"`,
+        },
+      });
+    }
+
+    if (format === 'acuse') {
+      if (!invoice.cancellationAcuse) {
+        return NextResponse.json({ error: 'La factura no cuenta con acuse de cancelación emitido' }, { status: 400 });
+      }
+
+      return new NextResponse(invoice.cancellationAcuse, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Content-Disposition': `attachment; filename="AcuseCancelacion_${invoice.uuid}.xml"`,
         },
       });
     }
