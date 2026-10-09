@@ -23,7 +23,8 @@ import {
   Tag,
   Radio,
   ShieldAlert,
-  Clock
+  Clock,
+  Smartphone
 } from 'lucide-react';
 import Link from 'next/link';
 import QuickClockModal from '@/components/QuickClockModal';
@@ -158,6 +159,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Personal & Roles', path: '/users', icon: Users, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Auditoría & Logs', path: '/audit', icon: ShieldAlert, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Reportes & Exportar', path: '/reports', icon: FileSpreadsheet, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
+    { name: 'Owner Hub Móvil', path: '/hub', icon: Smartphone, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
   ];
 
   // Filter menu items by user role

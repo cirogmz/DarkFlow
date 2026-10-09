@@ -14,11 +14,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DarkFlow Manager | Multi-Brand Dark Kitchen MVP",
-  description: "Sistema inteligente para la gestión integrada de marcas, pedidos POS, cocinas y reparto.",
+  title: "DarkFlow Manager | Multi-Brand Dark Kitchen Hub",
+  description: "Sistema inteligente para la gestión integrada de marcas, pedidos POS, cocinas, reparto y Hub Ejecutivo Móvil.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "DarkFlow Hub",
+  },
   icons: {
     icon: "/favicon.ico",
-  }
+    apple: "/Logo.png",
+  },
 };
 
 export default function RootLayout({
