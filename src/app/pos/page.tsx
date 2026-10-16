@@ -30,10 +30,12 @@ import {
   Users,
   CheckSquare,
   Square,
-  Flame
+  Flame,
+  Gift
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
+import CompAuthorizationModal from '@/components/pos/CompAuthorizationModal';
 import { PriceRuleItem, calculateItemPriceRule } from '@/lib/priceRules';
 
 interface CustomerSuggestion {
@@ -87,6 +89,8 @@ interface Product {
   price: number;
   imageUrl?: string;
   categoryId: string;
+  allergens?: string | null;
+  dietaryTags?: string | null;
   recipeItems: RecipeItem[];
   modifierGroups?: Array<{ modifierGroup: ModifierGroup }>;
 }
@@ -172,6 +176,13 @@ interface PlacedOrder {
     loyaltyPoints?: number;
     totalOrders?: number;
   } | null;
+  isComped?: boolean;
+  compType?: string | null;
+  compReason?: string | null;
+  compBeneficiaryName?: string | null;
+  compApprovedByName?: string | null;
+  compApprovedAt?: string | null;
+  compFoodCost?: number | null;
 }
 
 interface TableOption {
@@ -237,6 +248,12 @@ export default function POSPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [confirmingPosSandbox, setConfirmingPosSandbox] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
+  const [compTargetOrder, setCompTargetOrder] = useState<{
+    id: string;
+    orderNumber: string;
+    total: number;
+    tableNumber?: string | null;
+  } | null>(null);
   const [isThermalOpen, setIsThermalOpen] = useState(false);
   const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
   const [isInvoicePdfOpen, setIsInvoicePdfOpen] = useState(false);
@@ -257,7 +274,7 @@ export default function POSPage() {
   const [splitItemAssignments, setSplitItemAssignments] = useState<Record<string, number>>({});
   const [processingSplitPayment, setProcessingSplitPayment] = useState(false);
 
-  const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, clearCart, addNotification } = useAppStore();
+  const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, updateCartAllergenAlert, clearCart, addNotification } = useAppStore();
 
   const fetchInitialData = React.useCallback(async () => {
     try {
@@ -601,6 +618,7 @@ export default function POSPage() {
             notes: i.notes,
             modifiers: i.modifiers,
             serviceStage: i.serviceStage,
+            allergenAlert: i.allergenAlert || null,
           })),
         }),
       });
@@ -641,6 +659,69 @@ export default function POSPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenCompFromCart = async () => {
+    if (cart.length === 0) return;
+    const finalCustomerName = customerName || (orderSource === 'DINE_IN' && selectedTableId ? `Mesa ${tables.find(t => t.id === selectedTableId)?.number}` : 'Consumo Interno / Cortesía');
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: finalCustomerName,
+          customerPhone: customerPhone || null,
+          customerAddress,
+          source: orderSource,
+          notes: orderNotes ? `[CORTESÍA PENDIENTE] ${orderNotes}` : '[CORTESÍA PENDIENTE]',
+          tip: 0,
+          tableId: orderSource === 'DINE_IN' ? selectedTableId : null,
+          diners: orderSource === 'DINE_IN' ? diners : 1,
+          paymentMethod: 'CASH',
+          items: cart.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            price: i.price,
+            notes: i.notes,
+            modifiers: i.modifiers,
+            serviceStage: i.serviceStage,
+            allergenAlert: i.allergenAlert || null,
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        clearCart();
+        setIsCheckoutOpen(false);
+        setPlacedOrder(data.order);
+        setCompTargetOrder({
+          id: data.order.id,
+          orderNumber: data.order.orderNumber,
+          total: data.order.total,
+          tableNumber: data.order.table?.number,
+        });
+        fetchInitialData();
+      } else {
+        const err = await res.json();
+        alert(`Error al generar comanda para cortesía: ${err.error}`);
+      }
+    } catch {
+      alert('Error de conexión al generar comanda');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompSuccess = (data: { order: PlacedOrder; compFoodCost?: number }) => {
+    addNotification(`🎁 Cortesía autorizada con éxito (${data.order?.compType})`, 'success');
+    if (data.order) {
+      setPlacedOrder(data.order);
+    }
+    setCompTargetOrder(null);
+    fetchInitialData();
   };
 
   const handleConfirmPosSandboxPayment = async (orderId: string, gateway: string) => {
@@ -819,6 +900,22 @@ export default function POSPage() {
                               </span>
                             )}
                             <h4 className="font-bold text-white text-sm leading-snug">{prod.name}</h4>
+                            {prod.dietaryTags && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {prod.dietaryTags.split(',').map((t, idx) => (
+                                  <span key={idx} className="text-[9px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1 py-0.2 rounded">
+                                    {t.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {prod.allergens && (
+                              <div className="flex flex-wrap items-center gap-1 mt-1">
+                                <span className="text-[9px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.2 rounded inline-flex items-center gap-1">
+                                  ⚠️ {prod.allergens.split(',').map(a => a.trim()).join(', ')}
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <div className="text-right shrink-0">
                             <span className="font-black text-brand-primary text-sm font-mono block">
@@ -951,6 +1048,15 @@ export default function POSPage() {
                     className="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-300 outline-none placeholder:text-slate-600 focus:border-brand-primary"
                   />
 
+                  {/* Allergen alert input */}
+                  <input
+                    type="text"
+                    placeholder="⚠️ Alerta alergia (ej. Alérgico a nuez)"
+                    value={item.allergenAlert || ''}
+                    onChange={(e) => updateCartAllergenAlert(item.id || item.productId, e.target.value)}
+                    className="bg-red-950/20 border border-red-900/30 rounded px-2 py-0.5 text-[10px] text-red-200 outline-none placeholder:text-red-400/50 focus:border-red-500"
+                  />
+
                   {/* Quantity controls */}
                   <div className="flex items-center justify-between pt-1 border-t border-slate-900">
                     <button 
@@ -1068,6 +1174,16 @@ export default function POSPage() {
                 className="w-full py-3 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-sm rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
               >
                 Proceder al Pago
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenCompFromCart}
+                disabled={cart.length === 0 || loading}
+                className="w-full py-2 bg-gradient-to-r from-purple-950/60 to-pink-950/60 hover:from-purple-900/60 hover:to-pink-900/60 text-purple-200 font-bold text-xs rounded-lg border border-purple-500/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Gift className="h-3.5 w-3.5 text-pink-400" />
+                <span>🎁 Cortesía / Staff Meal (PIN)</span>
               </button>
 
               <button
@@ -1702,6 +1818,45 @@ export default function POSPage() {
                 ¡Gracias por su compra!
               </div>
             </div>
+
+            {placedOrder.isComped ? (
+              <div className="p-3 rounded-xl bg-purple-950/70 border border-purple-500/40 text-purple-200 text-xs space-y-1">
+                <div className="flex items-center justify-between font-bold text-purple-300">
+                  <span className="flex items-center gap-1.5">
+                    <Gift className="w-4 h-4 text-pink-400" />
+                    {placedOrder.compType === 'STAFF_MEAL' ? 'Comida de Personal' :
+                     placedOrder.compType === 'VIP_COURTESY' ? 'Cortesía VIP' :
+                     placedOrder.compType === 'TASTING_SAMPLE' ? 'Degustación' : 'Compensación de Servicio'}
+                  </span>
+                  <span className="text-[10px] bg-purple-500/20 px-2 py-0.5 rounded text-purple-300 font-mono font-bold">
+                    CORTESÍA
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Aprobó: <strong className="text-white">{placedOrder.compApprovedByName || 'Gerente'}</strong>
+                  {placedOrder.compBeneficiaryName && <span> • Para: <strong className="text-white">{placedOrder.compBeneficiaryName}</strong></span>}
+                </p>
+                {placedOrder.compFoodCost != null && placedOrder.compFoodCost > 0 && (
+                  <p className="text-[10px] text-slate-400">
+                    Food Cost: <span className="font-mono text-amber-300 font-bold">${placedOrder.compFoodCost.toFixed(2)}</span>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCompTargetOrder({
+                  id: placedOrder.id,
+                  orderNumber: placedOrder.orderNumber,
+                  total: placedOrder.total,
+                  tableNumber: placedOrder.table?.number,
+                })}
+                className="w-full py-2 bg-gradient-to-r from-purple-900/40 to-pink-900/40 hover:from-purple-900/70 hover:to-pink-900/70 text-purple-200 font-bold text-xs rounded-lg border border-purple-500/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Gift className="h-3.5 w-3.5 text-pink-400" />
+                <span>Autorizar como Cortesía / Staff Meal (PIN)</span>
+              </button>
+            )}
 
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button
@@ -2395,6 +2550,18 @@ export default function POSPage() {
           </div>
         );
       })()}
+
+      {/* Comp Authorization PIN Modal */}
+      {compTargetOrder && (
+        <CompAuthorizationModal
+          orderId={compTargetOrder.id}
+          orderNumber={compTargetOrder.orderNumber}
+          orderTotal={compTargetOrder.total}
+          tableNumber={compTargetOrder.tableNumber}
+          onSuccess={handleCompSuccess}
+          onClose={() => setCompTargetOrder(null)}
+        />
+      )}
     </DashboardContainer>
   );
 }

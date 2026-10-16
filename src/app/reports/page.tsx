@@ -19,9 +19,11 @@ import {
   MessageSquare,
   ThumbsUp,
   ThumbsDown,
-  X
+  X,
+  Gift
 } from 'lucide-react';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
+import CompAuditTab from '@/components/reports/CompAuditTab';
 
 interface BrandRef {
   id: string;
@@ -146,7 +148,7 @@ interface SurveysReportData {
 }
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<'sales' | 'cash' | 'inventory' | 'satisfaction'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'cash' | 'inventory' | 'satisfaction' | 'comps'>('sales');
   const [brands, setBrands] = useState<BrandRef[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>('ALL');
 
@@ -246,6 +248,10 @@ export default function ReportsPage() {
     setLoading(true);
 
     try {
+      if (activeTab === 'comps') {
+        setLoading(false);
+        return;
+      }
       if (activeTab === 'satisfaction') {
         const brandParam = selectedBrandId !== 'ALL' ? `&brandId=${selectedBrandId}` : '';
         const statusParam = surveyFilterStatus !== 'ALL' ? `&status=${surveyFilterStatus}` : '';
@@ -500,12 +506,13 @@ export default function ReportsPage() {
               { id: 'cash', label: '💰 Cortes de Caja & Arqueos', icon: Coins },
               { id: 'inventory', label: '📦 Valuación de Inventarios', icon: Package },
               { id: 'satisfaction', label: '⭐ Satisfacción & NPS', icon: Star },
+              { id: 'comps', label: '🎁 Cortesías & Staff Meals', icon: Gift },
             ].map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as 'sales' | 'cash' | 'inventory' | 'satisfaction')}
+                  onClick={() => setActiveTab(tab.id as 'sales' | 'cash' | 'inventory' | 'satisfaction' | 'comps')}
                   className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                     activeTab === tab.id
                       ? 'bg-slate-800 border-brand-primary text-white shadow'
@@ -1148,6 +1155,11 @@ export default function ReportsPage() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* 5. COURTESY & STAFF MEALS AUDIT TAB */}
+            {activeTab === 'comps' && (
+              <CompAuditTab />
             )}
           </div>
         )}
