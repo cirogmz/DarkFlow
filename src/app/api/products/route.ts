@@ -107,7 +107,8 @@ export async function POST(req: NextRequest) {
       targetPrepTime = 10,
       kitchenStation = 'COCINA',
       allergens,
-      dietaryTags
+      dietaryTags,
+      targetFoodCostPct = 30
     } = await req.json();
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
         kitchenStation: kitchenStation ? String(kitchenStation).trim().toUpperCase() : 'COCINA',
         allergens: allergens ? (typeof allergens === 'string' ? allergens : JSON.stringify(allergens)) : null,
         dietaryTags: dietaryTags ? (typeof dietaryTags === 'string' ? dietaryTags : JSON.stringify(dietaryTags)) : null,
+        targetFoodCostPct: targetFoodCostPct != null ? parseFloat(String(targetFoodCostPct)) : 30,
         modifierGroups: Array.isArray(modifierGroupIds) && modifierGroupIds.length > 0
           ? {
               create: modifierGroupIds.map((groupId: string, idx: number) => ({
@@ -208,7 +210,8 @@ export async function PATCH(req: NextRequest) {
       targetPrepTime,
       kitchenStation,
       allergens,
-      dietaryTags
+      dietaryTags,
+      targetFoodCostPct
     } = await req.json();
 
     if (!id) {
@@ -261,6 +264,7 @@ export async function PATCH(req: NextRequest) {
           kitchenStation: kitchenStation !== undefined ? (kitchenStation ? String(kitchenStation).trim().toUpperCase() : 'COCINA') : undefined,
           allergens: allergens !== undefined ? (allergens ? (typeof allergens === 'string' ? allergens : JSON.stringify(allergens)) : null) : undefined,
           dietaryTags: dietaryTags !== undefined ? (dietaryTags ? (typeof dietaryTags === 'string' ? dietaryTags : JSON.stringify(dietaryTags)) : null) : undefined,
+          targetFoodCostPct: targetFoodCostPct !== undefined ? (targetFoodCostPct != null ? parseFloat(String(targetFoodCostPct)) : 30) : undefined,
         },
         include: {
           category: true,

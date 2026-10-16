@@ -17,8 +17,11 @@ import {
   Eye,
   EyeOff,
   SlidersHorizontal,
-  Package
+  Package,
+  TrendingUp,
+  Calculator
 } from 'lucide-react';
+import MenuEngineeringTab from '@/components/menu/MenuEngineeringTab';
 
 interface Category {
   id: string;
@@ -69,6 +72,7 @@ interface Product {
   kitchenStation?: string | null;
   allergens?: string | null;
   dietaryTags?: string | null;
+  targetFoodCostPct?: number | null;
   recipeItems?: Array<{
     id: string;
     ingredientId: string;
@@ -90,7 +94,7 @@ interface BrandItem {
 }
 
 export default function MenuManagementPage() {
-  const [activeTab, setActiveTab] = useState<'dishes' | 'categories' | 'brands' | 'modifiers'>('dishes');
+  const [activeTab, setActiveTab] = useState<'dishes' | 'categories' | 'brands' | 'modifiers' | 'engineering'>('dishes');
   const [loading, setLoading] = useState(true);
 
   // Data states
@@ -117,6 +121,7 @@ export default function MenuManagementPage() {
   const [prodKitchenStation, setProdKitchenStation] = useState<string>('COCINA');
   const [prodAllergens, setProdAllergens] = useState<string[]>([]);
   const [prodDietaryTags, setProdDietaryTags] = useState<string[]>([]);
+  const [prodTargetFoodCostPct, setProdTargetFoodCostPct] = useState<number>(30);
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>([]);
 
   // Modifier Group Modal State
@@ -215,6 +220,7 @@ export default function MenuManagementPage() {
     setProdKitchenStation('COCINA');
     setProdAllergens([]);
     setProdDietaryTags([]);
+    setProdTargetFoodCostPct(30);
     setSelectedModifierGroupIds([]);
     setIsProductModalOpen(true);
   };
@@ -229,6 +235,7 @@ export default function MenuManagementPage() {
     setProdIsActive(prod.isActive);
     setProdTargetPrepTime(prod.targetPrepTime || 10);
     setProdKitchenStation(prod.kitchenStation || 'COCINA');
+    setProdTargetFoodCostPct(prod.targetFoodCostPct ?? 30);
     try { setProdAllergens(prod.allergens ? JSON.parse(prod.allergens) : []); } catch { setProdAllergens([]); }
     try { setProdDietaryTags(prod.dietaryTags ? JSON.parse(prod.dietaryTags) : []); } catch { setProdDietaryTags([]); }
     const groupIds = (prod.modifierGroups || []).map((pmg: { modifierGroup?: { id: string }; modifierGroupId?: string }) => pmg.modifierGroup?.id || pmg.modifierGroupId).filter(Boolean);
@@ -259,6 +266,7 @@ export default function MenuManagementPage() {
             kitchenStation: prodKitchenStation,
             allergens: prodAllergens.length > 0 ? prodAllergens : null,
             dietaryTags: prodDietaryTags.length > 0 ? prodDietaryTags : null,
+            targetFoodCostPct: prodTargetFoodCostPct,
             modifierGroupIds: selectedModifierGroupIds,
           }),
         });
@@ -287,6 +295,7 @@ export default function MenuManagementPage() {
             kitchenStation: prodKitchenStation,
             allergens: prodAllergens.length > 0 ? prodAllergens : null,
             dietaryTags: prodDietaryTags.length > 0 ? prodDietaryTags : null,
+            targetFoodCostPct: prodTargetFoodCostPct,
             modifierGroupIds: selectedModifierGroupIds,
           }),
         });
@@ -698,6 +707,14 @@ export default function MenuManagementPage() {
           >
             <SlidersHorizontal className="h-4 w-4" /> Modificadores & Extras ({modifierGroups.length})
           </button>
+          <button
+            onClick={() => setActiveTab('engineering')}
+            className={`pb-3 font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'engineering' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <TrendingUp className="h-4 w-4" /> 📈 Ingeniería de Menú (BCG)
+          </button>
         </div>
 
         {/* TAB 1: DISHES */}
@@ -1083,6 +1100,11 @@ export default function MenuManagementPage() {
           </div>
         )}
 
+        {/* TAB 5: MENU ENGINEERING (BCG MATRIX) */}
+        {activeTab === 'engineering' && (
+          <MenuEngineeringTab />
+        )}
+
         {/* MODAL: PRODUCT CREATE / EDIT */}
         {isProductModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
@@ -1114,9 +1136,9 @@ export default function MenuManagementPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-400">Categoría / Sección *</label>
+                    <label className="font-semibold text-slate-400">Categoría *</label>
                     <select
                       required
                       value={prodCatId}
@@ -1131,7 +1153,7 @@ export default function MenuManagementPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-semibold text-slate-400">Precio de Venta ($) *</label>
+                    <label className="font-semibold text-slate-400">Precio Venta ($) *</label>
                     <input
                       type="number"
                       required
@@ -1139,6 +1161,20 @@ export default function MenuManagementPage() {
                       placeholder="149.00"
                       value={prodPrice || ''}
                       onChange={(e) => setProdPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-semibold text-slate-400">Meta Food Cost (%)</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={90}
+                      step={1}
+                      placeholder="30"
+                      value={prodTargetFoodCostPct || ''}
+                      onChange={(e) => setProdTargetFoodCostPct(parseFloat(e.target.value) || 30)}
                       className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-2 text-slate-200 focus:border-brand-primary outline-none"
                     />
                   </div>

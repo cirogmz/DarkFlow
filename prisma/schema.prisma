@@ -155,6 +155,7 @@ model Product {
   kitchenStation String?   @default("COCINA")
   allergens   String?
   dietaryTags String?
+  targetFoodCostPct Float? @default(30)
   recipeItems RecipeItem[]
   orderItems  OrderItem[]
   comboItems  ComboItem[]
