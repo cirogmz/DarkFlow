@@ -33,6 +33,8 @@ model User {
   cashierSettlements    DriverSettlement[] @relation("SettlementCashier")
   waiterOrders          Order[]            @relation("WaiterOrders")
   assignedTables        Table[]            @relation("AssignedWaiterTables")
+  createdPurchaseOrders PurchaseOrder[]    @relation("PurchaseOrderCreator")
+  receivedPurchaseOrders PurchaseOrder[]   @relation("PurchaseOrderReceiver")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -90,6 +92,9 @@ model Brand {
   surveys        SatisfactionSurvey[]
   securityIncidents SecurityIncident[]
   driverSettlements DriverSettlement[]
+  suppliers      Supplier[]
+  purchaseOrders PurchaseOrder[]
+  batches        IngredientBatch[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -148,6 +153,8 @@ model Product {
   isActive    Boolean      @default(true)
   targetPrepTime Int?      @default(10)
   kitchenStation String?   @default("COCINA")
+  allergens   String?
+  dietaryTags String?
   recipeItems RecipeItem[]
   orderItems  OrderItem[]
   comboItems  ComboItem[]
@@ -163,9 +170,12 @@ model Ingredient {
   unit        String
   cost        Float        @default(0)
   minStock    Float        @default(0)
+  parLevel    Float?       @default(10)
+  reorderPoint Float?      @default(5)
   type        String       @default("RAW")
   yieldQuantity Float?
   yieldUnit   String?
+  allergens   String?
   brandId     String
   brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
   recipeItems RecipeItem[]
@@ -179,6 +189,9 @@ model Ingredient {
   wasteLogs        WasteLog[]
   auditItems       InventoryAuditItem[]
   requisitionItems RequisitionItem[]
+  suppliers        IngredientSupplier[]
+  purchaseOrderItems PurchaseOrderItem[]
+  batches          IngredientBatch[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -256,6 +269,23 @@ model Order {
   cookingStartedAt DateTime?
   cookingFinishedAt DateTime?
   currentStage String?      @default("STARTER")
+  expoStatus       String?   @default("PENDING")
+  expoNotifiedAt   DateTime?
+  expoAssembledAt  DateTime?
+  expoPackedAt     DateTime?
+  expoNotes        String?
+  deliverySecuritySeal String?
+  barStatus        String?   @default("PENDING")
+  barNotifiedAt    DateTime?
+  barCompletedAt   DateTime?
+  isComped         Boolean   @default(false)
+  compType         String?
+  compReason       String?
+  compApprovedById String?
+  compApprovedByName String?
+  compApprovedAt   DateTime?
+  compFoodCost     Float?    @default(0)
+  compBeneficiaryName String?
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -273,6 +303,11 @@ model OrderItem {
   modifiers    String?
   status       String    @default("PENDING")
   serviceStage String?   @default("MAIN")
+  allergenAlert String?
+  expoChecked  Boolean   @default(false)
+  barChecked   Boolean   @default(false)
+  isComped     Boolean   @default(false)
+  compType     String?
   startedAt    DateTime?
   finishedAt   DateTime?
   servedAt     DateTime?
@@ -558,6 +593,7 @@ model Warehouse {
   inventoryAudits InventoryAudit[]
   requisitionsFrom InternalRequisition[] @relation("RequisitionSourceWarehouse")
   requisitionsTo   InternalRequisition[] @relation("RequisitionDestWarehouse")
+  batches       IngredientBatch[]
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
@@ -638,7 +674,11 @@ model WasteLog {
   brand        Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
   userId       String?
   user         User?      @relation(fields: [userId], references: [id])
+  batchId      String?
+  batch        IngredientBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   createdAt    DateTime   @default(now())
+
+  @@index([batchId])
 }
 
 model Invoice {
@@ -1034,4 +1074,128 @@ model DriverSettlement {
   @@index([status])
   @@index([settledAt])
 }
+
+model Supplier {
+  id              String               @id @default(uuid())
+  brandId         String
+  brand           Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name            String
+  code            String?
+  contactName     String?
+  email           String?
+  phone           String?
+  taxId           String?
+  address         String?
+  paymentTerms    String?              @default("CONTADO")
+  leadTimeDays    Int?                 @default(1)
+  notes           String?
+  isActive        Boolean              @default(true)
+  ingredients     IngredientSupplier[]
+  purchaseOrders  PurchaseOrder[]
+  batches         IngredientBatch[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([brandId, name])
+  @@index([brandId])
+}
+
+model IngredientSupplier {
+  id              String       @id @default(uuid())
+  supplierId      String
+  supplier        Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  ingredientId    String
+  ingredient      Ingredient   @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  supplierSku     String?
+  negotiatedCost  Float
+  isPreferred     Boolean      @default(false)
+  minOrderQty     Float?       @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([supplierId, ingredientId])
+  @@index([supplierId])
+  @@index([ingredientId])
+}
+
+model PurchaseOrder {
+  id              String              @id @default(uuid())
+  folio           String
+  brandId         String
+  brand           Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  supplierId      String
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  createdById     String?
+  createdBy       User?               @relation("PurchaseOrderCreator", fields: [createdById], references: [id])
+  receivedById    String?
+  receivedBy      User?               @relation("PurchaseOrderReceiver", fields: [receivedById], references: [id])
+  status          String              @default("DRAFT")
+  expectedDate    DateTime?
+  receivedDate    DateTime?
+  subtotal        Float               @default(0)
+  taxRate         Float               @default(0)
+  taxAmount       Float               @default(0)
+  total           Float               @default(0)
+  paymentTerms    String?
+  invoiceRef      String?
+  notes           String?
+  rejectionReason String?
+  items           PurchaseOrderItem[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([brandId, folio])
+  @@index([brandId])
+  @@index([supplierId])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  ingredientId    String
+  ingredient      Ingredient    @relation(fields: [ingredientId], references: [id])
+  quantityOrdered Float
+  quantityReceived Float        @default(0)
+  unitCost        Float         @default(0)
+  totalCost       Float         @default(0)
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([purchaseOrderId])
+  @@index([ingredientId])
+}
+
+model IngredientBatch {
+  id              String      @id @default(uuid())
+  brandId         String
+  brand           Brand       @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  ingredientId    String
+  ingredient      Ingredient  @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  batchNumber     String      // Folio or code, e.g. "LOT-2026-001"
+  initialQuantity Float
+  currentQuantity Float
+  unitCost        Float       @default(0)
+  expirationDate  DateTime
+  receivedDate    DateTime    @default(now())
+  supplierId      String?
+  supplier        Supplier?   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  warehouseId     String?
+  warehouse       Warehouse?  @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  status          String      @default("ACTIVE") // "ACTIVE", "DEPLETED", "EXPIRED", "DISCARDED"
+  notes           String?
+  wasteLogs       WasteLog[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([brandId])
+  @@index([ingredientId])
+  @@index([batchNumber])
+  @@index([expirationDate])
+  @@index([status])
+}
+
+
 

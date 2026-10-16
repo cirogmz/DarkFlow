@@ -29,9 +29,10 @@ import {
   ArrowLeft,
   Coffee,
   Sparkles,
-  UserCheck
+  UserCheck,
+  Bell
 } from 'lucide-react';
-import { playDispatchChime } from '@/lib/sound';
+import { playDispatchChime, playWaiterCallChime } from '@/lib/sound';
 
 interface WaiterStaff {
   id: string;
@@ -50,6 +51,7 @@ interface TableItem {
   serviceStage?: string | null; // STARTER, MAIN, DESSERT, DRINK
   notes?: string | null;
   modifiers?: string | null;
+  allergenAlert?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
   servedAt?: string | null;
@@ -66,6 +68,8 @@ interface TableOrder {
   tax: number;
   createdAt: string;
   elapsedMinutes: number;
+  expoStatus?: string | null;
+  expoNotifiedAt?: string | null;
   prebillPrintedAt?: string | null;
   prebillPrintedCount?: number;
   itemsCount: number;
@@ -102,6 +106,8 @@ interface Product {
   imageUrl?: string | null;
   categoryId: string;
   category?: { id: string; name: string };
+  allergens?: string | null;
+  dietaryTags?: string | null;
   modifierGroups?: any[];
 }
 
@@ -113,6 +119,7 @@ interface CartItem {
   price: number;
   serviceStage: 'STARTER' | 'MAIN' | 'DESSERT' | 'DRINK';
   notes: string;
+  allergenAlert?: string;
   modifiers?: any[];
 }
 
@@ -150,6 +157,7 @@ export default function WaiterPadPage() {
   const [itemQty, setItemQty] = useState(1);
   const [itemStage, setItemStage] = useState<'STARTER' | 'MAIN' | 'DESSERT' | 'DRINK'>('MAIN');
   const [itemNotes, setItemNotes] = useState('');
+  const [itemAllergenAlert, setItemAllergenAlert] = useState('');
 
   // Open Table Modal State
   const [showOpenTableModal, setShowOpenTableModal] = useState(false);
@@ -167,6 +175,16 @@ export default function WaiterPadPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
+
+  // Expo Buzzer / Waiter Pager Alert
+  const [activeBuzzer, setActiveBuzzer] = useState<{
+    id: string;
+    tableNumber: string;
+    orderNumber: string;
+    waiterName?: string;
+    time: string;
+  } | null>(null);
+  const [readyPassTables, setReadyPassTables] = useState<Set<string>>(new Set());
 
   // Real-time data fetching
   const loadTablesData = useCallback(async () => {
@@ -248,9 +266,74 @@ export default function WaiterPadPage() {
 
     init();
 
-    // Polling every 6 seconds to update tables and kitchen status
-    const interval = setInterval(loadTablesData, 6000);
-    return () => clearInterval(interval);
+    // Real-time SSE Connection for Expo Buzzer & Table order updates
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/orders/stream');
+
+      eventSource.addEventListener('waiter_called', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (soundEnabledRef.current) playWaiterCallChime();
+
+          if (data.tableNumber) {
+            setActiveBuzzer({
+              id: data.orderId || String(Date.now()),
+              tableNumber: String(data.tableNumber),
+              orderNumber: data.orderNumber || '',
+              waiterName: data.waiterName || '',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+
+            setReadyPassTables((prev) => new Set(prev).add(String(data.tableNumber)));
+            addNotification(`🔔 ¡Mesa #${data.tableNumber} lista en barra de pase!`, 'success');
+          }
+          loadTablesData();
+        } catch (e) {
+          console.error('Error parsing waiter_called SSE', e);
+        }
+      });
+
+      eventSource.addEventListener('drinks_ready', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (soundEnabledRef.current) playWaiterCallChime();
+
+          if (data.tableNumber) {
+            setActiveBuzzer({
+              id: data.orderId || String(Date.now()),
+              tableNumber: String(data.tableNumber),
+              orderNumber: data.orderNumber || '',
+              waiterName: data.waiterName || '',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+
+            setReadyPassTables((prev) => new Set(prev).add(String(data.tableNumber)));
+            addNotification(`🍹 ¡Bebidas de Mesa #${data.tableNumber} listas en Barra!`, 'info');
+          }
+          loadTablesData();
+        } catch (e) {
+          console.error('Error parsing drinks_ready SSE', e);
+        }
+      });
+
+      eventSource.addEventListener('order_updated', () => {
+        loadTablesData();
+      });
+
+      eventSource.addEventListener('order_created', () => {
+        loadTablesData();
+      });
+    } catch (e) {
+      console.warn('SSE not supported or connection error', e);
+    }
+
+    // Polling backup every 8 seconds
+    const interval = setInterval(loadTablesData, 8000);
+    return () => {
+      clearInterval(interval);
+      if (eventSource) eventSource.close();
+    };
   }, [loadTablesData, loadMenuData, loadStaffData]);
 
   // Handle PIN verification
@@ -293,6 +376,7 @@ export default function WaiterPadPage() {
     setCustomizingProduct(product);
     setItemQty(1);
     setItemNotes('');
+    setItemAllergenAlert('');
 
     // Detect default kitchen stage by category
     const catName = product.category?.name?.toLowerCase() || '';
@@ -319,6 +403,7 @@ export default function WaiterPadPage() {
       price: customizingProduct.price,
       serviceStage: itemStage,
       notes: itemNotes.trim(),
+      allergenAlert: itemAllergenAlert.trim() || undefined,
     };
 
     setCartItems([...cartItems, newItem]);
@@ -343,6 +428,7 @@ export default function WaiterPadPage() {
           price: c.price,
           serviceStage: c.serviceStage,
           notes: c.notes || undefined,
+          allergenAlert: c.allergenAlert || undefined,
         })),
       };
 
@@ -544,6 +630,40 @@ export default function WaiterPadPage() {
         </div>
       </header>
 
+      {/* Floating Expo Buzzer Alert Banner */}
+      {activeBuzzer && (
+        <div className="mx-3 mt-2 p-3 bg-cyan-950/95 border-2 border-cyan-400 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-bounce z-40">
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-black shrink-0">
+              <Bell className="h-5 w-5 animate-spin" />
+            </div>
+            <div>
+              <h4 className="font-black text-white text-sm">
+                ¡Mesa #{activeBuzzer.tableNumber} lista en barra!
+              </h4>
+              <p className="text-[11px] text-cyan-200">
+                Comanda #{activeBuzzer.orderNumber} ensamblada por Expo • {activeBuzzer.time}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => {
+                setReadyPassTables((prev) => {
+                  const next = new Set(prev);
+                  next.delete(activeBuzzer.tableNumber);
+                  return next;
+                });
+                setActiveBuzzer(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* MAIN CONTAINER BY CURRENT VIEW */}
       {/* ========================================================================= */}
@@ -627,11 +747,18 @@ export default function WaiterPadPage() {
                           <h3 className="font-extrabold text-base text-white">#{table.number}</h3>
                         </div>
 
-                        {/* Capacity / Diners badge */}
-                        <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-300">
-                          <Users className="h-3 w-3 text-slate-400" />
-                          {table.activeOrder?.diners || table.capacity}
-                        </span>
+                        {/* Capacity / Diners badge & Expo Ready Indicator */}
+                        <div className="flex items-center gap-1">
+                          {(readyPassTables.has(String(table.number)) || table.activeOrder?.expoStatus === 'NOTIFIED_WAITER') && (
+                            <span className="flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500 text-slate-950 animate-bounce shadow-md">
+                              <Bell className="h-2.5 w-2.5" /> En Pase
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-300">
+                            <Users className="h-3 w-3 text-slate-400" />
+                            {table.activeOrder?.diners || table.capacity}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Middle Body */}
@@ -793,6 +920,22 @@ export default function WaiterPadPage() {
                       </span>
                     )}
                     <h4 className="font-bold text-xs text-white mt-0.5 line-clamp-2">{p.name}</h4>
+                    {p.dietaryTags && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {p.dietaryTags.split(',').map((t, idx) => (
+                          <span key={idx} className="text-[8px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1 py-0.2 rounded">
+                            {t.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {p.allergens && (
+                      <div className="flex flex-wrap items-center gap-1 mt-1">
+                        <span className="text-[8px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1 py-0.2 rounded inline-flex items-center gap-0.5">
+                          ⚠️ {p.allergens.split(',').map(a => a.trim()).join(', ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-800/80">
@@ -897,6 +1040,39 @@ export default function WaiterPadPage() {
                 <span>Agregar Platillos</span>
               </button>
 
+              {/* Quick Serve / Picked up from Pass */}
+              {(readyPassTables.has(String(selectedTable.number)) || selectedTable.activeOrder?.expoStatus === 'NOTIFIED_WAITER') && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/kitchen/expo', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'SERVE_ALL', orderId: selectedTable.activeOrder?.id }),
+                      });
+                      if (res.ok) {
+                        addNotification('Comanda marcada como servida a comensales', 'success');
+                        setReadyPassTables((prev) => {
+                          const next = new Set(prev);
+                          next.delete(String(selectedTable.number));
+                          return next;
+                        });
+                        if (activeBuzzer?.tableNumber === String(selectedTable.number)) {
+                          setActiveBuzzer(null);
+                        }
+                        await loadTablesData();
+                      }
+                    } catch {
+                      addNotification('Error al confirmar servido', 'error');
+                    }
+                  }}
+                  className="p-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-cyan-500/20 col-span-2 sm:col-span-4 cursor-pointer"
+                >
+                  <Check className="h-4 w-4 stroke-[3px]" />
+                  <span>✅ Confirmar Charola Servida a Mesa (Recogido de Pase)</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   const next = selectedTable.activeOrder?.currentStage === 'STARTER' ? 'MAIN' : 'DESSERT';
@@ -954,6 +1130,12 @@ export default function WaiterPadPage() {
 
                         {item.notes && (
                           <p className="text-[11px] text-amber-300 italic">Nota: {item.notes}</p>
+                        )}
+
+                        {item.allergenAlert && (
+                          <p className="text-[10px] text-red-300 font-bold bg-red-950/40 border border-red-900/50 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                            ⚠️ ALERTA: {item.allergenAlert}
+                          </p>
                         )}
 
                         {/* Kitchen status badge */}
@@ -1065,6 +1247,22 @@ export default function WaiterPadPage() {
                 <span className="font-mono text-emerald-400 font-extrabold text-xs">
                   ${customizingProduct.price.toFixed(2)} c/u
                 </span>
+                {customizingProduct.dietaryTags && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {customizingProduct.dietaryTags.split(',').map((t, idx) => (
+                      <span key={idx} className="text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded">
+                        {t.trim()}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {customizingProduct.allergens && (
+                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                    <span className="text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.2 rounded flex items-center gap-1">
+                      ⚠️ Contiene alérgenos: {customizingProduct.allergens}
+                    </span>
+                  </div>
+                )}
               </div>
               <button onClick={() => setCustomizingProduct(null)} className="text-slate-400 hover:text-white">
                 ✕
@@ -1153,6 +1351,30 @@ export default function WaiterPadPage() {
               />
             </div>
 
+            {/* Allergen Alert Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Alerta de Alergia del Comensal:</label>
+              <div className="flex flex-wrap gap-1.5">
+                {['Alérgico a nuez', 'Sin gluten / Celíaco', 'Alérgico a mariscos', 'Alérgico a lácteos'].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setItemAllergenAlert(itemAllergenAlert ? `${itemAllergenAlert}, ${chip}` : chip)}
+                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-950/30 text-red-300 hover:text-white border border-red-900/50 active:scale-95 transition-all"
+                  >
+                    ⚠️ {chip}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={itemAllergenAlert}
+                onChange={(e) => setItemAllergenAlert(e.target.value)}
+                placeholder="Ej. Alérgico severo a cacahuates..."
+                className="w-full bg-slate-950 border border-red-900/40 rounded-xl px-3 py-2 text-xs text-red-200 placeholder:text-red-400/40 focus:border-red-500 outline-none mt-1"
+              />
+            </div>
+
             {/* Total and confirm button */}
             <button
               onClick={handleAddToCart}
@@ -1191,6 +1413,11 @@ export default function WaiterPadPage() {
                       </span>
                     </div>
                     {c.notes && <p className="text-[10px] text-amber-300 italic">{c.notes}</p>}
+                    {c.allergenAlert && (
+                      <p className="text-[10px] text-red-300 font-semibold bg-red-950/40 border border-red-900/40 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                        ⚠️ {c.allergenAlert}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3">

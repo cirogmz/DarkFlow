@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import { playKitchenChime } from '@/lib/sound';
+import ExpoStationView from '@/components/kitchen/ExpoStationView';
+import BarStationView from '@/components/kitchen/BarStationView';
 
 interface OrderItem {
   id: string;
@@ -32,13 +34,18 @@ interface OrderItem {
   modifiers?: string | null;
   status: 'PENDING' | 'COOKING' | 'DONE';
   serviceStage?: string | null;
+  allergenAlert?: string | null;
+  expoChecked?: boolean;
   startedAt?: string | null;
   finishedAt?: string | null;
+  servedAt?: string | null;
   product: {
     id: string;
     name: string;
     targetPrepTime?: number | null;
     kitchenStation?: string | null;
+    allergens?: string | null;
+    dietaryTags?: string | null;
   };
 }
 
@@ -48,28 +55,44 @@ interface Order {
   source: string;
   status: string;
   customerName: string;
+  customerPhone?: string | null;
+  customerAddress?: string | null;
   notes?: string | null;
   items: OrderItem[];
   externalOrderId?: string | null;
   deliveryService?: string | null;
   table?: {
+    id?: string;
     number: string;
     name: string;
   } | null;
+  tableId?: string | null;
   diners?: number | null;
+  waiterId?: string | null;
+  waiter?: {
+    id: string;
+    name: string;
+  } | null;
   prepTimeTarget?: number | null;
   cookingStartedAt?: string | null;
   cookingFinishedAt?: string | null;
   currentStage?: string | null;
+  expoStatus?: string | null;
+  expoNotifiedAt?: string | null;
+  expoAssembledAt?: string | null;
+  expoPackedAt?: string | null;
+  expoNotes?: string | null;
+  deliverySecuritySeal?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 const STATIONS = [
   { id: 'ALL', label: 'Todas las Estaciones', icon: '🍽️' },
+  { id: 'EXPO', label: 'Estación Expo (Pase)', icon: '🛎️' },
+  { id: 'BARRA', label: 'KDS Barra & Bebidas', icon: '🍹' },
   { id: 'COCINA', label: 'Cocina Caliente', icon: '🍳' },
   { id: 'PARRILLA', label: 'Parrilla / Plancha', icon: '🥩' },
-  { id: 'BARRA', label: 'Barra de Bebidas', icon: '🍹' },
   { id: 'POSTRES', label: 'Postres / Panadería', icon: '🍰' },
   { id: 'ENSALADAS', label: 'Barra Fría / Ensaladas', icon: '🥗' },
 ];
@@ -115,6 +138,17 @@ export default function KitchenPage() {
   soundEnabledRef.current = soundEnabled;
 
   const { addNotification } = useAppStore();
+
+  // Read URL station param if available (e.g. /kitchen?station=BARRA)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const st = params.get('station');
+      if (st) {
+        setSelectedStation(st.toUpperCase());
+      }
+    }
+  }, []);
 
   const fetchActiveOrders = useCallback(async () => {
     try {
@@ -522,8 +556,28 @@ export default function KitchenPage() {
           ))}
         </div>
 
-        {/* 3-Column board layout */}
-        <div className="flex-1 flex flex-col md:flex-row gap-5 overflow-hidden">
+        {/* Main Board view: Line KDS vs Expo Station vs Bar Station */}
+        {selectedStation === 'EXPO' ? (
+          <div className="flex-1 overflow-hidden">
+            <ExpoStationView
+              orders={orders as any}
+              currentTimestamp={currentTimestamp}
+              onRefresh={fetchActiveOrders}
+              soundEnabled={soundEnabled}
+              onDirectPrint={handleDirectNetworkPrint}
+              printingOrderId={printingNetworkOrderId}
+            />
+          </div>
+        ) : selectedStation === 'BARRA' ? (
+          <div className="flex-1 overflow-hidden">
+            <BarStationView
+              currentTimestamp={currentTimestamp}
+              soundEnabled={soundEnabled}
+            />
+          </div>
+        ) : (
+          /* 3-Column board layout */
+          <div className="flex-1 flex flex-col md:flex-row gap-5 overflow-hidden">
           {/* Column 1: RECEIVED */}
           <div className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col overflow-hidden">
             <div className="p-3.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
@@ -587,6 +641,7 @@ export default function KitchenPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Thermal Ticket Print Modal */}
@@ -748,6 +803,16 @@ export default function KitchenPage() {
                             <p className="text-[10px] text-amber-400 font-medium italic mt-0.5 bg-amber-950/30 px-1.5 py-0.5 rounded">
                               Nota: {item.notes}
                             </p>
+                          )}
+
+                          {/* Allergen Alert - Critical Kitchen Warning */}
+                          {item.allergenAlert && (
+                            <div className="mt-1 px-2 py-1 bg-red-600/20 border-2 border-red-500 rounded animate-pulse">
+                              <p className="text-[10px] font-black text-red-400 uppercase tracking-wider flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3 stroke-[3px]" />
+                                ⚠️ ALÉRGENO: {item.allergenAlert}
+                              </p>
+                            </div>
                           )}
                         </div>
 

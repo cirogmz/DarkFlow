@@ -20,6 +20,7 @@ export interface CartItem {
   serviceStage?: string;
   originalPrice?: number;
   appliedPromo?: string;
+  allergenAlert?: string;
 }
 
 interface BrandTheme {
@@ -45,12 +46,15 @@ interface AppState {
     imageUrl?: string;
     notes?: string;
     modifiers?: CartModifier[];
+    serviceStage?: string;
     originalPrice?: number;
     appliedPromo?: string;
+    allergenAlert?: string;
   }) => void;
   removeFromCart: (itemKey: string) => void;
   updateCartQty: (itemKey: string, qty: number) => void;
   updateCartNotes: (itemKey: string, notes: string) => void;
+  updateCartAllergenAlert: (itemKey: string, alert: string) => void;
   clearCart: () => void;
   
   // Notification system
@@ -89,8 +93,10 @@ export const useAppStore = create<AppState>((set) => ({
           quantity: 1,
           notes: product.notes,
           modifiers: product.modifiers,
+          serviceStage: product.serviceStage,
           originalPrice: product.originalPrice,
           appliedPromo: product.appliedPromo,
+          allergenAlert: product.allergenAlert,
         },
       ],
     };
@@ -106,6 +112,11 @@ export const useAppStore = create<AppState>((set) => ({
   updateCartNotes: (itemKey, notes) => set((state) => ({
     cart: state.cart.map((item) =>
       (item.id || item.productId) === itemKey ? { ...item, notes } : item
+    ),
+  })),
+  updateCartAllergenAlert: (itemKey, alert) => set((state) => ({
+    cart: state.cart.map((item) =>
+      (item.id || item.productId) === itemKey ? { ...item, allergenAlert: alert } : item
     ),
   })),
   clearCart: () => set({ cart: [] }),

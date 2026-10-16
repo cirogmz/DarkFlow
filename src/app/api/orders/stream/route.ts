@@ -39,7 +39,16 @@ export async function GET(req: NextRequest) {
             return;
           }
 
-          const eventName = data.action === 'CREATED' ? 'order_created' : 'order_updated';
+          let eventName = 'order_updated';
+          if (data.action === 'CREATED') {
+            eventName = 'order_created';
+          } else if (data.action === 'WAITER_CALLED') {
+            eventName = 'waiter_called';
+          } else if (data.action === 'EXPO_PACKED') {
+            eventName = 'expo_packed';
+          } else if (data.action === 'DRINKS_READY') {
+            eventName = 'drinks_ready';
+          }
           const message = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
           controller.enqueue(encoder.encode(message));
         } catch {

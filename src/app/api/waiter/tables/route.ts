@@ -117,6 +117,8 @@ export async function GET(req: NextRequest) {
               elapsedMinutes,
               prebillPrintedAt: activeOrder.prebillPrintedAt,
               prebillPrintedCount: activeOrder.prebillPrintedCount,
+              expoStatus: activeOrder.expoStatus,
+              expoNotifiedAt: activeOrder.expoNotifiedAt,
               itemsCount: activeOrder.items.length,
               kitchenStats: {
                 pending: pendingKitchenCount,

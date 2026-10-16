@@ -105,7 +105,9 @@ export async function POST(req: NextRequest) {
       isActive = true, 
       modifierGroupIds,
       targetPrepTime = 10,
-      kitchenStation = 'COCINA'
+      kitchenStation = 'COCINA',
+      allergens,
+      dietaryTags
     } = await req.json();
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -140,6 +142,8 @@ export async function POST(req: NextRequest) {
         isActive: Boolean(isActive),
         targetPrepTime: targetPrepTime ? parseInt(String(targetPrepTime), 10) : 10,
         kitchenStation: kitchenStation ? String(kitchenStation).trim().toUpperCase() : 'COCINA',
+        allergens: allergens ? (typeof allergens === 'string' ? allergens : JSON.stringify(allergens)) : null,
+        dietaryTags: dietaryTags ? (typeof dietaryTags === 'string' ? dietaryTags : JSON.stringify(dietaryTags)) : null,
         modifierGroups: Array.isArray(modifierGroupIds) && modifierGroupIds.length > 0
           ? {
               create: modifierGroupIds.map((groupId: string, idx: number) => ({
@@ -202,7 +206,9 @@ export async function PATCH(req: NextRequest) {
       isActive, 
       modifierGroupIds,
       targetPrepTime,
-      kitchenStation
+      kitchenStation,
+      allergens,
+      dietaryTags
     } = await req.json();
 
     if (!id) {
@@ -253,6 +259,8 @@ export async function PATCH(req: NextRequest) {
           isActive: isActive !== undefined ? Boolean(isActive) : undefined,
           targetPrepTime: targetPrepTime !== undefined ? (targetPrepTime ? parseInt(String(targetPrepTime), 10) : 10) : undefined,
           kitchenStation: kitchenStation !== undefined ? (kitchenStation ? String(kitchenStation).trim().toUpperCase() : 'COCINA') : undefined,
+          allergens: allergens !== undefined ? (allergens ? (typeof allergens === 'string' ? allergens : JSON.stringify(allergens)) : null) : undefined,
+          dietaryTags: dietaryTags !== undefined ? (dietaryTags ? (typeof dietaryTags === 'string' ? dietaryTags : JSON.stringify(dietaryTags)) : null) : undefined,
         },
         include: {
           category: true,

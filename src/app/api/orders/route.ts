@@ -15,6 +15,7 @@ interface OrderItemInput {
   modifiers?: unknown;
   serviceStage?: string | null;
   status?: string;
+  allergenAlert?: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -51,6 +52,13 @@ export async function GET(req: NextRequest) {
           },
         },
         driver: true,
+        waiter: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         table: true,
         customer: true,
         coupon: true,
@@ -280,6 +288,7 @@ export async function POST(req: NextRequest) {
                 modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
                 status: item.status || 'PENDING',
                 serviceStage: detectedStage || 'MAIN',
+                allergenAlert: item.allergenAlert || null,
               };
             }),
           },

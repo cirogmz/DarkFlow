@@ -18,10 +18,13 @@ import {
   X,
   Edit3,
   Scale,
-  FileText
+  FileText,
+  Boxes
 } from 'lucide-react';
 import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
 import RequisitionsTab from '@/components/inventory/RequisitionsTab';
+import PurchaseOrdersTab from '@/components/inventory/PurchaseOrdersTab';
+import { BatchTrackingTab } from '@/components/inventory/BatchTrackingTab';
 
 interface Ingredient {
   id: string;
@@ -30,6 +33,9 @@ interface Ingredient {
   unit: string;
   cost: number;
   minStock: number;
+  parLevel?: number | null;
+  reorderPoint?: number | null;
+  allergens?: string | null;
   type?: 'RAW' | 'PREPARED';
   yieldQuantity?: number | null;
   yieldUnit?: string | null;
@@ -168,7 +174,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -177,8 +183,11 @@ export default function InventoryPage() {
   const [newIngUnit, setNewIngUnit] = useState('kg');
   const [newIngStock, setNewIngStock] = useState<number>(0);
   const [newIngMinStock, setNewIngMinStock] = useState<number>(5);
+  const [newIngParLevel, setNewIngParLevel] = useState<number>(10);
+  const [newIngReorderPoint, setNewIngReorderPoint] = useState<number>(5);
   const [newIngCost, setNewIngCost] = useState<number>(0);
   const [newIngType, setNewIngType] = useState<'RAW' | 'PREPARED'>('RAW');
+  const [newIngAllergens, setNewIngAllergens] = useState('');
   const [showAddIngModal, setShowAddIngModal] = useState(false);
 
   // Adjust stock state
@@ -309,8 +318,11 @@ export default function InventoryPage() {
           unit: newIngUnit,
           stock: newIngStock,
           minStock: newIngMinStock,
+          parLevel: newIngParLevel,
+          reorderPoint: newIngReorderPoint,
           cost: newIngCost,
           type: newIngType,
+          allergens: newIngAllergens || null,
         }),
       });
 
@@ -318,7 +330,10 @@ export default function InventoryPage() {
         setShowAddIngModal(false);
         setNewIngName('');
         setNewIngStock(0);
+        setNewIngParLevel(10);
+        setNewIngReorderPoint(5);
         setNewIngCost(0);
+        setNewIngAllergens('');
         fetchInventoryData();
       } else {
         const data = await res.json();
@@ -705,6 +720,14 @@ export default function InventoryPage() {
             <Package className="h-4 w-4" /> Insumos & Stock
           </button>
           <button
+            onClick={() => setActiveTab('batches')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'batches' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Boxes className="h-4 w-4 text-amber-400" /> Lotes & Caducidad (FIFO/FEFO)
+          </button>
+          <button
             onClick={() => setActiveTab('subrecipes')}
             className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'subrecipes' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
@@ -734,7 +757,7 @@ export default function InventoryPage() {
               activeTab === 'purchases' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            <ShoppingCart className="h-4 w-4" /> Registro de Compras
+            <ShoppingCart className="h-4 w-4" /> Compras & Auto-PO
           </button>
           <button
             onClick={() => setActiveTab('recipes')}
@@ -848,6 +871,11 @@ export default function InventoryPage() {
                           </td>
                           <td className="p-4 font-bold text-white text-sm">
                             {ing.name}
+                            {ing.allergens && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-950/40 border border-amber-900/50 px-1.5 py-0.5 rounded mt-1">
+                                ⚠️ {ing.allergens}
+                              </span>
+                            )}
                             {isPrepared && ing.yieldQuantity && (
                               <span className="block text-[11px] text-slate-500 font-normal mt-0.5">
                                 Rendimiento: {ing.yieldQuantity} {ing.yieldUnit || ing.unit}
@@ -894,6 +922,15 @@ export default function InventoryPage() {
               </table>
             </div>
           </div>
+        )}
+
+        {/* TAB: BATCHES & EXPIRATION (FEFO / FIFO) */}
+        {activeTab === 'batches' && (
+          <BatchTrackingTab
+            ingredients={ingredients}
+            warehouses={warehouses}
+            onStockUpdated={fetchInventoryData}
+          />
         )}
 
         {/* TAB 2: SUB-RECIPES & PRODUCTION */}
@@ -1290,121 +1327,118 @@ export default function InventoryPage() {
           </div>
         )}
 
-        {/* TAB 5: PURCHASES */}
+        {/* TAB 5: PURCHASES & AUTO-PO */}
         {activeTab === 'purchases' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 glass-panel border border-slate-800 rounded-xl p-5 shadow-lg h-fit space-y-4">
-              <div>
-                <h4 className="font-bold text-white text-base">Entrada de Mercancía</h4>
-                <p className="text-xs text-slate-500 mt-1">Registra la llegada de compras de proveedores para incrementar inventario y actualizar el costo promedio.</p>
-              </div>
+          <div className="space-y-8">
+            <PurchaseOrdersTab
+              availableIngredients={ingredients}
+              onRefreshInventory={fetchInventoryData}
+            />
 
-              <form onSubmit={handleRegisterPurchase} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Insumo Comprado *</label>
-                  <select
-                    value={selectedIngId}
-                    onChange={(e) => setSelectedIngId(e.target.value)}
-                    required
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-brand-primary focus:outline-none"
-                  >
-                    <option value="">Selecciona un insumo</option>
-                    {ingredients.map((ing) => (
-                      <option key={ing.id} value={ing.id}>
-                        {ing.name} ({ing.unit}) - Stock: {ing.stock.toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+            {/* Collapsible Quick Purchase Legacy Option */}
+            <details className="glass-panel border border-slate-800/80 rounded-2xl overflow-hidden shadow-lg group">
+              <summary className="p-4 bg-slate-900/60 font-bold text-xs text-slate-400 hover:text-white cursor-pointer flex items-center justify-between transition-colors">
+                <span>➕ Registrar Entrada Rápida Sin Orden de Compra (Legacy)</span>
+                <span className="text-[11px] text-slate-500">Haz clic para desplegar</span>
+              </summary>
+              <div className="p-5 border-t border-slate-800 grid grid-cols-1 lg:grid-cols-3 gap-6 bg-slate-950/40">
+                <div className="lg:col-span-1 space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">Cantidad *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={purchaseQty || ''}
-                      onChange={(e) => setPurchaseQty(parseFloat(e.target.value))}
-                      placeholder="0.00"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-brand-primary focus:outline-none"
-                    />
+                    <h5 className="font-bold text-white text-sm">Entrada Rápida de Stock</h5>
+                    <p className="text-xs text-slate-500 mt-0.5">Incremento directo para compras inmediatas al contado.</p>
                   </div>
+                  <form onSubmit={handleRegisterPurchase} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1">Insumo *</label>
+                      <select
+                        value={selectedIngId}
+                        onChange={(e) => setSelectedIngId(e.target.value)}
+                        required
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:border-brand-primary focus:outline-none"
+                      >
+                        <option value="">Selecciona un insumo</option>
+                        {ingredients.map((ing) => (
+                          <option key={ing.id} value={ing.id}>
+                            {ing.name} ({ing.unit}) - Stock: {ing.stock.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">Costo Total ($) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={purchaseCost || ''}
-                      onChange={(e) => setPurchaseCost(parseFloat(e.target.value))}
-                      placeholder="$ 0.00"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-brand-primary focus:outline-none"
-                    />
-                  </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1">Cantidad *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={purchaseQty || ''}
+                          onChange={(e) => setPurchaseQty(parseFloat(e.target.value))}
+                          placeholder="0.00"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:border-brand-primary focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1">Costo Total ($) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={purchaseCost || ''}
+                          onChange={(e) => setPurchaseCost(parseFloat(e.target.value))}
+                          placeholder="$ 0.00"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:border-brand-primary focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1">Proveedor (Opcional)</label>
+                      <input
+                        type="text"
+                        value={purchaseSupplier}
+                        onChange={(e) => setPurchaseSupplier(e.target.value)}
+                        placeholder="Ej. Mercado de Abastos"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:border-brand-primary focus:outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                    >
+                      Registrar Entrada Inmediata
+                    </button>
+                  </form>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Proveedor (Opcional)</label>
-                  <input
-                    type="text"
-                    value={purchaseSupplier}
-                    onChange={(e) => setPurchaseSupplier(e.target.value)}
-                    placeholder="Ej. Distribuidora Central"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-brand-primary focus:outline-none"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-brand-primary hover:bg-brand-primary-hover text-slate-950 font-bold text-xs rounded-lg shadow-lg transition-colors cursor-pointer"
-                >
-                  Registrar Entrada de Stock
-                </button>
-              </form>
-            </div>
-
-            <div className="lg:col-span-2 glass-panel border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-              <div className="p-5 border-b border-slate-800 bg-slate-900/40">
-                <h4 className="font-bold text-white text-base">Historial de Compras Recientes</h4>
-                <p className="text-xs text-slate-500 mt-1">Últimas entradas registradas en el almacén de esta cocina.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase tracking-wider">
-                      <th className="p-4">Fecha</th>
-                      <th className="p-4">Insumo</th>
-                      <th className="p-4">Cantidad</th>
-                      <th className="p-4">Costo Total</th>
-                      <th className="p-4">Costo Unitario</th>
-                      <th className="p-4">Proveedor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {purchases.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-6 text-center text-slate-500">No hay compras registradas en esta cocina.</td>
+                <div className="lg:col-span-2 overflow-x-auto">
+                  <h5 className="font-bold text-white text-sm mb-3">Historial de Entradas Directas</h5>
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase tracking-wider">
+                        <th className="p-3">Fecha</th>
+                        <th className="p-3">Insumo</th>
+                        <th className="p-3">Cantidad</th>
+                        <th className="p-3">Costo Total</th>
+                        <th className="p-3">Proveedor</th>
                       </tr>
-                    ) : (
-                      purchases.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-900/30 transition-colors">
-                          <td className="p-4 text-slate-400 font-mono">
-                            {new Date(p.purchaseDate).toLocaleDateString('es-MX')}
-                          </td>
-                          <td className="p-4 font-bold text-white">{p.ingredient.name}</td>
-                          <td className="p-4 font-bold text-emerald-400">+{p.quantity} {p.ingredient.unit}</td>
-                          <td className="p-4 font-bold text-slate-200">${p.cost.toFixed(2)}</td>
-                          <td className="p-4 text-slate-400">${(p.cost / p.quantity).toFixed(2)} / {p.ingredient.unit}</td>
-                          <td className="p-4 text-slate-300">{p.supplier || 'N/A'}</td>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {purchases.slice(0, 5).map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-900/30">
+                          <td className="p-3 text-slate-400 font-mono">{new Date(p.purchaseDate).toLocaleDateString('es-MX')}</td>
+                          <td className="p-3 font-bold text-white">{p.ingredient.name}</td>
+                          <td className="p-3 text-emerald-400 font-bold">+{p.quantity} {p.ingredient.unit}</td>
+                          <td className="p-3 text-slate-200">${p.cost.toFixed(2)}</td>
+                          <td className="p-3 text-slate-400">{p.supplier || 'N/A'}</td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            </details>
           </div>
         )}
 
@@ -1593,7 +1627,7 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-400 mb-1">Stock Inicial</label>
                     <input
@@ -1602,18 +1636,6 @@ export default function InventoryPage() {
                       value={newIngStock || ''}
                       onChange={(e) => setNewIngStock(parseFloat(e.target.value) || 0)}
                       placeholder="0"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white focus:border-brand-primary focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">Stock Mínimo</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={newIngMinStock || ''}
-                      onChange={(e) => setNewIngMinStock(parseFloat(e.target.value) || 0)}
-                      placeholder="5"
                       className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white focus:border-brand-primary focus:outline-none"
                     />
                   </div>
@@ -1628,6 +1650,70 @@ export default function InventoryPage() {
                       placeholder="0.00"
                       className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white focus:border-brand-primary focus:outline-none"
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-400 mb-1">Punto de Reorden (Alerta Pedido)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newIngReorderPoint || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setNewIngReorderPoint(val);
+                        setNewIngMinStock(val);
+                      }}
+                      placeholder="5"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white focus:border-amber-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-emerald-400 mb-1">Nivel Par Óptimo (Capacidad)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newIngParLevel || ''}
+                      onChange={(e) => setNewIngParLevel(parseFloat(e.target.value) || 0)}
+                      placeholder="10"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Alérgenos / Alertas (separados por coma)</label>
+                  <input
+                    type="text"
+                    value={newIngAllergens}
+                    onChange={(e) => setNewIngAllergens(e.target.value)}
+                    placeholder="Ej. Gluten, Lácteos, Cacahuates"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white focus:border-brand-primary focus:outline-none"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {['Gluten', 'Lácteos', 'Huevos', 'Cacahuates', 'Mariscos', 'Soya', 'Pescado', 'Nueces'].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          const current = newIngAllergens ? newIngAllergens.split(',').map(s => s.trim()).filter(Boolean) : [];
+                          if (current.includes(tag)) {
+                            setNewIngAllergens(current.filter(t => t !== tag).join(', '));
+                          } else {
+                            setNewIngAllergens([...current, tag].join(', '));
+                          }
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                          newIngAllergens.toLowerCase().includes(tag.toLowerCase())
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

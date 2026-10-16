@@ -51,6 +51,7 @@ export interface ThermalOrderData {
     product: {
       name: string;
     };
+    allergenAlert?: string | null;
   }>;
 }
 
@@ -431,6 +432,11 @@ export default function ThermalTicketModal({
                             {item.notes && (
                               <span className="text-xs font-bold bg-amber-100 text-amber-950 px-1.5 py-0.5 rounded mt-1 block border border-amber-300">
                                 ⚠️ NOTA: {item.notes}
+                              </span>
+                            )}
+                            {item.allergenAlert && (
+                              <span className="text-xs font-black bg-red-600 text-white px-2 py-1 rounded mt-1 block border-2 border-red-800 uppercase tracking-wide">
+                                🚨 ALÉRGENO: {item.allergenAlert}
                               </span>
                             )}
                           </div>

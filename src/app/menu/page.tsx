@@ -67,6 +67,8 @@ interface Product {
   isActive: boolean;
   targetPrepTime?: number | null;
   kitchenStation?: string | null;
+  allergens?: string | null;
+  dietaryTags?: string | null;
   recipeItems?: Array<{
     id: string;
     ingredientId: string;
@@ -113,6 +115,8 @@ export default function MenuManagementPage() {
   const [prodIsActive, setProdIsActive] = useState(true);
   const [prodTargetPrepTime, setProdTargetPrepTime] = useState<number>(10);
   const [prodKitchenStation, setProdKitchenStation] = useState<string>('COCINA');
+  const [prodAllergens, setProdAllergens] = useState<string[]>([]);
+  const [prodDietaryTags, setProdDietaryTags] = useState<string[]>([]);
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>([]);
 
   // Modifier Group Modal State
@@ -209,6 +213,8 @@ export default function MenuManagementPage() {
     setProdIsActive(true);
     setProdTargetPrepTime(10);
     setProdKitchenStation('COCINA');
+    setProdAllergens([]);
+    setProdDietaryTags([]);
     setSelectedModifierGroupIds([]);
     setIsProductModalOpen(true);
   };
@@ -223,6 +229,8 @@ export default function MenuManagementPage() {
     setProdIsActive(prod.isActive);
     setProdTargetPrepTime(prod.targetPrepTime || 10);
     setProdKitchenStation(prod.kitchenStation || 'COCINA');
+    try { setProdAllergens(prod.allergens ? JSON.parse(prod.allergens) : []); } catch { setProdAllergens([]); }
+    try { setProdDietaryTags(prod.dietaryTags ? JSON.parse(prod.dietaryTags) : []); } catch { setProdDietaryTags([]); }
     const groupIds = (prod.modifierGroups || []).map((pmg: { modifierGroup?: { id: string }; modifierGroupId?: string }) => pmg.modifierGroup?.id || pmg.modifierGroupId).filter(Boolean);
     setSelectedModifierGroupIds(groupIds as string[]);
     setIsProductModalOpen(true);
@@ -249,6 +257,8 @@ export default function MenuManagementPage() {
             isActive: prodIsActive,
             targetPrepTime: prodTargetPrepTime,
             kitchenStation: prodKitchenStation,
+            allergens: prodAllergens.length > 0 ? prodAllergens : null,
+            dietaryTags: prodDietaryTags.length > 0 ? prodDietaryTags : null,
             modifierGroupIds: selectedModifierGroupIds,
           }),
         });
@@ -275,6 +285,8 @@ export default function MenuManagementPage() {
             isActive: prodIsActive,
             targetPrepTime: prodTargetPrepTime,
             kitchenStation: prodKitchenStation,
+            allergens: prodAllergens.length > 0 ? prodAllergens : null,
+            dietaryTags: prodDietaryTags.length > 0 ? prodDietaryTags : null,
             modifierGroupIds: selectedModifierGroupIds,
           }),
         });
@@ -787,6 +799,17 @@ export default function MenuManagementPage() {
                         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed min-h-[32px]">
                           {prod.description || 'Sin descripción detallada.'}
                         </p>
+                        {(() => {
+                          let al: string[] = []; let dt: string[] = [];
+                          try { if (prod.allergens) al = JSON.parse(prod.allergens); } catch {}
+                          try { if (prod.dietaryTags) dt = JSON.parse(prod.dietaryTags); } catch {}
+                          return (al.length > 0 || dt.length > 0) ? (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {al.map((a) => <span key={a} className="text-[9px] font-bold bg-red-950/60 text-red-400 border border-red-800/50 px-1.5 py-0.5 rounded">⚠️ {a}</span>)}
+                              {dt.map((d) => <span key={d} className="text-[9px] font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 px-1.5 py-0.5 rounded">🌿 {d}</span>)}
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
 
@@ -1177,6 +1200,59 @@ export default function MenuManagementPage() {
                       <option value="ENSALADAS">Barra Fría / Ensaladas</option>
                     </select>
                     <span className="text-[10px] text-slate-500">Ruteo de pantalla</span>
+                  </div>
+                </div>
+
+                {/* Allergen & Dietary Tags Section */}
+                <div className="space-y-3 pt-2 border-t border-slate-800/60">
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-slate-400 flex items-center gap-1">
+                      ⚠️ Alérgenos
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['GLUTEN', 'LÁCTEOS', 'HUEVO', 'MARISCOS', 'PESCADO', 'CACAHUATE', 'NUECES', 'SOYA', 'APIO', 'MOSTAZA', 'SÉSAMO', 'SULFITOS', 'MOLUSCOS', 'ALTRAMUCES'].map((allergen) => {
+                        const selected = prodAllergens.includes(allergen);
+                        return (
+                          <button
+                            key={allergen}
+                            type="button"
+                            onClick={() => setProdAllergens(prev => selected ? prev.filter(a => a !== allergen) : [...prev, allergen])}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-full border transition-all cursor-pointer ${
+                              selected
+                                ? 'bg-red-600/30 border-red-500 text-red-300'
+                                : 'bg-slate-900/60 border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'
+                            }`}
+                          >
+                            {selected ? '✕ ' : '+ '}{allergen}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-slate-400 flex items-center gap-1">
+                      🌿 Etiquetas Dietéticas
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['VEGANO', 'VEGETARIANO', 'SIN GLUTEN', 'KETO', 'BAJO EN SODIO', 'SIN AZÚCAR', 'ORGÁNICO', 'HALAL', 'KOSHER', 'PALEO', 'SIN LACTOSA'].map((tag) => {
+                        const selected = prodDietaryTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setProdDietaryTags(prev => selected ? prev.filter(t => t !== tag) : [...prev, tag])}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-full border transition-all cursor-pointer ${
+                              selected
+                                ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300'
+                                : 'bg-slate-900/60 border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'
+                            }`}
+                          >
+                            {selected ? '✕ ' : '+ '}{tag}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

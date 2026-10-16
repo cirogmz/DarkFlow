@@ -304,6 +304,18 @@ export function generateKotBuffer(
           .line(`   >> NOTA: ${item.notes}`)
           .bold(false);
       }
+
+      // Allergen Alert (Critical for kitchen safety)
+      if (item.allergenAlert) {
+        builder
+          .size("2h")
+          .bold(true)
+          .line(`!! ALERTA ALERGENO !!`)
+          .size("normal")
+          .bold(true)
+          .line(`   ${item.allergenAlert}`)
+          .bold(false);
+      }
     }
     builder.divider("-");
   }

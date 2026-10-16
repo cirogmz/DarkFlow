@@ -63,6 +63,8 @@ interface PublicProduct {
   price: number;
   imageUrl?: string | null;
   categoryId: string;
+  allergens?: string | null;
+  dietaryTags?: string | null;
   recipeItems: PublicRecipeItem[];
   modifierGroups?: Array<{ modifierGroup: PublicModifierGroup }>;
 }
@@ -155,6 +157,7 @@ export default function PublicMenuPage({
   // Filtering state
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [dietaryFilter, setDietaryFilter] = useState<string>('');
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -479,9 +482,30 @@ export default function PublicMenuPage({
         if (!matchesCat) return null;
 
         const filteredProds = cat.products.filter((p) => {
-          if (!searchQuery.trim()) return true;
-          const q = searchQuery.toLowerCase();
-          return p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q));
+          // Search query filter
+          if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            if (!p.name.toLowerCase().includes(q) && !(p.description && p.description.toLowerCase().includes(q))) {
+              return false;
+            }
+          }
+          // Dietary filter: exclude products with specified allergens OR include only matching dietary tags
+          if (dietaryFilter) {
+            // Check if filtering by a dietary tag (e.g., VEGANO, SIN GLUTEN)
+            const dietaryOptions = ['VEGANO', 'VEGETARIANO', 'SIN GLUTEN', 'KETO', 'SIN LACTOSA', 'HALAL', 'KOSHER'];
+            if (dietaryOptions.includes(dietaryFilter)) {
+              // Product must HAVE this dietary tag
+              let tags: string[] = [];
+              try { if (p.dietaryTags) tags = JSON.parse(p.dietaryTags); } catch {}
+              if (!tags.includes(dietaryFilter)) return false;
+            } else {
+              // It's an allergen to EXCLUDE
+              let allergens: string[] = [];
+              try { if (p.allergens) allergens = JSON.parse(p.allergens); } catch {}
+              if (allergens.includes(dietaryFilter)) return false;
+            }
+          }
+          return true;
         });
 
         if (filteredProds.length === 0) return null;
@@ -491,7 +515,7 @@ export default function PublicMenuPage({
         };
       })
       .filter(Boolean) as PublicCategory[];
-  }, [categories, selectedCategory, searchQuery]);
+  }, [categories, selectedCategory, searchQuery, dietaryFilter]);
 
   if (loading) {
     return (
@@ -574,6 +598,37 @@ export default function PublicMenuPage({
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* Dietary / Allergen Quick Filters */}
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-none mt-2">
+            {[
+              { id: '', label: 'Todos', icon: '🍽️' },
+              { id: 'VEGANO', label: 'Vegano', icon: '🌱' },
+              { id: 'VEGETARIANO', label: 'Vegetariano', icon: '🥬' },
+              { id: 'SIN GLUTEN', label: 'Sin Gluten', icon: '🌾' },
+              { id: 'KETO', label: 'Keto', icon: '🥑' },
+              { id: 'SIN LACTOSA', label: 'Sin Lactosa', icon: '🥛' },
+              { id: 'GLUTEN', label: 'Excluir Gluten', icon: '⚠️' },
+              { id: 'LÁCTEOS', label: 'Excluir Lácteos', icon: '⚠️' },
+              { id: 'MARISCOS', label: 'Excluir Mariscos', icon: '⚠️' },
+              { id: 'CACAHUATE', label: 'Excluir Cacahuate', icon: '⚠️' },
+              { id: 'NUECES', label: 'Excluir Nueces', icon: '⚠️' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setDietaryFilter(f.id)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
+                  dietaryFilter === f.id
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : f.id.startsWith('') && ['GLUTEN', 'LÁCTEOS', 'MARISCOS', 'CACAHUATE', 'NUECES'].includes(f.id)
+                      ? 'bg-red-950/40 text-red-400 border border-red-800/40 hover:bg-red-900/40'
+                      : 'bg-slate-800/60 text-slate-400 hover:bg-slate-700'
+                }`}
+              >
+                {f.icon} {f.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -750,6 +805,17 @@ export default function PublicMenuPage({
                                 {product.description}
                               </p>
                             )}
+                            {(() => {
+                              let al: string[] = []; let dt: string[] = [];
+                              try { if (product.allergens) al = JSON.parse(product.allergens); } catch {}
+                              try { if (product.dietaryTags) dt = JSON.parse(product.dietaryTags); } catch {}
+                              return (al.length > 0 || dt.length > 0) ? (
+                                <div className="flex flex-wrap gap-0.5 mt-1">
+                                  {dt.map((d) => <span key={d} className="text-[8px] font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-1 py-0.5 rounded">🌿 {d}</span>)}
+                                  {al.map((a) => <span key={a} className="text-[8px] font-bold bg-red-950/60 text-red-400 border border-red-800/40 px-1 py-0.5 rounded">⚠️ {a}</span>)}
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
 
                           <div className="flex items-center justify-between mt-2">

@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     const activeBrandId = session.activeBrandId as string;
     const body = await req.json();
-    const { action, ingredientId, name, unit, minStock, stock, cost, quantity, supplier, newStock, reason, type, yieldQuantity, yieldUnit } = body;
+    const { action, ingredientId, name, unit, minStock, parLevel, reorderPoint, stock, cost, quantity, supplier, newStock, reason, type, yieldQuantity, yieldUnit, allergens } = body;
 
     if (action === 'new_ingredient') {
       if (!name || !unit) {
@@ -74,10 +74,13 @@ export async function POST(req: NextRequest) {
           unit,
           stock: stock ? parseFloat(stock) : 0,
           minStock: minStock ? parseFloat(minStock) : 0,
+          parLevel: parLevel !== undefined && parLevel !== null ? parseFloat(parLevel) : 10,
+          reorderPoint: reorderPoint !== undefined && reorderPoint !== null ? parseFloat(reorderPoint) : (minStock ? parseFloat(minStock) : 5),
           cost: cost ? parseFloat(cost) : 0,
           type: type === 'PREPARED' ? 'PREPARED' : 'RAW',
           yieldQuantity: yieldQuantity ? parseFloat(yieldQuantity) : null,
           yieldUnit: yieldUnit || null,
+          allergens: allergens ? (typeof allergens === 'string' ? allergens : JSON.stringify(allergens)) : null,
           brandId: activeBrandId,
         },
       });
@@ -191,6 +194,39 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ success: true, ingredient: updated });
+    }
+
+    if (action === 'edit_ingredient') {
+      if (!ingredientId) {
+        return NextResponse.json({ error: 'ID de insumo requerido' }, { status: 400 });
+      }
+
+      const currentIng = await prisma.ingredient.findUnique({
+        where: { id: ingredientId },
+      });
+
+      if (!currentIng || currentIng.brandId !== activeBrandId) {
+        return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
+      if (unit !== undefined) updateData.unit = unit;
+      if (minStock !== undefined) updateData.minStock = parseFloat(minStock);
+      if (parLevel !== undefined) updateData.parLevel = parLevel !== null ? parseFloat(parLevel) : null;
+      if (reorderPoint !== undefined) updateData.reorderPoint = reorderPoint !== null ? parseFloat(reorderPoint) : null;
+      if (cost !== undefined) updateData.cost = parseFloat(cost);
+      if (type !== undefined) updateData.type = type === 'PREPARED' ? 'PREPARED' : 'RAW';
+      if (yieldQuantity !== undefined) updateData.yieldQuantity = yieldQuantity ? parseFloat(yieldQuantity) : null;
+      if (yieldUnit !== undefined) updateData.yieldUnit = yieldUnit || null;
+      if (allergens !== undefined) updateData.allergens = allergens ? (typeof allergens === 'string' ? allergens : JSON.stringify(allergens)) : null;
+
+      const updatedIng = await prisma.ingredient.update({
+        where: { id: ingredientId },
+        data: updateData,
+      });
+
+      return NextResponse.json({ success: true, ingredient: updatedIng });
     }
 
     return NextResponse.json({ error: 'Acción no válida' }, { status: 400 });

@@ -12,6 +12,7 @@ interface OrderItemInput {
   notes?: string | null;
   modifiers?: unknown;
   serviceStage?: string | null;
+  allergenAlert?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
           modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
           status: 'PENDING',
           serviceStage: detectedStage || 'MAIN',
+          allergenAlert: item.allergenAlert || null,
         };
       });
 
@@ -271,6 +273,7 @@ export async function POST(req: NextRequest) {
         modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
         status: 'PENDING',
         serviceStage: detectedStage || 'MAIN',
+        allergenAlert: item.allergenAlert || null,
       };
     });
 
