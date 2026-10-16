@@ -105,3 +105,38 @@ export function playDispatchChime() {
     console.warn('Dispatch chime could not be played:', e);
   }
 }
+
+/**
+ * Plays a vibrant, distinctive double-pulse pager buzzer chime for Waiter calls from Expo Station
+ */
+export function playWaiterCallChime() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    // Pulse 1 and Pulse 2 (Pager alert)
+    [0, 0.22].forEach((offset) => {
+      const startTime = now + offset;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1046.5, startTime); // C6
+      osc.frequency.exponentialRampToValueAtTime(1318.5, startTime + 0.12); // E6
+
+      gain.gain.setValueAtTime(0.001, startTime);
+      gain.gain.linearRampToValueAtTime(0.4, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.2);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.2);
+    });
+  } catch (e) {
+    console.warn('Waiter call chime could not be played:', e);
+  }
+}
+
