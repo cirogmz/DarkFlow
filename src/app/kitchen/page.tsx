@@ -22,7 +22,7 @@ import {
   Wifi
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
-import { playKitchenChime } from '@/lib/sound';
+import { playKitchenChime, playAlertChime } from '@/lib/sound';
 import ExpoStationView from '@/components/kitchen/ExpoStationView';
 import BarStationView from '@/components/kitchen/BarStationView';
 import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
@@ -206,6 +206,19 @@ export default function KitchenPage() {
 
       eventSource.addEventListener('order_updated', () => {
         fetchActiveOrders();
+      });
+
+      eventSource.addEventListener('recook_requested', (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (soundEnabledRef.current) {
+            playAlertChime();
+          }
+          addNotification(`🔥 ¡ALERTA COCINA! Rehacer comanda #${payload.orderNumber}: ${payload.reason || 'Rechazado en Pase'}`, 'error');
+          fetchActiveOrders();
+        } catch (err) {
+          console.error('Error parsing recook_requested event', err);
+        }
       });
 
       eventSource.onerror = () => {

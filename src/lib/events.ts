@@ -6,12 +6,12 @@ declare global {
 }
 
 export interface OrderEventPayload {
-  action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'WAITER_CALLED' | 'EXPO_PACKED' | 'DRINKS_READY';
+  action: 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'WAITER_CALLED' | 'EXPO_PACKED' | 'DRINKS_READY' | 'RECOOK_REQUESTED' | 'EXPO_QC_VERIFIED';
   orderId: string;
   orderNumber: string;
-  status: string;
+  status?: string;
   brandId: string;
-  source: string;
+  source?: string;
   customerName?: string | null;
   tableId?: string | null;
   tableNumber?: string | null;
@@ -19,6 +19,12 @@ export interface OrderEventPayload {
   waiterName?: string | null;
   securitySeal?: string | null;
   station?: string | null;
+  qcPassed?: boolean;
+  haccpStatus?: string;
+  temperature?: number | null;
+  itemId?: string | null;
+  itemName?: string | null;
+  reason?: string | null;
   timestamp: string;
   order?: unknown;
 }

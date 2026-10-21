@@ -48,6 +48,10 @@ export async function GET(req: NextRequest) {
             eventName = 'expo_packed';
           } else if (data.action === 'DRINKS_READY') {
             eventName = 'drinks_ready';
+          } else if (data.action === 'RECOOK_REQUESTED') {
+            eventName = 'recook_requested';
+          } else if (data.action === 'EXPO_QC_VERIFIED') {
+            eventName = 'expo_qc_verified';
           }
           const message = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
           controller.enqueue(encoder.encode(message));

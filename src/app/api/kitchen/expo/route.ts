@@ -86,6 +86,17 @@ export async function GET(req: NextRequest) {
         expoPackedAt: order.expoPackedAt,
         expoNotes: order.expoNotes,
         deliverySecuritySeal: order.deliverySecuritySeal,
+        expoQcPassed: order.expoQcPassed,
+        expoQcCheckedAt: order.expoQcCheckedAt,
+        expoQcCheckedById: order.expoQcCheckedById,
+        expoQcCheckedByName: order.expoQcCheckedByName,
+        expoQcNotes: order.expoQcNotes,
+        expoTemperature: order.expoTemperature,
+        expoHaccpStatus: order.expoHaccpStatus || 'PENDING',
+        expoHoldTimeMinutes: order.expoHoldTimeMinutes || 0,
+        expoRecookRequested: order.expoRecookRequested,
+        expoRecookReason: order.expoRecookReason,
+        expoChecklistState: order.expoChecklistState,
         createdAt: order.createdAt,
         totalItems,
         doneItems,
@@ -103,6 +114,9 @@ export async function GET(req: NextRequest) {
           serviceStage: i.serviceStage,
           allergenAlert: i.allergenAlert,
           expoChecked: i.expoChecked,
+          targetTempMin: i.targetTempMin,
+          actualTemp: i.actualTemp,
+          tempStatus: i.tempStatus || 'PENDING',
           notes: i.notes,
           modifiers: i.modifiers,
           kitchenStation: i.product.kitchenStation,
@@ -123,6 +137,9 @@ export async function GET(req: NextRequest) {
         readyToServe: expoOrders.filter((o) => o.isComplete && o.source === 'DINE_IN').length,
         readyToPack: expoOrders.filter((o) => o.isComplete && o.source !== 'DINE_IN' && !o.deliverySecuritySeal).length,
         packedDelivery: expoOrders.filter((o) => Boolean(o.deliverySecuritySeal)).length,
+        qcPassedCount: expoOrders.filter((o) => o.expoQcPassed).length,
+        haccpPendingCount: expoOrders.filter((o) => o.isComplete && !o.expoQcPassed).length,
+        recookRequestedCount: expoOrders.filter((o) => o.expoRecookRequested).length,
       },
     });
   } catch (error) {
@@ -142,7 +159,18 @@ export async function POST(req: NextRequest) {
 
     const brandId = session.activeBrandId;
     const body = await req.json();
-    const { action, orderId, itemId, expoNotes, securitySeal } = body;
+    const { 
+      action, 
+      orderId, 
+      itemId, 
+      expoNotes, 
+      securitySeal,
+      checklist,
+      temperature,
+      dishType = 'HOT',
+      notes,
+      reason
+    } = body;
 
     if (!action) {
       return NextResponse.json({ error: 'Falta parámetro action' }, { status: 400 });
@@ -395,6 +423,247 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         action: 'UPDATE_NOTES',
+        order: updatedOrder,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // ACTION 6: QC_VERIFY (Expo 5-point checklist & HACCP Temperature check)
+    // -------------------------------------------------------------
+    if (action === 'QC_VERIFY') {
+      const parsedTemp = typeof temperature === 'number' && !isNaN(temperature) ? temperature : null;
+      let haccpStatus: 'PASS' | 'FAIL' | 'EXEMPT' = 'EXEMPT';
+
+      if (parsedTemp !== null) {
+        if (dishType === 'HOT') {
+          // Hot holding critical limit: >= 60°C
+          haccpStatus = parsedTemp >= 60 ? 'PASS' : 'FAIL';
+        } else if (dishType === 'COLD') {
+          // Cold holding critical limit: <= 5°C
+          haccpStatus = parsedTemp <= 5 ? 'PASS' : 'FAIL';
+        } else {
+          haccpStatus = 'PASS';
+        }
+      }
+
+      // Check checklist state
+      const checklistObj = checklist && typeof checklist === 'object' ? checklist : {};
+      const checklistValues = Object.values(checklistObj);
+      const isChecklistComplete = checklistValues.length > 0 && checklistValues.every((val) => Boolean(val));
+      const qcPassed = isChecklistComplete && haccpStatus !== 'FAIL';
+
+      const now = new Date();
+      // Calculate hold time in minutes since cookingFinishedAt or order createdAt
+      const baseTime = order.cookingFinishedAt || order.createdAt;
+      const holdTimeMinutes = Math.max(0, Math.round((now.getTime() - new Date(baseTime).getTime()) / 60000));
+
+      const updatedOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          expoQcPassed: qcPassed,
+          expoQcCheckedAt: now,
+          expoQcCheckedById: session.userId,
+          expoQcCheckedByName: session.name || 'Auditor Pase',
+          expoQcNotes: notes ? String(notes).trim() : null,
+          expoTemperature: parsedTemp,
+          expoHaccpStatus: haccpStatus,
+          expoHoldTimeMinutes: holdTimeMinutes,
+          expoChecklistState: JSON.stringify(checklistObj),
+        },
+        include: {
+          table: true,
+          waiter: true,
+        },
+      });
+
+      // Emit SSE event
+      orderEvents.emit('order_event', {
+        action: 'EXPO_QC_VERIFIED',
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        qcPassed,
+        haccpStatus,
+        temperature: parsedTemp,
+        brandId: order.brandId,
+        timestamp: now.toISOString(),
+      });
+
+      await recordAuditLog({
+        brandId,
+        userId: session.userId,
+        action: 'EXPO_QC_VERIFIED',
+        entityType: 'Order',
+        entityId: order.id,
+        details: {
+          orderNumber: order.orderNumber,
+          qcPassed,
+          haccpStatus,
+          temperature: parsedTemp,
+          dishType,
+          checklist: checklistObj,
+          holdTimeMinutes,
+        },
+        req,
+      });
+
+      return NextResponse.json({
+        success: true,
+        action: 'QC_VERIFY',
+        qcPassed,
+        haccpStatus,
+        message: qcPassed
+          ? `Control de Calidad y HACCP APROBADO (${parsedTemp !== null ? `${parsedTemp}°C` : 'Sin sonda'})`
+          : `Control de Calidad RECHAZADO: ${haccpStatus === 'FAIL' ? 'Temperatura crítica fuera de norma HACCP' : 'Puntos del checklist pendientes'}`,
+        order: updatedOrder,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // ACTION 7: RECOOK_ORDER (Send defective/cold dish back to kitchen)
+    // -------------------------------------------------------------
+    if (action === 'RECOOK_ORDER') {
+      const recookReason = reason && typeof reason === 'string' && reason.trim()
+        ? reason.trim()
+        : 'Rechazado en Pase por Auditoría de Calidad';
+      const now = new Date();
+
+      let targetItemName: string | null = null;
+
+      await prisma.$transaction(async (tx) => {
+        if (itemId) {
+          const itemToRecook = await tx.orderItem.findUnique({
+            where: { id: itemId },
+            include: { product: true },
+          });
+          if (itemToRecook) {
+            targetItemName = itemToRecook.product.name;
+            await tx.orderItem.update({
+              where: { id: itemId },
+              data: {
+                status: 'PENDING',
+                finishedAt: null,
+                expoChecked: false,
+                tempStatus: 'FAIL',
+              },
+            });
+          }
+        } else {
+          // Reset all items to COOKING
+          await tx.orderItem.updateMany({
+            where: { orderId: order.id },
+            data: {
+              status: 'COOKING',
+              finishedAt: null,
+              expoChecked: false,
+              tempStatus: 'FAIL',
+            },
+          });
+        }
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: 'PREPARING',
+            expoStatus: 'RECOOK_REQUESTED',
+            expoQcPassed: false,
+            expoRecookRequested: true,
+            expoRecookReason: recookReason,
+          },
+        });
+      });
+
+      // Emit high-priority urgent alert SSE for Kitchen Display
+      orderEvents.emit('order_event', {
+        action: 'RECOOK_REQUESTED',
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        itemId: itemId || null,
+        itemName: targetItemName,
+        reason: recookReason,
+        brandId: order.brandId,
+        source: order.source,
+        tableNumber: order.table?.number || null,
+        timestamp: now.toISOString(),
+      });
+
+      await recordAuditLog({
+        brandId,
+        userId: session.userId,
+        action: 'EXPO_RECOOK_REQUESTED',
+        entityType: 'Order',
+        entityId: order.id,
+        details: {
+          orderNumber: order.orderNumber,
+          itemId: itemId || null,
+          itemName: targetItemName,
+          reason: recookReason,
+          tableNumber: order.table?.number,
+        },
+        req,
+      });
+
+      return NextResponse.json({
+        success: true,
+        action: 'RECOOK_ORDER',
+        message: `Comanda #${order.orderNumber} enviada a REHACER en cocina: ${recookReason}`,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // ACTION 8: TEMP_AUDIT (HACCP digital probe recording)
+    // -------------------------------------------------------------
+    if (action === 'TEMP_AUDIT') {
+      const parsedTemp = typeof temperature === 'number' && !isNaN(temperature) ? temperature : null;
+      if (parsedTemp === null) {
+        return NextResponse.json({ error: 'Falta valor de temperatura válido' }, { status: 400 });
+      }
+
+      let haccpStatus: 'PASS' | 'FAIL' = 'PASS';
+      if (dishType === 'HOT') {
+        haccpStatus = parsedTemp >= 60 ? 'PASS' : 'FAIL';
+      } else if (dishType === 'COLD') {
+        haccpStatus = parsedTemp <= 5 ? 'PASS' : 'FAIL';
+      }
+
+      if (itemId) {
+        await prisma.orderItem.update({
+          where: { id: itemId },
+          data: {
+            actualTemp: parsedTemp,
+            tempStatus: haccpStatus,
+          },
+        });
+      }
+
+      const updatedOrder = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          expoTemperature: parsedTemp,
+          expoHaccpStatus: haccpStatus,
+        },
+      });
+
+      await recordAuditLog({
+        brandId,
+        userId: session.userId,
+        action: 'EXPO_TEMP_AUDITED',
+        entityType: 'Order',
+        entityId: order.id,
+        details: {
+          orderNumber: order.orderNumber,
+          temperature: parsedTemp,
+          dishType,
+          haccpStatus,
+          itemId: itemId || null,
+        },
+        req,
+      });
+
+      return NextResponse.json({
+        success: true,
+        action: 'TEMP_AUDIT',
+        temperature: parsedTemp,
+        haccpStatus,
         order: updatedOrder,
       });
     }

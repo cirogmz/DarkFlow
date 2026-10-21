@@ -140,3 +140,36 @@ export function playWaiterCallChime() {
   }
 }
 
+/**
+ * Plays an urgent warning buzz chime for HACCP temperature violations or Recook kitchen triggers
+ */
+export function playAlertChime() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    [0, 0.15, 0.3].forEach((offset) => {
+      const startTime = now + offset;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(440, startTime);
+      osc.frequency.setValueAtTime(370, startTime + 0.05);
+
+      gain.gain.setValueAtTime(0.001, startTime);
+      gain.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.12);
+    });
+  } catch (e) {
+    console.warn('Alert chime could not be played:', e);
+  }
+}
+

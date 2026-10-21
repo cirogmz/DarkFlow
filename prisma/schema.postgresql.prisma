@@ -285,6 +285,17 @@ model Order {
   expoPackedAt     DateTime?
   expoNotes        String?
   deliverySecuritySeal String?
+  expoQcPassed         Boolean   @default(false)
+  expoQcCheckedAt      DateTime?
+  expoQcCheckedById    String?
+  expoQcCheckedByName  String?
+  expoQcNotes          String?
+  expoTemperature      Float?
+  expoHaccpStatus      String?   @default("PENDING")
+  expoHoldTimeMinutes  Float?    @default(0)
+  expoRecookRequested  Boolean   @default(false)
+  expoRecookReason     String?
+  expoChecklistState   String?
   barStatus        String?   @default("PENDING")
   barNotifiedAt    DateTime?
   barCompletedAt   DateTime?
@@ -315,6 +326,9 @@ model OrderItem {
   serviceStage String?   @default("MAIN")
   allergenAlert String?
   expoChecked  Boolean   @default(false)
+  targetTempMin Float?
+  actualTemp    Float?
+  tempStatus    String?   @default("PENDING")
   barChecked   Boolean   @default(false)
   isComped     Boolean   @default(false)
   compType     String?
