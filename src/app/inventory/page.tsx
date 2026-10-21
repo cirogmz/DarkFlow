@@ -19,7 +19,8 @@ import {
   Edit3,
   Scale,
   FileText,
-  Boxes
+  Boxes,
+  ThermometerSnowflake
 } from 'lucide-react';
 import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
 import RequisitionsTab from '@/components/inventory/RequisitionsTab';
@@ -27,6 +28,7 @@ import PurchaseOrdersTab from '@/components/inventory/PurchaseOrdersTab';
 import { BatchTrackingTab } from '@/components/inventory/BatchTrackingTab';
 import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
 import WasteManagementHubTab from '@/components/inventory/WasteManagementHubTab';
+import ColdChainMonitorTab from '@/components/inventory/ColdChainMonitorTab';
 
 interface Ingredient {
   id: string;
@@ -176,7 +178,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -792,6 +794,14 @@ export default function InventoryPage() {
             }`}
           >
             <ChefHat className="h-4 w-4 text-amber-400" /> Prep List & Forecast
+          </button>
+          <button
+            onClick={() => setActiveTab('coldchain')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'coldchain' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <ThermometerSnowflake className="h-4 w-4 text-cyan-400" /> Cadena de Frío IoT
           </button>
         </div>
 
@@ -1491,6 +1501,14 @@ export default function InventoryPage() {
         {/* TAB 9: PREP LIST PREDICTIVA & DEMAND FORECAST */}
         {activeTab === 'prep' && (
           <DailyPrepStationView />
+        )}
+
+        {/* TAB 10: COLD CHAIN WATCHDOG & IOT SENSORS */}
+        {activeTab === 'coldchain' && (
+          <ColdChainMonitorTab
+            warehouses={warehouses}
+            onRefreshAll={fetchInventoryData}
+          />
         )}
 
         {/* MODAL: ADD INGREDIENT */}

@@ -98,6 +98,8 @@ model Brand {
   purchaseOrders PurchaseOrder[]
   batches        IngredientBatch[]
   prepLists      DailyPrepList[]
+  temperatureSensors TemperatureSensor[]
+  temperatureAlerts  TemperatureAlert[]
   targetFoodCostPct  Float?        @default(30)
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
@@ -623,6 +625,7 @@ model Warehouse {
   requisitionsFrom InternalRequisition[] @relation("RequisitionSourceWarehouse")
   requisitionsTo   InternalRequisition[] @relation("RequisitionDestWarehouse")
   batches       IngredientBatch[]
+  sensors       TemperatureSensor[]
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
@@ -1294,3 +1297,68 @@ model DailyPrepItem {
 
   @@index([prepListId, station])
 }
+
+model TemperatureSensor {
+  id                String             @id @default(uuid())
+  name              String
+  deviceCode        String
+  sensorType        String             @default("REFRIGERATION") // REFRIGERATION, FREEZER, HOT_HOLDING, DRY_STORAGE, LINE_PREP
+  targetTempMin     Float              @default(0)
+  targetTempMax     Float              @default(4)
+  targetHumidityMin Float?
+  targetHumidityMax Float?
+  currentTemp       Float?
+  currentHumidity   Float?
+  batteryLevel      Int?               @default(100)
+  status            String             @default("NORMAL") // NORMAL, WARNING, CRITICAL, OFFLINE
+  lastReadingAt     DateTime?
+  brandId           String
+  brand             Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  warehouseId       String?
+  warehouse         Warehouse?         @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  readings          SensorReading[]
+  alerts            TemperatureAlert[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([deviceCode, brandId])
+  @@index([brandId])
+  @@index([warehouseId])
+}
+
+model SensorReading {
+  id          String            @id @default(uuid())
+  sensorId    String
+  sensor      TemperatureSensor @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  temperature Float
+  humidity    Float?
+  status      String            @default("NORMAL")
+  battery     Int?
+  recordedAt  DateTime          @default(now())
+
+  @@index([sensorId, recordedAt])
+}
+
+model TemperatureAlert {
+  id                   String            @id @default(uuid())
+  sensorId             String
+  sensor               TemperatureSensor @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  brandId              String
+  brand                Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  severity             String            @default("WARNING") // WARNING, CRITICAL
+  temperature          Float
+  ruleViolated         String
+  durationMinutes      Int               @default(0)
+  inventoryValueAtRisk Float             @default(0)
+  status               String            @default("ACTIVE") // ACTIVE, ACKNOWLEDGED, RESOLVED
+  acknowledgedAt       DateTime?
+  acknowledgedById     String?
+  acknowledgedByName   String?
+  resolutionNotes      String?
+  resolvedAt           DateTime?
+  createdAt            DateTime          @default(now())
+
+  @@index([brandId, createdAt])
+  @@index([status])
+}
+
