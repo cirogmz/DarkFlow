@@ -3,11 +3,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardContainer from '@/components/DashboardContainer';
 import FiscalConsole from '@/components/FiscalConsole';
+import DeliveryReconciliationTab from '@/components/delivery/DeliveryReconciliationTab';
 import { useAppStore } from '@/lib/store';
 import { 
   Radio, 
   Send, 
   Copy, 
+  Scale, 
   Check, 
   DollarSign, 
   CheckCircle2, 
@@ -809,8 +811,8 @@ export default function IntegrationsPage() {
                 : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-            Auditoría de Comisiones & Órdenes ({orders.length})
+            <Scale className="w-4 h-4 text-emerald-400" />
+            Conciliación Delivery & Liquidaciones
           </button>
           <button
             onClick={() => setActiveTab('CREDENTIALS')}
@@ -1103,81 +1105,9 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        {/* TAB 2: AUDIT & ORDERS */}
+        {/* TAB: CONCILIACIÓN DELIVERY & LIQUIDACIONES (UBER EATS, RAPPI, DIDI FOOD) */}
         {activeTab === 'AUDIT' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-white text-base">Historial de Comandas Externas</h3>
-              <span className="text-xs text-slate-400">{orders.length} pedidos registrados</span>
-            </div>
-
-            {orders.length === 0 ? (
-              <div className="p-12 text-center text-slate-500">
-                No hay pedidos de plataformas externas aún. Usa el simulador para generar el primero.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-3">Plataforma</th>
-                      <th className="py-3 px-3">ID Externo / Ticket</th>
-                      <th className="py-3 px-3">Cliente</th>
-                      <th className="py-3 px-3">Platillos</th>
-                      <th className="py-3 px-3 text-right">Venta Bruta</th>
-                      <th className="py-3 px-3 text-right">Comisión Retenida</th>
-                      <th className="py-3 px-3 text-right">Pago Neto</th>
-                      <th className="py-3 px-3 text-center">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {orders.map((order) => {
-                      const meta = getPlatformMeta(order.source);
-                      const commission = order.platformCommission ?? ((order.total * (order.platformCommissionRate || 25)) / 100);
-                      const net = order.netPayout ?? (order.total - commission);
-
-                      return (
-                        <tr key={order.id} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="py-3 px-3">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.bgColor} ${meta.textColor}`}>
-                              {meta.name}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="font-mono font-bold text-white block">{order.externalOrderId || '-'}</span>
-                            <span className="text-[10px] text-slate-500 font-mono">{order.orderNumber}</span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <p className="font-bold text-slate-200">{order.customerName}</p>
-                            <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{order.customerAddress}</p>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="text-slate-300">
-                              {order.items.reduce((sum, it) => sum + it.quantity, 0)} productos
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-200">
-                            ${order.total.toFixed(2)}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono text-red-400">
-                            -${commission.toFixed(2)}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">
-                            ${net.toFixed(2)}
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
-                              {order.status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <DeliveryReconciliationTab />
         )}
 
         {/* TAB 2: PASARELAS DE PAGO (STRIPE & MERCADO PAGO) */}

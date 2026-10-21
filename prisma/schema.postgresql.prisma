@@ -100,6 +100,8 @@ model Brand {
   prepLists      DailyPrepList[]
   temperatureSensors TemperatureSensor[]
   temperatureAlerts  TemperatureAlert[]
+  deliverySettlements DeliveryPayoutSettlement[]
+  deliveryDisputes    DeliveryDispute[]
   targetFoodCostPct  Float?        @default(30)
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
@@ -309,6 +311,13 @@ model Order {
   compApprovedAt   DateTime?
   compFoodCost     Float?    @default(0)
   compBeneficiaryName String?
+  payoutSettlementId   String?
+  payoutSettlement     DeliveryPayoutSettlement? @relation(fields: [payoutSettlementId], references: [id], onDelete: SetNull)
+  reconciliationStatus String   @default("UNRECONCILED") // UNRECONCILED, RECONCILED, DISPUTED, EXCLUDED
+  taxWithheldIsr       Float?   @default(0)
+  taxWithheldIva       Float?   @default(0)
+  payoutAdjustments    Float?   @default(0)
+  disputes             DeliveryDispute[]
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -1360,5 +1369,66 @@ model TemperatureAlert {
 
   @@index([brandId, createdAt])
   @@index([status])
+}
+
+model DeliveryPayoutSettlement {
+  id                    String            @id @default(uuid())
+  brandId               String
+  brand                 Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  platform              String            // UBER_EATS, RAPPI, DIDI_FOOD
+  folio                 String            // e.g. SETTLE-UBER-2026W42-01
+  periodStart           DateTime
+  periodEnd             DateTime
+  bankDepositDate       DateTime?
+  bankReference         String?           // e.g. SPEI 9948210 BANORTE
+  status                String            @default("DRAFT") // DRAFT, RECONCILED, DISCREPANCY, DISPUTED
+  ordersCount           Int               @default(0)
+  grossSales            Float             @default(0)
+  platformCommission    Float             @default(0)
+  commissionTax         Float             @default(0) // IVA de comisión (16%)
+  withholdingIsr        Float             @default(0) // Retención ISR (1% - 2.5%)
+  withholdingIva        Float             @default(0) // Retención IVA (8%)
+  promotionsFunded      Float             @default(0) // Promos/descuentos absorbidos por tienda
+  adjustmentsRefunds    Float             @default(0) // Descuentos por cancelaciones / reembolsos cliente
+  netPayoutCalculated   Float             @default(0) // Venta Bruta - Com - Tax - Retenciones - Promos - Ajustes
+  bankDepositAmount     Float             @default(0) // Importe real recibido en banco
+  variance              Float             @default(0) // bankDepositAmount - netPayoutCalculated
+  notes                 String?
+  reconciledById        String?
+  reconciledByName      String?
+  reconciledAt          DateTime?
+  orders                Order[]
+  disputes              DeliveryDispute[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([brandId, platform, status])
+  @@index([brandId, periodStart, periodEnd])
+}
+
+model DeliveryDispute {
+  id                    String                    @id @default(uuid())
+  brandId               String
+  brand                 Brand                     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  settlementId          String?
+  settlement            DeliveryPayoutSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  orderId               String?
+  order                 Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  platform              String                    // UBER_EATS, RAPPI, DIDI_FOOD
+  externalOrderId       String?
+  disputeType           String                    // UNPAID_ORDER, WRONGFUL_REFUND, COMMISSION_OVERCHARGE, CANCELLED_WITHOUT_PAYOUT
+  claimedAmount         Float
+  recoveredAmount       Float                     @default(0)
+  status                String                    @default("OPEN") // OPEN, SUBMITTED_TO_APP, RESOLVED_WON, RESOLVED_LOST
+  ticketFolio           String?                   // Folio ticket de soporte con la plataforma
+  reason                String
+  resolutionNotes       String?
+  resolvedAt            DateTime?
+  createdById           String?
+  createdByName         String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  @@index([brandId, platform, status])
 }
 
