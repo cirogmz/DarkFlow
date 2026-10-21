@@ -22,6 +22,7 @@ model User {
   warehouseTransfers WarehouseTransfer[]
   wasteLogs     WasteLog[]
   pinCode       String?
+  hourlyWage    Float?          @default(65)
   attendanceRecords AttendanceRecord[]
   inventoryAudits InventoryAudit[]
   requestedRequisitions InternalRequisition[] @relation("RequisitionRequester")
@@ -97,6 +98,10 @@ model Brand {
   purchaseOrders PurchaseOrder[]
   batches        IngredientBatch[]
   prepLists      DailyPrepList[]
+  targetFoodCostPct  Float?        @default(30)
+  targetLaborCostPct Float?        @default(20)
+  targetPrimeCostPct Float?        @default(55)
+  targetDailySales   Float?        @default(15000)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -358,6 +363,11 @@ model CashSession {
   consecutiveZ    Int?
   blindCount      String?
   notes           String?
+  totalNetSales   Float?            @default(0)
+  totalFoodCost   Float?            @default(0)
+  totalLaborCost  Float?            @default(0)
+  primeCostPct    Float?            @default(0)
+  netContributionMargin Float?     @default(0)
   movements       CashMovement[]
   cuts            CashCut[]
   driverSettlements DriverSettlement[]

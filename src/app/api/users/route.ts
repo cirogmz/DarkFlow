@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
           },
           deliveryProfile: true,
           pinCode: true,
+          hourlyWage: true,
         },
         orderBy: [
           { role: 'asc' },
@@ -73,6 +74,7 @@ export async function GET(req: NextRequest) {
           },
           deliveryProfile: true,
           pinCode: true,
+          hourlyWage: true,
         },
         orderBy: [
           { role: 'asc' },
@@ -104,7 +106,8 @@ export async function POST(req: NextRequest) {
       role = 'CASHIER', 
       brandIds = [], 
       vehicleType, 
-      plateNumber 
+      plateNumber,
+      hourlyWage = 65,
     } = await req.json();
 
     if (!name || !email || !password) {
@@ -143,6 +146,7 @@ export async function POST(req: NextRequest) {
           email: normalizedEmail,
           passwordHash,
           role,
+          hourlyWage: parseFloat(hourlyWage) || 65,
         },
       });
 
@@ -211,7 +215,8 @@ export async function PATCH(req: NextRequest) {
       role, 
       brandIds, 
       vehicleType, 
-      plateNumber 
+      plateNumber,
+      hourlyWage,
     } = await req.json();
 
     if (!id) {
@@ -233,7 +238,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const roleChanged = Boolean(role && role !== targetUser.role);
-    const updateData: { name?: string; email?: string; passwordHash?: string; role?: string } = {};
+    const updateData: { name?: string; email?: string; passwordHash?: string; role?: string; hourlyWage?: number } = {};
 
     await prisma.$transaction(async (tx) => {
       // 1. Update basic user data
@@ -244,6 +249,9 @@ export async function PATCH(req: NextRequest) {
       }
       if (role && (session.role === 'SUPER_ADMIN' || role !== 'SUPER_ADMIN')) {
         updateData.role = role;
+      }
+      if (hourlyWage !== undefined) {
+        updateData.hourlyWage = parseFloat(hourlyWage) || 0;
       }
 
       await tx.user.update({

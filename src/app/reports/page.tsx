@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
 import CompAuditTab from '@/components/reports/CompAuditTab';
+import RealtimePnLTab from '@/components/reports/RealtimePnLTab';
 
 interface BrandRef {
   id: string;
@@ -148,7 +149,7 @@ interface SurveysReportData {
 }
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<'sales' | 'cash' | 'inventory' | 'satisfaction' | 'comps'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'cash' | 'inventory' | 'satisfaction' | 'comps' | 'pnl'>('sales');
   const [brands, setBrands] = useState<BrandRef[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>('ALL');
 
@@ -248,7 +249,7 @@ export default function ReportsPage() {
     setLoading(true);
 
     try {
-      if (activeTab === 'comps') {
+      if (activeTab === 'comps' || activeTab === 'pnl') {
         setLoading(false);
         return;
       }
@@ -502,6 +503,7 @@ export default function ReportsPage() {
           {/* Report Tab Selector */}
           <div className="flex border-t border-slate-800 pt-3 gap-2 overflow-x-auto pb-1">
             {[
+              { id: 'pnl', label: '📈 P&L y Rentabilidad en Vivo', icon: TrendingUp },
               { id: 'sales', label: '📊 Ventas & Comandas', icon: TrendingUp },
               { id: 'cash', label: '💰 Cortes de Caja & Arqueos', icon: Coins },
               { id: 'inventory', label: '📦 Valuación de Inventarios', icon: Package },
@@ -512,7 +514,7 @@ export default function ReportsPage() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as 'sales' | 'cash' | 'inventory' | 'satisfaction' | 'comps')}
+                  onClick={() => setActiveTab(tab.id as 'sales' | 'cash' | 'inventory' | 'satisfaction' | 'comps' | 'pnl')}
                   className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                     activeTab === tab.id
                       ? 'bg-slate-800 border-brand-primary text-white shadow'
@@ -1160,6 +1162,11 @@ export default function ReportsPage() {
             {/* 5. COURTESY & STAFF MEALS AUDIT TAB */}
             {activeTab === 'comps' && (
               <CompAuditTab />
+            )}
+
+            {/* 6. REALTIME P&L & PROFITABILITY TAB */}
+            {activeTab === 'pnl' && (
+              <RealtimePnLTab />
             )}
           </div>
         )}
