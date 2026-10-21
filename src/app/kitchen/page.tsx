@@ -25,6 +25,7 @@ import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicket
 import { playKitchenChime } from '@/lib/sound';
 import ExpoStationView from '@/components/kitchen/ExpoStationView';
 import BarStationView from '@/components/kitchen/BarStationView';
+import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
 
 interface OrderItem {
   id: string;
@@ -91,6 +92,7 @@ const STATIONS = [
   { id: 'ALL', label: 'Todas las Estaciones', icon: '🍽️' },
   { id: 'EXPO', label: 'Estación Expo (Pase)', icon: '🛎️' },
   { id: 'BARRA', label: 'KDS Barra & Bebidas', icon: '🍹' },
+  { id: 'PREP', label: 'Prep List & Forecast', icon: '📋' },
   { id: 'COCINA', label: 'Cocina Caliente', icon: '🍳' },
   { id: 'PARRILLA', label: 'Parrilla / Plancha', icon: '🥩' },
   { id: 'POSTRES', label: 'Postres / Panadería', icon: '🍰' },
@@ -574,6 +576,10 @@ export default function KitchenPage() {
               currentTimestamp={currentTimestamp}
               soundEnabled={soundEnabled}
             />
+          </div>
+        ) : selectedStation === 'PREP' ? (
+          <div className="flex-1 overflow-y-auto">
+            <DailyPrepStationView />
           </div>
         ) : (
           /* 3-Column board layout */

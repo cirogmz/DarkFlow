@@ -35,6 +35,7 @@ model User {
   assignedTables        Table[]            @relation("AssignedWaiterTables")
   createdPurchaseOrders PurchaseOrder[]    @relation("PurchaseOrderCreator")
   receivedPurchaseOrders PurchaseOrder[]   @relation("PurchaseOrderReceiver")
+  createdPrepLists      DailyPrepList[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -95,6 +96,7 @@ model Brand {
   suppliers      Supplier[]
   purchaseOrders PurchaseOrder[]
   batches        IngredientBatch[]
+  prepLists      DailyPrepList[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -160,6 +162,7 @@ model Product {
   orderItems  OrderItem[]
   comboItems  ComboItem[]
   modifierGroups ProductModifierGroup[]
+  prepItems   DailyPrepItem[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -193,6 +196,7 @@ model Ingredient {
   suppliers        IngredientSupplier[]
   purchaseOrderItems PurchaseOrderItem[]
   batches          IngredientBatch[]
+  prepItems        DailyPrepItem[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -1198,5 +1202,48 @@ model IngredientBatch {
   @@index([status])
 }
 
+model DailyPrepList {
+  id            String          @id @default(uuid())
+  brandId       String
+  brand         Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  date          DateTime
+  shift         String          @default("ALL_DAY") // "ALL_DAY", "LUNCH", "DINNER"
+  status        String          @default("DRAFT")    // "DRAFT", "IN_PROGRESS", "COMPLETED"
+  bufferPct     Float           @default(15)
+  lookbackWeeks Int             @default(4)
+  notes         String?
+  createdById   String?
+  createdBy     User?           @relation(fields: [createdById], references: [id])
+  items         DailyPrepItem[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
+  @@index([brandId, date])
+}
 
+model DailyPrepItem {
+  id                String         @id @default(uuid())
+  prepListId        String
+  prepList          DailyPrepList  @relation(fields: [prepListId], references: [id], onDelete: Cascade)
+  ingredientId      String?
+  ingredient        Ingredient?    @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+  productId         String?
+  product           Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  itemName          String
+  itemType          String         @default("SUB_RECIPE") // "SUB_RECIPE", "INGREDIENT", "PRODUCT"
+  station           String         @default("COCINA")     // "COCINA", "PARRILLA", "ENSALADAS", "BARRA", "POSTRES", "EXPO"
+  unit              String         @default("UNIDAD")
+  currentStock      Float          @default(0)
+  projectedDemand   Float          @default(0)
+  suggestedPrepQty  Float          @default(0)
+  actualPrepQty     Float          @default(0)
+  status            String         @default("PENDING")    // "PENDING", "IN_PREP", "COMPLETED"
+  productionBatchId String?
+  completedAt       DateTime?
+  completedById     String?
+  notes             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([prepListId, station])
+}
