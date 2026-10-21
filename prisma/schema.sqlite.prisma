@@ -689,25 +689,39 @@ model WarehouseTransfer {
 }
 
 model WasteLog {
-  id           String     @id @default(uuid())
-  ingredientId String
-  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
-  quantity     Float
-  costPerUnit  Float
-  totalCost    Float
-  reason       String
-  notes        String?
-  warehouseId  String?
-  warehouse    Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
-  brandId      String
-  brand        Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  userId       String?
-  user         User?      @relation(fields: [userId], references: [id])
-  batchId      String?
-  batch        IngredientBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
-  createdAt    DateTime   @default(now())
+  id                  String           @id @default(uuid())
+  ingredientId        String
+  ingredient          Ingredient       @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity            Float
+  costPerUnit         Float
+  totalCost           Float
+  reason              String
+  notes               String?
+  shift               String?          @default("MORNING")
+  station             String?          @default("KITCHEN_HOT")
+  rcaCategory         String?
+  rcaWhys             String?
+  correctiveAction    String?
+  capaStatus          String?          @default("NONE")
+  capaAssignee        String?
+  capaDueDate         DateTime?
+  capaResolvedAt      DateTime?
+  capaResolvedById    String?
+  capaResolvedByName  String?
+  capaResolutionNotes String?
+  warehouseId         String?
+  warehouse           Warehouse?       @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  brandId             String
+  brand               Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId              String?
+  user                User?            @relation(fields: [userId], references: [id])
+  batchId             String?
+  batch               IngredientBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  createdAt           DateTime         @default(now())
 
   @@index([batchId])
+  @@index([brandId, createdAt])
+  @@index([capaStatus])
 }
 
 model Invoice {

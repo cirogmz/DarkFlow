@@ -26,6 +26,7 @@ import RequisitionsTab from '@/components/inventory/RequisitionsTab';
 import PurchaseOrdersTab from '@/components/inventory/PurchaseOrdersTab';
 import { BatchTrackingTab } from '@/components/inventory/BatchTrackingTab';
 import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
+import WasteManagementHubTab from '@/components/inventory/WasteManagementHubTab';
 
 interface Ingredient {
   id: string;
@@ -742,7 +743,7 @@ export default function InventoryPage() {
               activeTab === 'waste' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            <Trash2 className="h-4 w-4" /> Control de Mermas
+            <Trash2 className="h-4 w-4" /> Control de Mermas & RCA
           </button>
           <button
             onClick={() => setActiveTab('warehouses')}
@@ -1126,107 +1127,13 @@ export default function InventoryPage() {
           </div>
         )}
 
-        {/* TAB 3: WASTE CONTROL */}
+        {/* TAB 3: WASTE CONTROL & RCA */}
         {activeTab === 'waste' && (
-          <div className="space-y-6">
-            <div className="glass-panel border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-              <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/40">
-                <div>
-                  <h4 className="font-bold text-white text-base">Bitácora de Mermas & Pérdidas Operativas</h4>
-                  <p className="text-xs text-slate-500 mt-1">Registro clasificado de pérdidas por caducidad, error de cocina, porcionado y accidentes.</p>
-                </div>
-                <button
-                  onClick={() => {
-                    if (ingredients.length === 0) {
-                      alert('No hay insumos registrados');
-                      return;
-                    }
-                    setWasteIngId(ingredients[0].id);
-                    setWasteQuantity(1);
-                    setShowWasteModal(true);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-lg shadow-lg cursor-pointer"
-                >
-                  <Plus className="h-4 w-4 stroke-[3px]" /> Registrar Merma
-                </button>
-              </div>
-
-              {/* Reasons Breakdown Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-5 border-b border-slate-800 bg-slate-950/40">
-                <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-                  <p className="text-[11px] font-bold text-amber-400">Caducidad</p>
-                  <p className="text-lg font-black text-white mt-1">
-                    ${(wasteSummary.reasonBreakdown['EXPIRATION']?.cost || 0).toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-slate-500">{wasteSummary.reasonBreakdown['EXPIRATION']?.count || 0} registros</p>
-                </div>
-                <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-                  <p className="text-[11px] font-bold text-red-400">Error Cocina</p>
-                  <p className="text-lg font-black text-white mt-1">
-                    ${(wasteSummary.reasonBreakdown['KITCHEN_ERROR']?.cost || 0).toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-slate-500">{wasteSummary.reasonBreakdown['KITCHEN_ERROR']?.count || 0} registros</p>
-                </div>
-                <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-                  <p className="text-[11px] font-bold text-blue-400">Porcionado</p>
-                  <p className="text-lg font-black text-white mt-1">
-                    ${(wasteSummary.reasonBreakdown['PREPARATION_WASTE']?.cost || 0).toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-slate-500">{wasteSummary.reasonBreakdown['PREPARATION_WASTE']?.count || 0} registros</p>
-                </div>
-                <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-                  <p className="text-[11px] font-bold text-purple-400">Accidentes / Derrames</p>
-                  <p className="text-lg font-black text-white mt-1">
-                    ${(wasteSummary.reasonBreakdown['DAMAGE_SPILL']?.cost || 0).toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-slate-500">{wasteSummary.reasonBreakdown['DAMAGE_SPILL']?.count || 0} registros</p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase tracking-wider">
-                      <th className="p-4">Fecha</th>
-                      <th className="p-4">Insumo Desperdiciado</th>
-                      <th className="p-4">Cantidad</th>
-                      <th className="p-4">Costo de Pérdida</th>
-                      <th className="p-4">Motivo</th>
-                      <th className="p-4">Almacén</th>
-                      <th className="p-4">Responsable</th>
-                      <th className="p-4">Observaciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {wasteLogs.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="p-6 text-center text-slate-500">No se han registrado mermas en este periodo.</td>
-                      </tr>
-                    ) : (
-                      wasteLogs.map(w => (
-                        <tr key={w.id} className="hover:bg-slate-900/30 transition-colors">
-                          <td className="p-4 text-slate-400 font-mono">
-                            {new Date(w.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
-                          </td>
-                          <td className="p-4 font-bold text-white">{w.ingredient.name}</td>
-                          <td className="p-4 font-black text-red-400">-{w.quantity} {w.ingredient.unit}</td>
-                          <td className="p-4 font-bold text-slate-200">${w.totalCost.toFixed(2)}</td>
-                          <td className="p-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${getReasonBadgeClass(w.reason)}`}>
-                              {getReasonLabel(w.reason)}
-                            </span>
-                          </td>
-                          <td className="p-4 text-slate-400">{w.warehouse?.name || 'General'}</td>
-                          <td className="p-4 text-slate-300">{w.user?.name || 'Cajero/Cocinero'}</td>
-                          <td className="p-4 text-slate-400 italic">{w.notes || '—'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <WasteManagementHubTab
+            ingredients={ingredients}
+            warehouses={warehouses}
+            onRefreshAll={fetchInventoryData}
+          />
         )}
 
         {/* TAB 4: WAREHOUSES & TRANSFERS */}
