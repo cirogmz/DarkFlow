@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getSessionFromCookies } from '@/lib/auth';
+import { recordAuditLog } from '@/lib/audit';
 
 export async function POST(
   req: NextRequest,
@@ -14,6 +15,14 @@ export async function POST(
     }
 
     const { id } = await params;
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      // Body is optional
+    }
+
+    const { notes: approvalNotes } = body;
 
     const audit = await prisma.inventoryAudit.findFirst({
       where: {
@@ -26,6 +35,7 @@ export async function POST(
             ingredient: true,
           },
         },
+        warehouse: true,
       },
     });
 
@@ -43,12 +53,19 @@ export async function POST(
       );
     }
 
+    // Generate unique Adjustment Folio
+    const currentYear = new Date().getFullYear();
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const adjustmentFolio = `AJU-${currentYear}-${randomSuffix}`;
+    const now = new Date();
+
     // Aplicar ajustes en una transacción atómica
     const result = await prisma.$transaction(async (tx: any) => {
       let totalNegativeDiscrepancyCost = 0;
+      let totalPositiveDiscrepancyCost = 0;
 
       for (const item of audit.items) {
-        // 1. Ajustar el stock del insumo al conteo físico real
+        // 1. Ajustar el stock general del insumo al conteo físico real
         await tx.ingredient.update({
           where: { id: item.ingredientId },
           data: {
@@ -56,11 +73,40 @@ export async function POST(
           },
         });
 
-        // 2. Si hubo faltante (merma oculta / robo hormiga), registrar en la bitácora de mermas
+        // 2. Si la auditoría fue en una bodega específica, ajustar WarehouseStock
+        if (audit.warehouseId) {
+          const existingWarehouseStock = await tx.warehouseStock.findFirst({
+            where: {
+              warehouseId: audit.warehouseId,
+              ingredientId: item.ingredientId,
+            },
+          });
+
+          if (existingWarehouseStock) {
+            await tx.warehouseStock.update({
+              where: { id: existingWarehouseStock.id },
+              data: { stock: item.countedStock },
+            });
+          } else {
+            await tx.warehouseStock.create({
+              data: {
+                warehouseId: audit.warehouseId,
+                ingredientId: item.ingredientId,
+                stock: item.countedStock,
+              },
+            });
+          }
+        }
+
+        // 3. Si hubo faltante (merma oculta / robo hormiga), registrar en la bitácora de mermas
         if (item.discrepancy < 0) {
           const absDiscrepancyQty = Math.abs(item.discrepancy);
           const absDiscrepancyCost = Math.abs(item.discrepancyCost);
           totalNegativeDiscrepancyCost += absDiscrepancyCost;
+
+          const reasonLabel = item.varianceType === 'THEFT_SUSPECT'
+            ? `FALTANTE CRÍTICO / POSIBLE FUGA EN ARQUEO ${audit.auditNumber}`
+            : `FALTANTE EN ARQUEO FÍSICO ${audit.auditNumber}`;
 
           await tx.wasteLog.create({
             data: {
@@ -69,21 +115,28 @@ export async function POST(
               quantity: absDiscrepancyQty,
               costPerUnit: item.unitCost,
               totalCost: absDiscrepancyCost,
-              reason: `FALTANTE EN AUDITORÍA FÍSICA ${audit.auditNumber}`,
-              notes: item.notes || `Ajuste automático por diferencia de ${item.discrepancy} ${item.ingredient.unit}`,
+              reason: reasonLabel,
+              notes: item.notes || `Ajuste contable folio ${adjustmentFolio}. Diferencia: ${item.discrepancy} ${item.ingredient.unit}`,
               warehouseId: audit.warehouseId,
               userId: session.userId,
             },
           });
+        } else if (item.discrepancy > 0) {
+          totalPositiveDiscrepancyCost += item.discrepancyCost;
         }
       }
 
-      // 3. Marcar auditoría como aplicada
+      // 4. Marcar auditoría como aplicada y aprobada
       const updatedAudit = await tx.inventoryAudit.update({
         where: { id: audit.id },
         data: {
           status: 'APPLIED',
-          appliedAt: new Date(),
+          appliedAt: now,
+          adjustmentFolio,
+          approvedById: session.userId,
+          approvedByName: session.name || 'Supervisor de Almacén',
+          approvedAt: now,
+          notes: approvalNotes ? `${audit.notes ? `${audit.notes} | ` : ''}Aprobación: ${approvalNotes}` : audit.notes,
         },
         include: {
           items: {
@@ -91,28 +144,44 @@ export async function POST(
               ingredient: true,
             },
           },
+          warehouse: true,
+          conductedBy: true,
         },
       });
 
-      // 4. Registrar en Auditoría del Sistema
-      await tx.auditLog.create({
-        data: {
-          brandId: session.activeBrandId,
-          userId: session.userId,
-          action: 'INVENTORY_AUDIT_APPLIED',
-          entityType: 'INVENTORY_AUDIT',
-          entityId: audit.id,
-          severity: totalNegativeDiscrepancyCost > 500 ? 'CRITICAL' : 'WARNING',
-          details: `Auditoría física ${audit.auditNumber} aplicada a existencias por ${session.name}. Descuadre neto: $${audit.totalDiscrepancyValue.toFixed(2)}. Faltantes mermados: $${totalNegativeDiscrepancyCost.toFixed(2)}.`,
-        },
-      });
+      return {
+        updatedAudit,
+        totalNegativeDiscrepancyCost,
+        totalPositiveDiscrepancyCost,
+        adjustmentFolio,
+      };
+    });
 
-      return updatedAudit;
+    // 5. Registrar en Auditoría General Inmutable
+    await recordAuditLog({
+      brandId: session.activeBrandId,
+      userId: session.userId,
+      action: 'INVENTORY_AUDIT_APPLIED',
+      entityType: 'INVENTORY_AUDIT',
+      entityId: audit.id,
+      severity: result.totalNegativeDiscrepancyCost > 500 ? 'CRITICAL' : 'WARNING',
+      details: {
+        auditNumber: audit.auditNumber,
+        adjustmentFolio: result.adjustmentFolio,
+        totalDiscrepancyValue: audit.totalDiscrepancyValue,
+        totalNegativeDiscrepancyCost: result.totalNegativeDiscrepancyCost,
+        totalPositiveDiscrepancyCost: result.totalPositiveDiscrepancyCost,
+        warehouseName: audit.warehouse?.name || 'Almacén General',
+        approvedBy: session.name,
+      },
+      req,
     });
 
     return NextResponse.json({
-      message: 'Auditoría aplicada exitosamente a las existencias de inventario',
-      audit: result,
+      success: true,
+      message: `Auditoría aplicada exitosamente con folio contable ${result.adjustmentFolio}`,
+      adjustmentFolio: result.adjustmentFolio,
+      audit: result.updatedAudit,
     });
   } catch (error: any) {
     console.error('Error applying inventory audit:', error);

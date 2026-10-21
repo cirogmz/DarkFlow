@@ -12,18 +12,62 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const warehouseId = searchParams.get('warehouseId');
+    const status = searchParams.get('status');
+
+    const whereClause: any = {
+      brandId: session.activeBrandId,
+    };
+
+    if (warehouseId) {
+      whereClause.warehouseId = warehouseId;
+    }
+    if (status && status !== 'ALL') {
+      whereClause.status = status;
+    }
+
     const audits = await prisma.inventoryAudit.findMany({
-      where: { brandId: session.activeBrandId },
+      where: whereClause,
       include: {
         warehouse: { select: { id: true, name: true, code: true } },
         conductedBy: { select: { id: true, name: true, role: true } },
         _count: { select: { items: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 100,
     });
 
-    return NextResponse.json(audits);
+    // Calculate aggregated metrics
+    const totalAudits = audits.length;
+    const appliedAudits = audits.filter((a) => a.status === 'APPLIED').length;
+    const pendingAudits = audits.filter((a) => a.status !== 'APPLIED').length;
+    
+    let totalDiscrepancy = 0;
+    let totalLoss = 0;
+    let totalSurplus = 0;
+
+    for (const a of audits) {
+      totalDiscrepancy += a.totalDiscrepancyValue || 0;
+      if (a.totalDiscrepancyValue < 0) {
+        totalLoss += Math.abs(a.totalDiscrepancyValue);
+      } else if (a.totalDiscrepancyValue > 0) {
+        totalSurplus += a.totalDiscrepancyValue;
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      audits,
+      metrics: {
+        totalAudits,
+        appliedAudits,
+        pendingAudits,
+        totalDiscrepancy: Number(totalDiscrepancy.toFixed(2)),
+        totalLoss: Number(totalLoss.toFixed(2)),
+        totalSurplus: Number(totalSurplus.toFixed(2)),
+      },
+    });
   } catch (error: any) {
     console.error('Error fetching inventory audits:', error);
     return NextResponse.json(
@@ -45,6 +89,7 @@ export async function POST(req: NextRequest) {
     const {
       type = 'BLIND',
       warehouseId,
+      categoryFilter = 'ALL',
       notes,
       items, // Array of { ingredientId: string, countedStock: number, notes?: string }
     } = body;
@@ -76,6 +121,8 @@ export async function POST(req: NextRequest) {
       expectedStock: number;
       countedStock: number;
       discrepancy: number;
+      variancePct: number;
+      varianceType: string;
       unitCost: number;
       discrepancyCost: number;
       notes?: string;
@@ -91,6 +138,22 @@ export async function POST(req: NextRequest) {
       const unitCost = ing.cost || 0;
       const discrepancyCost = discrepancy * unitCost;
 
+      const itemVariancePct = expectedStock > 0 
+        ? (discrepancy / expectedStock) * 100 
+        : (countedStock > 0 ? 100 : 0);
+
+      // Automatic variance classification
+      let varianceType = 'EXACT';
+      if (Math.abs(discrepancy) < 0.001) {
+        varianceType = 'EXACT';
+      } else if (discrepancyCost <= -500 || itemVariancePct <= -20) {
+        varianceType = 'THEFT_SUSPECT';
+      } else if (discrepancy < 0) {
+        varianceType = 'CRITICAL_SHRINKAGE';
+      } else if (discrepancy > 0) {
+        varianceType = 'EXCESS_OVERAGE';
+      }
+
       totalExpectedValue += expectedStock * unitCost;
       totalCountedValue += countedStock * unitCost;
       totalDiscrepancyValue += discrepancyCost;
@@ -100,6 +163,8 @@ export async function POST(req: NextRequest) {
         expectedStock,
         countedStock,
         discrepancy,
+        variancePct: Number(itemVariancePct.toFixed(2)),
+        varianceType,
         unitCost,
         discrepancyCost,
         notes: item.notes,
@@ -107,6 +172,9 @@ export async function POST(req: NextRequest) {
     }
 
     const auditNumber = await generateAuditFolio(session.activeBrandId);
+    const overallVariancePct = totalExpectedValue > 0 
+      ? (totalDiscrepancyValue / totalExpectedValue) * 100 
+      : 0;
 
     const audit = await prisma.inventoryAudit.create({
       data: {
@@ -115,9 +183,11 @@ export async function POST(req: NextRequest) {
         type,
         status: 'COMPLETED',
         warehouseId: warehouseId || null,
+        categoryFilter,
         totalExpectedValue: Number(totalExpectedValue.toFixed(2)),
         totalCountedValue: Number(totalCountedValue.toFixed(2)),
         totalDiscrepancyValue: Number(totalDiscrepancyValue.toFixed(2)),
+        variancePct: Number(overallVariancePct.toFixed(2)),
         notes,
         conductedById: session.userId,
         items: {
@@ -135,7 +205,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Registrar en auditoría general de seguridad
+    // Registrar en auditoría inmutable de seguridad
     await recordAuditLog({
       brandId: session.activeBrandId,
       userId: session.userId,
@@ -143,11 +213,18 @@ export async function POST(req: NextRequest) {
       entityType: 'INVENTORY_AUDIT',
       entityId: audit.id,
       severity: Math.abs(totalDiscrepancyValue) > 500 ? 'WARNING' : 'INFO',
-      details: `Auditoría física ${auditNumber} creada. Conteo: $${totalCountedValue.toFixed(2)} vs Esperado: $${totalExpectedValue.toFixed(2)}. Diferencia: $${totalDiscrepancyValue.toFixed(2)}.`,
+      details: {
+        auditNumber,
+        totalCountedValue,
+        totalExpectedValue,
+        totalDiscrepancyValue,
+        overallVariancePct,
+        itemCount: auditItemsData.length,
+      },
       req,
     });
 
-    return NextResponse.json(audit, { status: 201 });
+    return NextResponse.json({ success: true, audit }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating inventory audit:', error);
     return NextResponse.json(

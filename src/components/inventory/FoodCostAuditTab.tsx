@@ -21,7 +21,13 @@ import {
   Package,
   Layers,
   HelpCircle,
-  X
+  X,
+  Printer,
+  Download,
+  ShieldAlert,
+  FileText,
+  Copy,
+  Check
 } from 'lucide-react';
 import { FoodCostReport, TheoreticalIngredientConsumption, MenuEngineeringItem } from '@/lib/costAudit';
 
@@ -33,6 +39,7 @@ interface FoodCostAuditTabProps {
     unit: string;
     cost: number;
     minStock: number;
+    type?: string;
   }>;
   warehouses: Array<{
     id: string;
@@ -58,6 +65,14 @@ export default function FoodCostAuditTab({
 
   // Audits list state
   const [audits, setAudits] = useState<any[]>([]);
+  const [auditMetrics, setAuditMetrics] = useState<{
+    totalAudits: number;
+    appliedAudits: number;
+    pendingAudits: number;
+    totalDiscrepancy: number;
+    totalLoss: number;
+    totalSurplus: number;
+  } | null>(null);
   const [loadingAudits, setLoadingAudits] = useState(false);
   const [selectedAudit, setSelectedAudit] = useState<any | null>(null);
   const [loadingAuditDetail, setLoadingAuditDetail] = useState(false);
@@ -66,13 +81,27 @@ export default function FoodCostAuditTab({
   const [showBlindAuditModal, setShowBlindAuditModal] = useState(false);
   const [auditType, setAuditType] = useState<'BLIND' | 'FULL'>('BLIND');
   const [auditWarehouseId, setAuditWarehouseId] = useState<string>('');
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState<string>('ALL');
   const [auditNotes, setAuditNotes] = useState('');
   const [countedQuantities, setCountedQuantities] = useState<Record<string, number>>({});
   const [itemNotes, setItemNotes] = useState<Record<string, string>>({});
   const [blindAuditSearch, setBlindAuditSearch] = useState('');
   const [revealStockInModal, setRevealStockInModal] = useState(false);
   const [submittingAudit, setSubmittingAudit] = useState(false);
-  const [applyingAuditId, setApplyingAuditId] = useState<string | null>(null);
+
+  // Manager Approval Modal State
+  const [approvalModalAudit, setApprovalModalAudit] = useState<any | null>(null);
+  const [approvalNotes, setApprovalNotes] = useState('');
+  const [applyingAudit, setApplyingAudit] = useState(false);
+
+  // Thermal Print Voucher Modal State
+  const [thermalPrintAudit, setThermalPrintAudit] = useState<{
+    auditNumber: string;
+    adjustmentFolio?: string | null;
+    ticketText: string;
+  } | null>(null);
+  const [loadingThermal, setLoadingThermal] = useState(false);
+  const [copiedThermal, setCopiedThermal] = useState(false);
 
   // Cargar reporte de Food Cost
   const loadFoodCostReport = useCallback(async (range: string) => {
@@ -97,7 +126,14 @@ export default function FoodCostAuditTab({
       const res = await fetch('/api/inventory/audit');
       if (res.ok) {
         const data = await res.json();
-        setAudits(data);
+        if (Array.isArray(data)) {
+          setAudits(data);
+        } else {
+          setAudits(data.audits || []);
+          if (data.metrics) {
+            setAuditMetrics(data.metrics);
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching inventory audits:', err);
@@ -132,23 +168,33 @@ export default function FoodCostAuditTab({
     }
   };
 
-  // Aplicar ajuste de auditoría física a las existencias
-  const handleApplyAudit = async (auditId: string) => {
-    if (!confirm('¿Confirmas aplicar este arqueo físico a las existencias reales del inventario? Los faltantes se registrarán automáticamente en la bitácora de mermas.')) {
-      return;
-    }
+  // Abrir modal de aprobación gerencial para aplicar a stock
+  const handleOpenApprovalModal = (audit: any) => {
+    setApprovalModalAudit(audit);
+    setApprovalNotes('');
+  };
+
+  // Confirmar y aplicar ajuste de auditoría física a las existencias
+  const handleConfirmApproval = async () => {
+    if (!approvalModalAudit) return;
 
     try {
-      setApplyingAuditId(auditId);
-      const res = await fetch(`/api/inventory/audit/${auditId}/apply`, {
+      setApplyingAudit(true);
+      const res = await fetch(`/api/inventory/audit/${approvalModalAudit.id}/apply`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes: approvalNotes || undefined,
+        }),
       });
 
       if (res.ok) {
-        alert('Ajuste aplicado exitosamente a las existencias');
+        const data = await res.json();
+        alert(data.message || 'Ajuste aplicado exitosamente a las existencias');
+        setApprovalModalAudit(null);
         await loadAudits();
-        if (selectedAudit && selectedAudit.id === auditId) {
-          await handleViewAuditDetail(auditId);
+        if (selectedAudit && selectedAudit.id === approvalModalAudit.id) {
+          await handleViewAuditDetail(approvalModalAudit.id);
         }
         if (onRefreshAll) onRefreshAll();
         loadFoodCostReport(periodRange);
@@ -160,7 +206,7 @@ export default function FoodCostAuditTab({
       console.error('Error applying audit:', error);
       alert('Error de red al aplicar auditoría');
     } finally {
-      setApplyingAuditId(null);
+      setApplyingAudit(false);
     }
   };
 
@@ -188,13 +234,15 @@ export default function FoodCostAuditTab({
         body: JSON.stringify({
           type: auditType,
           warehouseId: auditWarehouseId || undefined,
+          categoryFilter: auditCategoryFilter,
           notes: auditNotes || undefined,
           items: itemsToSubmit,
         }),
       });
 
       if (res.ok) {
-        const created = await res.json();
+        const result = await res.json();
+        const created = result.audit || result;
         alert(`Arqueo de inventario ${created.auditNumber} registrado exitosamente.`);
         setShowBlindAuditModal(false);
         setCountedQuantities({});
@@ -216,526 +264,338 @@ export default function FoodCostAuditTab({
     }
   };
 
+  // Imprimir comprobante térmico ESC/POS
+  const handlePrintAuditTicket = async (auditId: string) => {
+    try {
+      setLoadingThermal(true);
+      const res = await fetch(`/api/inventory/audit/${auditId}/print`);
+      if (res.ok) {
+        const data = await res.json();
+        setThermalPrintAudit(data);
+      } else {
+        alert('Error al generar comprobante térmico');
+      }
+    } catch {
+      alert('Error de red al generar ticket');
+    } finally {
+      setLoadingThermal(false);
+    }
+  };
+
+  // Descargar hoja física de conteo ciego en CSV
+  const handleDownloadBlindSheet = () => {
+    window.open('/api/inventory/audit/worksheet?format=csv', '_blank');
+  };
+
   // Filtrado de insumos en la tabla de Food Cost
   const filteredIngredients = (report?.ingredientsConsumption || []).filter((item) =>
     item.name.toLowerCase().includes(ingredientSearch.toLowerCase())
   );
 
-  // Filtrado de platillos en Ingeniería de Menú
-  const filteredMenuItems = (report?.menuEngineering?.items || []).filter((item) => {
+  // Filtrado de menú engineering
+  const filteredMenu = (report?.menuEngineering?.items || []).filter((item: MenuEngineeringItem) => {
     if (menuFilter === 'ALL') return true;
     return item.classification === menuFilter;
   });
 
-  // Filtrado de insumos para el modal de conteo ciego
-  const filteredIngredientsForAudit = ingredients.filter((ing) =>
-    ing.name.toLowerCase().includes(blindAuditSearch.toLowerCase())
-  );
+  // Filtrado de insumos para el modal de conteo físico
+  const filteredIngredientsForAudit = ingredients.filter((ing) => {
+    const matchesSearch = ing.name.toLowerCase().includes(blindAuditSearch.toLowerCase());
+    const matchesCategory =
+      auditCategoryFilter === 'ALL'
+        ? true
+        : auditCategoryFilter === 'PREPARED'
+        ? ing.type === 'PREPARED'
+        : ing.type !== 'PREPARED';
+    return matchesSearch && matchesCategory;
+  });
 
   const countedCount = Object.keys(countedQuantities).length;
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Range Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-        <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Scale className="h-5 w-5 text-amber-400" />
-            Auditoría de Costos & Receta Teórica vs Consumo Real
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Análisis de Food Cost, control antifraude con inventario ciego y matriz BCG de rentabilidad
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Selector de Período */}
-          <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
-            <button
-              onClick={() => setPeriodRange('today')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-colors cursor-pointer ${
-                periodRange === 'today'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Hoy
-            </button>
-            <button
-              onClick={() => setPeriodRange('week')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-colors cursor-pointer ${
-                periodRange === 'week'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              7 Días
-            </button>
-            <button
-              onClick={() => setPeriodRange('month')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-colors cursor-pointer ${
-                periodRange === 'month'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              30 Días
-            </button>
-            <button
-              onClick={() => setPeriodRange('all')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-colors cursor-pointer ${
-                periodRange === 'all'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Histórico
-            </button>
-          </div>
-
+      {/* Selector de Sub-pestañas */}
+      <div className="flex justify-between items-center border-b border-slate-800 pb-3 flex-wrap gap-3">
+        <div className="flex gap-2 bg-slate-900/60 p-1 rounded-xl border border-slate-800">
           <button
-            onClick={() => {
-              loadFoodCostReport(periodRange);
-              if (subTab === 'audits') loadAudits();
-            }}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors cursor-pointer"
-            title="Refrescar datos"
+            onClick={() => setSubTab('food-cost')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              subTab === 'food-cost'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <RefreshCw className={`h-4 w-4 ${loadingReport ? 'animate-spin' : ''}`} />
+            <TrendingUp className="h-4 w-4" />
+            Análisis de Food Cost Teórico
           </button>
-
           <button
-            onClick={() => {
-              setCountedQuantities({});
-              setItemNotes({});
-              setRevealStockInModal(false);
-              setShowBlindAuditModal(true);
-            }}
-            className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-lg shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+            onClick={() => setSubTab('audits')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              subTab === 'audits'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <Plus className="h-4 w-4" />
-            Nuevo Arqueo Ciego
+            <Scale className="h-4 w-4" />
+            Arqueos Físicos & Auditoría Ciega
           </button>
         </div>
+
+        {subTab === 'food-cost' ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 flex items-center gap-1">
+              <Calendar className="h-3.5 w-3.5" /> Periodo:
+            </span>
+            <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800 text-xs">
+              {(['today', 'week', 'month', 'all'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setPeriodRange(r)}
+                  className={`px-3 py-1 rounded-md capitalize transition-colors cursor-pointer ${
+                    periodRange === r
+                      ? 'bg-slate-800 text-amber-400 font-bold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {r === 'today' ? 'Hoy' : r === 'week' ? 'Semana' : r === 'month' ? 'Mes' : 'Histórico'}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadBlindSheet}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
+              title="Descargar hoja en blanco sin existencias para conteo en bodega"
+            >
+              <Download className="h-3.5 w-3.5 text-blue-400" />
+              <span>Hoja de Toma Ciega (CSV)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setCountedQuantities({});
+                setItemNotes({});
+                setRevealStockInModal(false);
+                setShowBlindAuditModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Nuevo Arqueo Físico Ciego</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* KPI Banners - Financial Summary */}
-      {report && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Ventas Netas */}
-          <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
-            <span className="text-xs text-slate-400 font-medium">Ventas Netas ({report.financialSummary.totalOrdersCount} ped.)</span>
-            <div className="text-2xl font-black text-white mt-1">
-              ${report.financialSummary.totalNetSales.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-            </div>
-            <span className="text-[11px] text-slate-500">Base para % Food Cost</span>
-          </div>
-
-          {/* Food Cost Teórico */}
-          <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
-            <div className="flex justify-between items-start">
-              <span className="text-xs text-slate-400 font-medium">Food Cost Teórico</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                Fichas Técnicas
-              </span>
-            </div>
-            <div className="text-2xl font-black text-blue-400 mt-1">
-              {report.financialSummary.theoreticalFoodCostPct}%
-            </div>
-            <span className="text-[11px] text-slate-400">
-              ${report.financialSummary.theoreticalFoodCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-
-          {/* Food Cost Real */}
-          <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
-            <div className="flex justify-between items-start">
-              <span className="text-xs text-slate-400 font-medium">Food Cost Real</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                report.financialSummary.health === 'EXCELLENT' ? 'bg-emerald-500/20 text-emerald-400' :
-                report.financialSummary.health === 'GOOD' ? 'bg-blue-500/20 text-blue-400' :
-                report.financialSummary.health === 'WARNING' ? 'bg-amber-500/20 text-amber-400' :
-                'bg-red-500/20 text-red-400'
-              }`}>
-                {report.financialSummary.healthBadge}
-              </span>
-            </div>
-            <div className={`text-2xl font-black mt-1 ${
-              report.financialSummary.realFoodCostPct > 34 ? 'text-amber-400' : 'text-emerald-400'
-            }`}>
-              {report.financialSummary.realFoodCostPct}%
-            </div>
-            <span className="text-[11px] text-slate-400">
-              ${report.financialSummary.realFoodCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-
-          {/* Desviación / Descuadre */}
-          <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
-            <span className="text-xs text-slate-400 font-medium">Varianza de Costo</span>
-            <div className={`text-2xl font-black mt-1 flex items-center gap-1 ${
-              report.financialSummary.variancePctPoints > 0 ? 'text-red-400' : 'text-emerald-400'
-            }`}>
-              {report.financialSummary.variancePctPoints > 0 ? (
-                <ArrowUpRight className="h-5 w-5" />
-              ) : (
-                <ArrowDownRight className="h-5 w-5" />
-              )}
-              {Math.abs(report.financialSummary.variancePctPoints)}%
-            </div>
-            <span className="text-[11px] text-slate-500">Puntos sobre el teórico</span>
-          </div>
-
-          {/* Mermas & Fugas Ocultas */}
-          <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
-            <span className="text-xs text-slate-400 font-medium">Mermas y Fugas en $</span>
-            <div className="text-2xl font-black text-rose-400 mt-1">
-              ${(report.financialSummary.registeredWasteCost + report.financialSummary.unregisteredDiscrepancyCost).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-            </div>
-            <span className="text-[11px] text-slate-500">
-              Mermas: ${report.financialSummary.registeredWasteCost} | Descuadres: ${report.financialSummary.unregisteredDiscrepancyCost}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Sub-tab Switcher: Food Cost vs Auditorías Físicas */}
-      <div className="flex border-b border-slate-800 gap-4 text-xs font-bold">
-        <button
-          onClick={() => setSubTab('food-cost')}
-          className={`pb-2.5 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
-            subTab === 'food-cost'
-              ? 'border-amber-500 text-amber-400'
-              : 'border-transparent text-slate-400 hover:text-white'
-          }`}
-        >
-          <Scale className="h-4 w-4" />
-          Ficha Técnica vs Consumo Real & Matriz BCG
-        </button>
-        <button
-          onClick={() => setSubTab('audits')}
-          className={`pb-2.5 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
-            subTab === 'audits'
-              ? 'border-amber-500 text-amber-400'
-              : 'border-transparent text-slate-400 hover:text-white'
-          }`}
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          Historial de Inventarios Físicos & Arqueos Ciegos
-        </button>
-      </div>
-
-      {/* ===================== SUBTAB 1: FOOD COST & MENU ENGINEERING ===================== */}
+      {/* ===================== SUBTAB 1: FOOD COST TEÓRICO ===================== */}
       {subTab === 'food-cost' && (
-        <div className="space-y-8">
-          {/* SECTION 1: Matriz de Ingeniería de Menú (BCG Gastronómica) */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-amber-400" />
-                  Matriz de Rentabilidad & Popularidad (Menú Engineering)
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Clasificación de platillos según margen de contribución y volumen de ventas
-                </p>
-              </div>
-
-              {/* Badges de Cuadrantes BCG */}
-              <div className="flex flex-wrap gap-2 text-xs">
-                <button
-                  onClick={() => setMenuFilter('ALL')}
-                  className={`px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
-                    menuFilter === 'ALL'
-                      ? 'bg-slate-800 border-slate-600 text-white font-bold'
-                      : 'border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Todos ({report?.menuEngineering.items.length || 0})
-                </button>
-                <button
-                  onClick={() => setMenuFilter('STAR')}
-                  className={`px-2.5 py-1 rounded-lg border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    menuFilter === 'STAR'
-                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                      : 'border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>🌟 Estrellas</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px]">
-                    {report?.menuEngineering.starsCount || 0}
-                  </span>
-                </button>
-                <button
-                  onClick={() => setMenuFilter('PLOWHORSE')}
-                  className={`px-2.5 py-1 rounded-lg border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    menuFilter === 'PLOWHORSE'
-                      ? 'bg-blue-500/20 border-blue-500 text-blue-300 font-bold'
-                      : 'border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>🐎 Caballos de Batalla</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px]">
-                    {report?.menuEngineering.plowhorsesCount || 0}
-                  </span>
-                </button>
-                <button
-                  onClick={() => setMenuFilter('PUZZLE')}
-                  className={`px-2.5 py-1 rounded-lg border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    menuFilter === 'PUZZLE'
-                      ? 'bg-purple-500/20 border-purple-500 text-purple-300 font-bold'
-                      : 'border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>🧩 Rompecabezas</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px]">
-                    {report?.menuEngineering.puzzlesCount || 0}
-                  </span>
-                </button>
-                <button
-                  onClick={() => setMenuFilter('DOG')}
-                  className={`px-2.5 py-1 rounded-lg border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    menuFilter === 'DOG'
-                      ? 'bg-rose-500/20 border-rose-500 text-rose-300 font-bold'
-                      : 'border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>🐶 Perros</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px]">
-                    {report?.menuEngineering.dogsCount || 0}
-                  </span>
-                </button>
-              </div>
+        <div className="space-y-6">
+          {loadingReport ? (
+            <div className="h-48 flex flex-col items-center justify-center gap-2 text-slate-400">
+              <RefreshCw className="h-6 w-6 animate-spin text-amber-400" />
+              <p className="text-xs">Calculando explosión de recetas y consumo teórico...</p>
             </div>
+          ) : report ? (
+            <>
+              {/* Financial KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                  <span className="text-xs text-slate-400 font-medium">Ventas Netas Totales</span>
+                  <div className="text-2xl font-bold text-white mt-1">
+                    ${report.financialSummary.totalNetSales.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[11px] text-slate-500">{report.financialSummary.totalOrdersCount} comandas en el periodo</span>
+                </div>
 
-            {/* Tabla de Platillos y Rentabilidad */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/60 text-slate-400 font-semibold border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">Platillo</th>
-                    <th className="p-3 text-right">Precio Venta</th>
-                    <th className="p-3 text-right">Costo Receta</th>
-                    <th className="p-3 text-right">Margen Bruto</th>
-                    <th className="p-3 text-center">% Margen</th>
-                    <th className="p-3 text-center">Unid. Vendidas</th>
-                    <th className="p-3 text-right">Utilidad Total</th>
-                    <th className="p-3 text-center">Clasificación BCG</th>
-                    <th className="p-3">Recomendación Soft Restaurant</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredMenuItems.map((item) => {
-                    let badgeClass = 'bg-slate-800 text-slate-300 border-slate-700';
-                    let label = 'DOG';
-                    if (item.classification === 'STAR') {
-                      badgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
-                      label = '🌟 Estrella';
-                    } else if (item.classification === 'PLOWHORSE') {
-                      badgeClass = 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-                      label = '🐎 Caballo Batalla';
-                    } else if (item.classification === 'PUZZLE') {
-                      badgeClass = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
-                      label = '🧩 Rompecabezas';
-                    } else {
-                      badgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/30';
-                      label = '🐶 Perro';
-                    }
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                  <span className="text-xs text-slate-400 font-medium">Costo Teórico de Alimentos (COGS)</span>
+                  <div className="text-2xl font-bold text-amber-400 mt-1">
+                    ${report.financialSummary.theoreticalFoodCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[11px] text-slate-500">Explosión de fichas técnicas</span>
+                </div>
 
-                    return (
-                      <tr key={item.productId} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="p-3 font-bold text-white">{item.name}</td>
-                        <td className="p-3 text-right font-medium text-slate-200">
-                          ${item.price.toFixed(2)}
-                        </td>
-                        <td className="p-3 text-right text-slate-400">
-                          ${item.recipeCost.toFixed(2)}
-                        </td>
-                        <td className="p-3 text-right font-bold text-emerald-400">
-                          ${item.margin.toFixed(2)}
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded font-bold ${
-                            item.marginPct >= 70 ? 'bg-emerald-500/10 text-emerald-400' :
-                            item.marginPct >= 50 ? 'bg-blue-500/10 text-blue-400' :
-                            'bg-amber-500/10 text-amber-400'
-                          }`}>
-                            {item.marginPct}%
-                          </span>
-                        </td>
-                        <td className="p-3 text-center font-bold text-white">
-                          {item.unitsSold}
-                        </td>
-                        <td className="p-3 text-right font-black text-amber-400">
-                          ${item.totalProfit.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${badgeClass}`}>
-                            {label}
-                          </span>
-                        </td>
-                        <td className="p-3 text-[11px] text-slate-400 max-w-xs">
-                          {item.recommendation}
-                        </td>
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                  <span className="text-xs text-slate-400 font-medium">Food Cost % Teórico</span>
+                  <div className="text-2xl font-black mt-1 flex items-baseline gap-2">
+                    <span className={report.financialSummary.theoreticalFoodCostPct > 35 ? 'text-rose-400' : 'text-emerald-400'}>
+                      {report.financialSummary.theoreticalFoodCostPct.toFixed(1)}%
+                    </span>
+                    <span className="text-xs text-slate-500 font-normal">
+                      Meta: {report.financialSummary.targetFoodCostPct}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                    <div
+                      className={`h-full ${
+                        report.financialSummary.theoreticalFoodCostPct > 35
+                          ? 'bg-rose-500'
+                          : report.financialSummary.theoreticalFoodCostPct > 30
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(report.financialSummary.theoreticalFoodCostPct * 2, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                  <span className="text-xs text-slate-400 font-medium">Margen Bruto de Utilidad</span>
+                  <div className="text-2xl font-bold text-emerald-400 mt-1">
+                    ${(report.financialSummary.totalNetSales - report.financialSummary.theoreticalFoodCost).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    {(100 - report.financialSummary.theoreticalFoodCostPct).toFixed(1)}% margen sobre ventas
+                  </span>
+                </div>
+              </div>
+
+              {/* Insumos Consumidos Teóricamente */}
+              <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
+                <div className="flex justify-between items-center gap-4 flex-wrap">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Scale className="h-4 w-4 text-amber-400" />
+                      Consumo Teórico de Materias Primas por Recetas
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Explosión matemática del insumo descontado por cada orden vendida
+                    </p>
+                  </div>
+
+                  <div className="relative w-64">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar insumo..."
+                      value={ingredientSearch}
+                      onChange={(e) => setIngredientSearch(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950/60 text-slate-400 font-semibold border-b border-slate-800 sticky top-0">
+                      <tr>
+                        <th className="p-3">Insumo</th>
+                        <th className="p-3 text-right">Cantidad Teórica</th>
+                        <th className="p-3 text-right">Costo Promedio</th>
+                        <th className="p-3 text-right">Costo Total ($)</th>
+                        <th className="p-3 text-right">Stock Actual en Bodega</th>
                       </tr>
-                    );
-                  })}
-                  {filteredMenuItems.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="p-6 text-center text-slate-500">
-                        No hay platillos en este cuadrante para el período seleccionado
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* SECTION 2: Consumo Teórico de Insumos vs Existencias & PPP */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-400" />
-                  Consumo Teórico de Insumos vs Stock & Precio Promedio Ponderado (PPP)
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Explosión de materias primas por ventas vs compras y variaciones de costo en compras
-                </p>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {filteredIngredients.map((item) => (
+                        <tr key={item.ingredientId} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="p-3 font-bold text-white flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            {item.name}
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-200">
+                            {item.theoreticalQty.toFixed(2)} {item.unit}
+                          </td>
+                          <td className="p-3 text-right text-slate-400">
+                            ${item.unitCost.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-amber-400">
+                            ${item.theoreticalCost.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-300">
+                            {item.currentStock.toFixed(2)} {item.unit}
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredIngredients.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="p-6 text-center text-slate-500">
+                            No hay consumo registrado en este periodo para el insumo buscado.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar insumo..."
-                  value={ingredientSearch}
-                  onChange={(e) => setIngredientSearch(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/60 text-slate-400 font-semibold border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">Insumo / Materia Prima</th>
-                    <th className="p-3 text-right">Consumo Teórico</th>
-                    <th className="p-3 text-right">Costo Teórico ($)</th>
-                    <th className="p-3 text-right">Stock Actual</th>
-                    <th className="p-3 text-right">Costo Estándar</th>
-                    <th className="p-3 text-right">PPP (Compras)</th>
-                    <th className="p-3 text-center">Variación Costo</th>
-                    <th className="p-3 text-right">Mermas Reg.</th>
-                    <th className="p-3 text-right">Descuadre Físico</th>
-                    <th className="p-3 text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredIngredients.map((ing) => (
-                    <tr key={ing.ingredientId} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="p-3">
-                        <div className="font-bold text-white">{ing.name}</div>
-                        <div className="text-[10px] text-slate-500">Unidad: {ing.unit}</div>
-                      </td>
-                      <td className="p-3 text-right font-medium text-slate-200">
-                        {ing.theoreticalQty} {ing.unit}
-                      </td>
-                      <td className="p-3 text-right font-bold text-blue-400">
-                        ${ing.theoreticalCost.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-right">
-                        <span className={`font-semibold ${
-                          ing.currentStock <= ing.minStock ? 'text-red-400' : 'text-slate-200'
-                        }`}>
-                          {ing.currentStock} {ing.unit}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right text-slate-400">
-                        ${ing.unitCost.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-right font-semibold text-slate-300">
-                        ${ing.averagePurchaseCost.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                          ing.costVariancePct > 10 ? 'bg-red-500/20 text-red-400' :
-                          ing.costVariancePct < -5 ? 'bg-emerald-500/20 text-emerald-400' :
-                          'bg-slate-800 text-slate-400'
-                        }`}>
-                          {ing.costVariancePct > 0 ? `+${ing.costVariancePct}%` : `${ing.costVariancePct}%`}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right text-rose-400">
-                        {ing.registeredWasteQty > 0 ? (
-                          <span>${ing.registeredWasteCost.toFixed(2)}</span>
-                        ) : (
-                          <span className="text-slate-600">-</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-right">
-                        {ing.discrepancyQty !== 0 ? (
-                          <span className={`font-bold ${ing.discrepancyCost < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {ing.discrepancyQty > 0 ? `+${ing.discrepancyQty}` : ing.discrepancyQty} {ing.unit} (${ing.discrepancyCost.toFixed(2)})
-                          </span>
-                        ) : (
-                          <span className="text-slate-600 font-mono">0.00</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          ing.status === 'OPTIMAL' ? 'bg-emerald-500/20 text-emerald-400' :
-                          ing.status === 'WARNING' ? 'bg-amber-500/20 text-amber-400' :
-                          'bg-red-500/20 text-red-400'
-                        }`}>
-                          {ing.status === 'OPTIMAL' ? 'ÓPTIMO' : ing.status === 'WARNING' ? 'REVISAR' : 'CRÍTICO'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredIngredients.length === 0 && (
-                    <tr>
-                      <td colSpan={10} className="p-6 text-center text-slate-500">
-                        No se encontraron insumos
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            </>
+          ) : null}
         </div>
       )}
 
       {/* ===================== SUBTAB 2: HISTORIAL DE ARQUEOS FÍSICOS ===================== */}
       {subTab === 'audits' && (
         <div className="space-y-4">
+          {/* KPI Summary Cards for Physical Audits */}
+          {auditMetrics && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Auditorías Realizadas</span>
+                <p className="text-xl font-black text-white">{auditMetrics.totalAudits}</p>
+                <span className="text-[10px] text-slate-500">
+                  {auditMetrics.appliedAudits} aplicadas • {auditMetrics.pendingAudits} pendientes
+                </span>
+              </div>
+
+              <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Faltantes / Mermas</span>
+                <p className="text-xl font-black text-rose-400">-${auditMetrics.totalLoss.toFixed(2)}</p>
+                <span className="text-[10px] text-rose-500/80">Absorbido en bitácora de merma</span>
+              </div>
+
+              <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Sobrantes Registrados</span>
+                <p className="text-xl font-black text-emerald-400">+${auditMetrics.totalSurplus.toFixed(2)}</p>
+                <span className="text-[10px] text-emerald-500/80">Stock físico mayor a teórico</span>
+              </div>
+
+              <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Varianza Neta Global</span>
+                <p className={`text-xl font-black ${auditMetrics.totalDiscrepancy < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  ${auditMetrics.totalDiscrepancy.toFixed(2)}
+                </p>
+                <span className="text-[10px] text-slate-500">Balance final del inventario</span>
+              </div>
+            </div>
+          )}
+
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <FileSpreadsheet className="h-4 w-4 text-amber-400" />
                   Auditorías Físicas de Inventario (Arqueos Ciegos)
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Control inmutable de recuentos físicos para prevención de mermas ocultas y robo hormiga
+                  Control inmutable de recuentos físicos para prevención de mermas ocultas y fugas
                 </p>
               </div>
 
-              <button
-                onClick={() => {
-                  setCountedQuantities({});
-                  setItemNotes({});
-                  setRevealStockInModal(false);
-                  setShowBlindAuditModal(true);
-                }}
-                className="flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-colors cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                Registrar Nuevo Arqueo Ciego
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadBlindSheet}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                  title="Descargar hoja en blanco para conteo manual en bodega"
+                >
+                  <Download className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Hoja Ciega (CSV)</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setCountedQuantities({});
+                    setItemNotes({});
+                    setRevealStockInModal(false);
+                    setShowBlindAuditModal(true);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  Nuevo Arqueo Ciego
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -746,10 +606,10 @@ export default function FoodCostAuditTab({
                     <th className="p-3">Fecha y Hora</th>
                     <th className="p-3">Tipo</th>
                     <th className="p-3">Almacén / Bodega</th>
-                    <th className="p-3">Auditor / Usuario</th>
+                    <th className="p-3">Auditor / Aprobador</th>
                     <th className="p-3 text-right">Valor Teórico ($)</th>
                     <th className="p-3 text-right">Valor Físico ($)</th>
-                    <th className="p-3 text-right">Descuadre ($)</th>
+                    <th className="p-3 text-right">Descuadre ($ y %)</th>
                     <th className="p-3 text-center">Estado</th>
                     <th className="p-3 text-center">Acciones</th>
                   </tr>
@@ -757,8 +617,11 @@ export default function FoodCostAuditTab({
                 <tbody className="divide-y divide-slate-800/60">
                   {audits.map((aud) => (
                     <tr key={aud.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="p-3 font-mono font-bold text-amber-400">
-                        {aud.auditNumber}
+                      <td className="p-3">
+                        <div className="font-mono font-bold text-amber-400">{aud.auditNumber}</div>
+                        {aud.adjustmentFolio && (
+                          <div className="font-mono text-[10px] text-emerald-400">{aud.adjustmentFolio}</div>
+                        )}
                       </td>
                       <td className="p-3 text-slate-300">
                         {new Date(aud.createdAt).toLocaleString('es-MX', {
@@ -780,7 +643,10 @@ export default function FoodCostAuditTab({
                         {aud.warehouse ? aud.warehouse.name : 'Almacén General'}
                       </td>
                       <td className="p-3 text-slate-300 font-medium">
-                        {aud.conductedBy?.name || 'Sistema'}
+                        <div>{aud.conductedBy?.name || 'Sistema'}</div>
+                        {aud.approvedByName && (
+                          <div className="text-[10px] text-slate-500">Aprobó: {aud.approvedByName}</div>
+                        )}
                       </td>
                       <td className="p-3 text-right text-slate-400">
                         ${aud.totalExpectedValue?.toFixed(2)}
@@ -789,33 +655,49 @@ export default function FoodCostAuditTab({
                         ${aud.totalCountedValue?.toFixed(2)}
                       </td>
                       <td className="p-3 text-right font-black">
-                        <span className={aud.totalDiscrepancyValue < 0 ? 'text-rose-400' : 'text-emerald-400'}>
+                        <div className={aud.totalDiscrepancyValue < 0 ? 'text-rose-400' : 'text-emerald-400'}>
                           ${aud.totalDiscrepancyValue?.toFixed(2)}
-                        </span>
+                        </div>
+                        {aud.variancePct !== null && aud.variancePct !== undefined && (
+                          <div className={`text-[10px] ${aud.variancePct < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {aud.variancePct > 0 ? `+${aud.variancePct.toFixed(1)}%` : `${aud.variancePct.toFixed(1)}%`}
+                          </div>
+                        )}
                       </td>
                       <td className="p-3 text-center">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           aud.status === 'APPLIED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                           'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                         }`}>
-                          {aud.status === 'APPLIED' ? 'APLICADO A STOCK' : 'PENDIENTE / AUDITADO'}
+                          {aud.status === 'APPLIED' ? 'APLICADO A STOCK' : 'AUDITADO / PENDIENTE'}
                         </span>
                       </td>
                       <td className="p-3 text-center">
-                        <div className="flex justify-center items-center gap-2">
+                        <div className="flex justify-center items-center gap-1.5">
                           <button
                             onClick={() => handleViewAuditDetail(aud.id)}
                             className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded transition-colors cursor-pointer"
+                            title="Ver desglose átomo a átomo"
                           >
-                            Ver Detalle
+                            Detalle
                           </button>
+
+                          <button
+                            onClick={() => handlePrintAuditTicket(aud.id)}
+                            disabled={loadingThermal}
+                            className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors cursor-pointer"
+                            title="Imprimir Comprobante Térmico ESC/POS"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </button>
+
                           {aud.status !== 'APPLIED' && (
                             <button
-                              onClick={() => handleApplyAudit(aud.id)}
-                              disabled={applyingAuditId === aud.id}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded transition-colors cursor-pointer disabled:opacity-50"
+                              onClick={() => handleOpenApprovalModal(aud)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded transition-colors cursor-pointer"
+                              title="Aplicar ajuste contable definitivo al stock"
                             >
-                              {applyingAuditId === aud.id ? 'Aplicando...' : 'Aplicar a Stock'}
+                              Aplicar
                             </button>
                           )}
                         </div>
@@ -881,7 +763,7 @@ export default function FoodCostAuditTab({
 
             {/* Modal Body */}
             <form onSubmit={handleCreateAudit} className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-slate-800/80 bg-slate-950/40 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-5 border-b border-slate-800/80 bg-slate-950/40 grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Tipo de Arqueo</label>
                   <select
@@ -889,7 +771,7 @@ export default function FoodCostAuditTab({
                     onChange={(e: any) => setAuditType(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:border-amber-500 focus:outline-none"
                   >
-                    <option value="BLIND">Arqueo Ciego (Recomendado Antifraude)</option>
+                    <option value="BLIND">Arqueo Ciego (Antifraude)</option>
                     <option value="FULL">Inventario Completo Mensual</option>
                   </select>
                 </div>
@@ -907,6 +789,19 @@ export default function FoodCostAuditTab({
                         {w.name} {w.code ? `(${w.code})` : ''}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Categoría</label>
+                  <select
+                    value={auditCategoryFilter}
+                    onChange={(e) => setAuditCategoryFilter(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="ALL">Todos los Insumos</option>
+                    <option value="RAW">Materias Primas Solamente</option>
+                    <option value="PREPARED">Sub-Recetas / Producción</option>
                   </select>
                 </div>
 
@@ -935,7 +830,7 @@ export default function FoodCostAuditTab({
                   />
                 </div>
                 <div className="text-xs text-slate-400">
-                  Insumos contados: <strong className="text-amber-400">{countedCount}</strong> de {ingredients.length}
+                  Insumos contados: <strong className="text-amber-400">{countedCount}</strong> de {filteredIngredientsForAudit.length}
                 </div>
               </div>
 
@@ -947,7 +842,7 @@ export default function FoodCostAuditTab({
                   <div className={revealStockInModal ? 'col-span-3 text-right' : 'col-span-5 text-right'}>
                     Conteo Físico Real
                   </div>
-                  <div className={revealStockInModal ? 'col-span-2' : 'col-span-2'}>Notas</div>
+                  <div className="col-span-2">Notas</div>
                 </div>
 
                 {filteredIngredientsForAudit.map((ing) => {
@@ -1025,7 +920,7 @@ export default function FoodCostAuditTab({
               {/* Modal Footer */}
               <div className="p-4 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
                 <div className="text-xs text-slate-400">
-                  Al guardar, el sistema calculará las diferencias teóricas y generará el reporte de auditoría.
+                  Al guardar, el sistema calculará las diferencias teóricas y generará el reporte de varianza.
                 </div>
 
                 <div className="flex gap-3">
@@ -1039,7 +934,7 @@ export default function FoodCostAuditTab({
                   <button
                     type="submit"
                     disabled={submittingAudit || countedCount === 0}
-                    className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
                   >
                     {submittingAudit ? 'Guardando Arqueo...' : `Guardar Arqueo (${countedCount} Insumos)`}
                   </button>
@@ -1053,7 +948,7 @@ export default function FoodCostAuditTab({
       {/* ===================== MODAL 2: DETALLE DE AUDITORÍA ===================== */}
       {selectedAudit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Header */}
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/60">
               <div className="flex items-center gap-3">
@@ -1063,44 +958,61 @@ export default function FoodCostAuditTab({
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     Auditoría {selectedAudit.auditNumber}
+                    {selectedAudit.adjustmentFolio && (
+                      <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded">
+                        {selectedAudit.adjustmentFolio}
+                      </span>
+                    )}
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                      selectedAudit.status === 'APPLIED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                      selectedAudit.status === 'APPLIED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                     }`}>
                       {selectedAudit.status === 'APPLIED' ? 'APLICADO A STOCK' : 'AUDITADO'}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400">
                     {new Date(selectedAudit.createdAt).toLocaleString('es-MX')} | Auditor: {selectedAudit.conductedBy?.name || 'Sistema'}
+                    {selectedAudit.approvedByName && ` • Aprobó: ${selectedAudit.approvedByName}`}
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedAudit(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePrintAuditTicket(selectedAudit.id)}
+                  disabled={loadingThermal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  <Printer className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Imprimir Ticket</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedAudit(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             {/* Financial Summary KPIs */}
             <div className="p-5 border-b border-slate-800/80 bg-slate-950/40 grid grid-cols-3 gap-4 text-center">
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
-                <span className="text-[11px] text-slate-400">Valor Esperado Sistema</span>
+                <span className="text-[11px] text-slate-400 font-semibold">Valor Esperado Sistema</span>
                 <div className="text-lg font-bold text-slate-200 mt-0.5">
                   ${selectedAudit.totalExpectedValue?.toFixed(2)}
                 </div>
               </div>
 
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
-                <span className="text-[11px] text-slate-400">Valor Físico Contado</span>
+                <span className="text-[11px] text-slate-400 font-semibold">Valor Físico Contado</span>
                 <div className="text-lg font-bold text-white mt-0.5">
                   ${selectedAudit.totalCountedValue?.toFixed(2)}
                 </div>
               </div>
 
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
-                <span className="text-[11px] text-slate-400">Descuadre / Varianza Total</span>
+                <span className="text-[11px] text-slate-400 font-semibold">Descuadre / Varianza Total</span>
                 <div className={`text-lg font-black mt-0.5 ${
                   selectedAudit.totalDiscrepancyValue < 0 ? 'text-rose-400' : 'text-emerald-400'
                 }`}>
@@ -1118,41 +1030,64 @@ export default function FoodCostAuditTab({
                     <th className="p-2.5 text-right">Stock Esperado</th>
                     <th className="p-2.5 text-right">Conteo Físico</th>
                     <th className="p-2.5 text-right">Diferencia</th>
+                    <th className="p-2.5 text-center">Diagnóstico Varianza</th>
                     <th className="p-2.5 text-right">Costo Unitario</th>
                     <th className="p-2.5 text-right">Impacto Financiero</th>
                     <th className="p-2.5">Notas</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {selectedAudit.items?.map((item: any) => (
-                    <tr key={item.id} className="hover:bg-slate-800/30">
-                      <td className="p-2.5 font-bold text-white">
-                        {item.ingredient?.name}
-                      </td>
-                      <td className="p-2.5 text-right text-slate-400">
-                        {item.expectedStock} {item.ingredient?.unit}
-                      </td>
-                      <td className="p-2.5 text-right font-bold text-white">
-                        {item.countedStock} {item.ingredient?.unit}
-                      </td>
-                      <td className="p-2.5 text-right font-bold">
-                        <span className={item.discrepancy < 0 ? 'text-rose-400' : item.discrepancy > 0 ? 'text-emerald-400' : 'text-slate-400'}>
-                          {item.discrepancy > 0 ? `+${item.discrepancy}` : item.discrepancy} {item.ingredient?.unit}
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-right text-slate-400">
-                        ${item.unitCost?.toFixed(2)}
-                      </td>
-                      <td className="p-2.5 text-right font-black">
-                        <span className={item.discrepancyCost < 0 ? 'text-rose-400' : item.discrepancyCost > 0 ? 'text-emerald-400' : 'text-slate-400'}>
-                          ${item.discrepancyCost?.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-[11px] text-slate-500">
-                        {item.notes || '-'}
-                      </td>
-                    </tr>
-                  ))}
+                  {selectedAudit.items?.map((item: any) => {
+                    const isTheftSuspect = item.varianceType === 'THEFT_SUSPECT' || (item.discrepancyCost <= -500);
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-800/30">
+                        <td className="p-2.5 font-bold text-white">
+                          {item.ingredient?.name}
+                        </td>
+                        <td className="p-2.5 text-right text-slate-400">
+                          {item.expectedStock} {item.ingredient?.unit}
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-white">
+                          {item.countedStock} {item.ingredient?.unit}
+                        </td>
+                        <td className="p-2.5 text-right font-bold">
+                          <span className={item.discrepancy < 0 ? 'text-rose-400' : item.discrepancy > 0 ? 'text-emerald-400' : 'text-slate-400'}>
+                            {item.discrepancy > 0 ? `+${item.discrepancy}` : item.discrepancy} {item.ingredient?.unit}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-center">
+                          {isTheftSuspect ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                              ⚠️ ALERTA FUGA
+                            </span>
+                          ) : item.discrepancy < 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              MERMA OCULTA
+                            </span>
+                          ) : item.discrepancy > 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                              SOBRANTE
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                              EXACTO
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-right text-slate-400">
+                          ${item.unitCost?.toFixed(2)}
+                        </td>
+                        <td className="p-2.5 text-right font-black">
+                          <span className={item.discrepancyCost < 0 ? 'text-rose-400' : item.discrepancyCost > 0 ? 'text-emerald-400' : 'text-slate-400'}>
+                            ${item.discrepancyCost?.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-[11px] text-slate-500">
+                          {item.notes || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1172,14 +1107,145 @@ export default function FoodCostAuditTab({
                 </button>
                 {selectedAudit.status !== 'APPLIED' && (
                   <button
-                    onClick={() => handleApplyAudit(selectedAudit.id)}
-                    disabled={applyingAuditId === selectedAudit.id}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                    onClick={() => handleOpenApprovalModal(selectedAudit)}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-lg transition-colors cursor-pointer shadow-md shadow-emerald-600/20"
                   >
-                    {applyingAuditId === selectedAudit.id ? 'Aplicando...' : 'Aplicar Ajuste a Stock Físico'}
+                    Aplicar Ajuste a Stock Físico
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL 3: APROBACIÓN GERENCIAL DE AJUSTE CONTABLE ===================== */}
+      {approvalModalAudit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base">Aprobación de Ajuste Físico</h3>
+                  <p className="text-xs text-slate-400">
+                    Folio Auditoría: {approvalModalAudit.auditNumber}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setApprovalModalAudit(null)} className="text-slate-400 hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2.5 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Almacén a Afectar:</span>
+                <span className="font-bold text-white">{approvalModalAudit.warehouse?.name || 'Almacén General'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Descuadre Neto:</span>
+                <span className={`font-mono font-bold ${approvalModalAudit.totalDiscrepancyValue < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  ${approvalModalAudit.totalDiscrepancyValue?.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Impacto en Mermas:</span>
+                <span className="font-bold text-amber-300">
+                  {approvalModalAudit.totalDiscrepancyValue < 0 ? `Se generará asiento en WasteLog` : 'Sin pérdidas registradas'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-300 block">
+                Observaciones del Dictamen Gerencial (Opcional):
+              </label>
+              <textarea
+                rows={2}
+                value={approvalNotes}
+                onChange={(e) => setApprovalNotes(e.target.value)}
+                placeholder="Ej. Aprobado ajuste tras arqueo quincenal. Se identificó merma por evaporación en cámara fría."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-emerald-500 outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setApprovalModalAudit(null)}
+                className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmApproval}
+                disabled={applyingAudit}
+                className="w-1/2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Check className="h-4 w-4" />
+                <span>{applyingAudit ? 'Aplicando...' : 'Autorizar y Ajustar'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL 4: COMPROBANTE TÉRMICO ESC/POS ===================== */}
+      {thermalPrintAudit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <Printer className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base">Comprobante Térmico ESC/POS</h3>
+                  <p className="text-xs text-slate-400">
+                    Formato de 80mm para comanderas y archivo de bodega
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setThermalPrintAudit(null)} className="text-slate-400 hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            {/* Receipt Preview */}
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl max-h-72 overflow-y-auto">
+              <pre className="font-mono text-[11px] leading-tight text-amber-200/90 whitespace-pre">
+                {thermalPrintAudit.ticketText}
+              </pre>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(thermalPrintAudit.ticketText);
+                  setCopiedThermal(true);
+                  setTimeout(() => setCopiedThermal(false), 2000);
+                }}
+                className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                {copiedThermal ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                <span>{copiedThermal ? 'Copiado' : 'Copiar Texto'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.print();
+                }}
+                className="w-1/2 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Printer className="h-4 w-4" />
+                <span>Imprimir</span>
+              </button>
             </div>
           </div>
         </div>

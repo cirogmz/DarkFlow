@@ -927,9 +927,16 @@ model InventoryAudit {
   totalExpectedValue    Float                @default(0)
   totalCountedValue     Float                @default(0)
   totalDiscrepancyValue Float                @default(0)
+  variancePct           Float?               @default(0)
+  categoryFilter        String?              @default("ALL")
+  adjustmentFolio       String?
   notes                 String?
   conductedById         String?
   conductedBy           User?                @relation(fields: [conductedById], references: [id])
+  approvedById          String?
+  approvedByName        String?
+  approvedAt            DateTime?
+  rejectionReason       String?
   appliedAt             DateTime?
   items                 InventoryAuditItem[]
   createdAt             DateTime             @default(now())
@@ -948,6 +955,8 @@ model InventoryAuditItem {
   expectedStock   Float
   countedStock    Float
   discrepancy     Float          // countedStock - expectedStock
+  variancePct     Float?         @default(0)
+  varianceType    String?        @default("EXACT") // EXACT, NORMAL, CRITICAL_SHRINKAGE, THEFT_SUSPECT, EXCESS_OVERAGE
   unitCost        Float
   discrepancyCost Float          // discrepancy * unitCost
   notes           String?
