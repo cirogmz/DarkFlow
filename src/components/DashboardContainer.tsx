@@ -25,7 +25,8 @@ import {
   ShieldAlert,
   Clock,
   Smartphone,
-  TabletSmartphone
+  TabletSmartphone,
+  Briefcase
 } from 'lucide-react';
 import Link from 'next/link';
 import QuickClockModal from '@/components/QuickClockModal';
@@ -83,6 +84,11 @@ export default function DashboardContainer({ children }: { children: React.React
           if (currentBrand) {
             setActiveBrand(currentBrand);
           }
+        }
+
+        if ((data.user.role === 'FRANCHISEE' || data.user.role === 'INVESTOR') && window.location.pathname === '/') {
+          router.push('/franchise');
+          return;
         }
       } else {
         router.push('/login');
@@ -161,6 +167,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Personal & Roles', path: '/users', icon: Users, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Auditoría & Logs', path: '/audit', icon: ShieldAlert, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Reportes & Exportar', path: '/reports', icon: FileSpreadsheet, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
+    { name: 'Portal Franquicias & B2B', path: '/franchise', icon: Briefcase, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'FRANCHISEE', 'INVESTOR'] },
     { name: 'Owner Hub Móvil', path: '/hub', icon: Smartphone, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
   ];
 

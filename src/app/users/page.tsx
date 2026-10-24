@@ -27,7 +27,9 @@ import {
   Plus,
   RefreshCw,
   LogOut,
-  Sliders
+  Sliders,
+  Building2,
+  TrendingUp
 } from 'lucide-react';
 
 interface BrandRef {
@@ -41,7 +43,7 @@ interface UserItem {
   id: string;
   name: string;
   email: string;
-  role: 'SUPER_ADMIN' | 'BRAND_ADMIN' | 'CASHIER' | 'KITCHEN' | 'DELIVERY';
+  role: 'SUPER_ADMIN' | 'BRAND_ADMIN' | 'CASHIER' | 'KITCHEN' | 'DELIVERY' | 'FRANCHISEE' | 'INVESTOR' | 'WAITER';
   createdAt: string;
   pinCode?: string | null;
   brands: Array<{
@@ -92,7 +94,7 @@ export default function UsersManagementPage() {
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
-  const [formRole, setFormRole] = useState<'SUPER_ADMIN' | 'BRAND_ADMIN' | 'CASHIER' | 'KITCHEN' | 'DELIVERY'>('CASHIER');
+  const [formRole, setFormRole] = useState<'SUPER_ADMIN' | 'BRAND_ADMIN' | 'CASHIER' | 'KITCHEN' | 'DELIVERY' | 'FRANCHISEE' | 'INVESTOR' | 'WAITER'>('CASHIER');
   const [formSelectedBrandIds, setFormSelectedBrandIds] = useState<string[]>([]);
   const [formVehicleType, setFormVehicleType] = useState('MOTO');
   const [formPlateNumber, setFormPlateNumber] = useState('');
@@ -519,6 +521,10 @@ export default function UsersManagementPage() {
         return { label: 'Cocinero KDS', bg: 'bg-amber-950/60 border-amber-800 text-amber-300', icon: Flame };
       case 'DELIVERY':
         return { label: 'Repartidor', bg: 'bg-cyan-950/60 border-cyan-800 text-cyan-300', icon: Truck };
+      case 'FRANCHISEE':
+        return { label: 'Franquiciatario B2B', bg: 'bg-indigo-950/60 border-indigo-800 text-indigo-300', icon: Building2 };
+      case 'INVESTOR':
+        return { label: 'Socio Inversionista', bg: 'bg-emerald-950/60 border-emerald-800 text-emerald-300', icon: TrendingUp };
       default:
         return { label: role, bg: 'bg-slate-800 border-slate-700 text-slate-300', icon: UserIcon };
     }
@@ -702,7 +708,7 @@ export default function UsersManagementPage() {
               </div>
 
               <div className="flex overflow-x-auto gap-2 py-1 max-w-full">
-                {(['ALL', 'SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER', 'KITCHEN', 'DELIVERY'] as const).map((r) => (
+                {(['ALL', 'SUPER_ADMIN', 'BRAND_ADMIN', 'FRANCHISEE', 'INVESTOR', 'CASHIER', 'KITCHEN', 'DELIVERY'] as const).map((r) => (
                   <button
                     key={r}
                     onClick={() => setRoleFilter(r)}
@@ -1306,6 +1312,8 @@ export default function UsersManagementPage() {
                     <option value="CASHIER">Cajero & Punto de Venta (POS)</option>
                     <option value="KITCHEN">Cocinero & Pantalla KDS</option>
                     <option value="DELIVERY">Repartidor de Entregas</option>
+                    <option value="FRANCHISEE">Franquiciatario B2B (Portal de Regalías)</option>
+                    <option value="INVESTOR">Socio Inversionista B2B (Portal de Dividendos)</option>
                     <option value="BRAND_ADMIN">Gerente de Marca (Acceso total a su marca)</option>
                     <option value="SUPER_ADMIN">Super Administrador (Acceso total)</option>
                   </select>

@@ -37,6 +37,7 @@ model User {
   createdPurchaseOrders PurchaseOrder[]    @relation("PurchaseOrderCreator")
   receivedPurchaseOrders PurchaseOrder[]   @relation("PurchaseOrderReceiver")
   createdPrepLists      DailyPrepList[]
+  franchiseContracts    FranchiseContract[] @relation("FranchiseUser")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -102,6 +103,8 @@ model Brand {
   temperatureAlerts  TemperatureAlert[]
   deliverySettlements DeliveryPayoutSettlement[]
   deliveryDisputes    DeliveryDispute[]
+  franchiseContracts  FranchiseContract[]
+  royaltyStatements   RoyaltyStatement[]
   targetFoodCostPct  Float?        @default(30)
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
@@ -1431,4 +1434,74 @@ model DeliveryDispute {
 
   @@index([brandId, platform, status])
 }
+
+model FranchiseContract {
+  id                 String             @id @default(uuid())
+  brandId            String
+  brand              Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId             String?
+  user               User?              @relation("FranchiseUser", fields: [userId], references: [id], onDelete: SetNull)
+  contractFolio      String             @unique // e.g. FRAN-BURGER-01, INV-PIZZA-2026
+  partnerType        String             @default("FRANCHISEE") // FRANCHISEE, INVESTOR, JOINT_VENTURE
+  partnerName        String
+  partnerEmail       String?
+  partnerPhone       String?
+  partnerRfc         String?
+  bankName           String?
+  bankAccount        String?
+  royaltyFeePct      Float              @default(5.0) // % sobre venta neta
+  marketingFeePct    Float              @default(2.0) // % para fondo de marketing cooperativo
+  techFeeMonthly     Float              @default(1500.0) // Cuota fija mensual de software / POS
+  commissaryFeePct   Float              @default(0.0) // % por uso de cocina central / ghost kitchen
+  calculationBasis   String             @default("NET_SALES") // NET_SALES o GROSS_SALES
+  equitySharePct     Float              @default(0.0) // Para inversionistas (% de participación en utilidades)
+  minimumMonthlyFee  Float              @default(0.0) // Cuota mínima mensual garantizada
+  startDate          DateTime
+  endDate            DateTime?
+  status             String             @default("ACTIVE") // ACTIVE, PAUSED, TERMINATED
+  notes              String?
+  statements         RoyaltyStatement[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([brandId, status])
+}
+
+model RoyaltyStatement {
+  id                  String            @id @default(uuid())
+  brandId             String
+  brand               Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contractId          String
+  contract            FranchiseContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  statementFolio      String            @unique // e.g. ROY-2026-M10-001
+  periodMonth         Int               // 1 - 12
+  periodYear          Int               // e.g. 2026
+  periodStart         DateTime
+  periodEnd           DateTime
+  ordersCount         Int               @default(0)
+  grossSales          Float             @default(0)
+  taxAmount           Float             @default(0)
+  discountsAmount     Float             @default(0)
+  netSales            Float             @default(0)
+  royaltyFeeAmount    Float             @default(0) // netSales * (royaltyFeePct / 100)
+  marketingFeeAmount  Float             @default(0) // netSales * (marketingFeePct / 100)
+  techFeeAmount       Float             @default(0) // cuota mensual
+  commissaryFeeAmount Float             @default(0) // netSales * (commissaryFeePct / 100)
+  totalDue            Float             @default(0) // royalty + marketing + tech + commissary
+  investorShareAmount Float             @default(0) // Para inversionistas (monto liquidable a favor del socio)
+  status              String            @default("DRAFT") // DRAFT, ISSUED, PAID, DISPUTED, CANCELLED
+  issuedAt            DateTime?
+  paidAt              DateTime?
+  paymentMethod       String?           // SPEI, CREDIT_CARD, OFFSET
+  paymentReference    String?           // Folio de transferencia bancaria
+  notes               String?
+  createdById         String?
+  createdByName       String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([brandId, periodYear, periodMonth])
+  @@index([contractId, status])
+}
+
 

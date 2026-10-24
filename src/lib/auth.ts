@@ -10,7 +10,7 @@ export interface SessionData {
   userId: string;
   email: string;
   name: string;
-  role: 'SUPER_ADMIN' | 'BRAND_ADMIN' | 'KITCHEN' | 'DELIVERY' | 'CASHIER';
+  role: 'SUPER_ADMIN' | 'BRAND_ADMIN' | 'KITCHEN' | 'DELIVERY' | 'CASHIER' | 'INVESTOR' | 'FRANCHISEE' | 'WAITER';
   brandIds: string[]; // Brands this user is associated with
   activeBrandId?: string; // Brand selected during login
   expiresAt: number;
