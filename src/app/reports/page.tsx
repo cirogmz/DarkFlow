@@ -20,7 +20,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   X,
-  Gift
+  Gift,
+  Wallet
 } from 'lucide-react';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
 import CompAuditTab from '@/components/reports/CompAuditTab';
@@ -107,6 +108,13 @@ interface SurveyReportRow {
   resolutionNotes?: string | null;
   resolvedAt?: string | null;
   resolvedById?: string | null;
+  compensationType?: string | null;
+  compensationAmount?: number | null;
+  compensationCouponCode?: string | null;
+  compensationStatus?: string | null;
+  tableNumber?: string | null;
+  waiterName?: string | null;
+  source?: string | null;
   createdAt: string;
   order: {
     id: string;
@@ -139,13 +147,24 @@ interface SurveysReportData {
     promoterPct: number;
     passivePct: number;
     detractorPct: number;
+    csatPct: number;
     avgOverallRating: number;
     avgFoodRating: number;
     avgServiceRating: number;
     avgSpeedRating: number;
     avgCleanlinessRating: number;
+    totalCompensationsAmount: number;
+    totalCompensationsCount: number;
   };
   pendingDetractorsCount: number;
+  waiterRanking?: Array<{
+    waiterId: string;
+    waiterName: string;
+    totalSurveys: number;
+    avgRating: number;
+    avgServiceRating: number;
+    csatPct: number;
+  }>;
 }
 
 export default function ReportsPage() {
@@ -199,8 +218,11 @@ export default function ReportsPage() {
   const [surveysReport, setSurveysReport] = useState<SurveysReportData | null>(null);
   const [surveyFilterStatus, setSurveyFilterStatus] = useState<'ALL' | 'PENDING_RESOLUTION' | 'RESOLVED'>('ALL');
   const [surveyFilterCategory, setSurveyFilterCategory] = useState<'ALL' | 'PROMOTER' | 'PASSIVE' | 'DETRACTOR'>('ALL');
+  const [surveyFilterComp, setSurveyFilterComp] = useState<'ALL' | 'WALLET_CREDIT' | 'COUPON' | 'NONE'>('ALL');
   const [selectedSurveyForResolution, setSelectedSurveyForResolution] = useState<SurveyReportRow | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
+  const [manualCompType, setManualCompType] = useState<'NONE' | 'WALLET_CREDIT' | 'COUPON'>('NONE');
+  const [manualCompAmount, setManualCompAmount] = useState<number>(50);
   const [resolving, setResolving] = useState(false);
 
   // Setup initial date presets
@@ -257,7 +279,8 @@ export default function ReportsPage() {
         const brandParam = selectedBrandId !== 'ALL' ? `&brandId=${selectedBrandId}` : '';
         const statusParam = surveyFilterStatus !== 'ALL' ? `&status=${surveyFilterStatus}` : '';
         const categoryParam = surveyFilterCategory !== 'ALL' ? `&npsCategory=${surveyFilterCategory}` : '';
-        const url = `/api/surveys?startDate=${startDate}&endDate=${endDate}${brandParam}${statusParam}${categoryParam}&limit=100`;
+        const compParam = surveyFilterComp !== 'ALL' ? `&compensationType=${surveyFilterComp}` : '';
+        const url = `/api/surveys?startDate=${startDate}&endDate=${endDate}${brandParam}${statusParam}${categoryParam}${compParam}&limit=150`;
         const res = await fetch(url);
         if (res.ok) {
           const json = await res.json();
@@ -278,7 +301,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, startDate, endDate, selectedBrandId, surveyFilterStatus, surveyFilterCategory]);
+  }, [activeTab, startDate, endDate, selectedBrandId, surveyFilterStatus, surveyFilterCategory, surveyFilterComp]);
 
   useEffect(() => {
     fetchReportData();
@@ -331,8 +354,8 @@ export default function ReportsPage() {
     } else if (activeTab === 'satisfaction' && surveysReport) {
       csvContent += 'REPORTE DE SATISFACCIÓN DEL COMENSAL & NPS - DARKFLOW MANAGER\n';
       csvContent += `Rango de Fechas:;${startDate} al ${endDate}\n`;
-      csvContent += `NPS Score Global:;${surveysReport.stats.score};Promotores:;${surveysReport.stats.promoters} (${surveysReport.stats.promoterPct}%);Pasivos:;${surveysReport.stats.passives} (${surveysReport.stats.passivePct}%);Detractores:;${surveysReport.stats.detractors} (${surveysReport.stats.detractorPct}%);Promedio Estrellas:;${surveysReport.stats.avgOverallRating}★\n\n`;
-      csvContent += 'Folio Orden;Fecha;Hora;Marca;Comensal;Telefono;Calif General;NPS Score;Sabor;Servicio;Rapidez;Higiene;Aspectos;Comentarios;Estado;Resolucion\n';
+      csvContent += `NPS Score Global:;${surveysReport.stats.score};CSAT %:;${surveysReport.stats.csatPct}%;Promotores:;${surveysReport.stats.promoters} (${surveysReport.stats.promoterPct}%);Pasivos:;${surveysReport.stats.passives} (${surveysReport.stats.passivePct}%);Detractores:;${surveysReport.stats.detractors} (${surveysReport.stats.detractorPct}%);Total Compensaciones:;$${surveysReport.stats.totalCompensationsAmount.toFixed(2)}\n\n`;
+      csvContent += 'Folio Orden;Fecha;Hora;Marca;Mesa;Mesero;Comensal;Telefono;Calif General;NPS Score;Sabor;Servicio;Rapidez;Higiene;Compensacion;Monto/Detalle;Aspectos;Comentarios;Estado;Resolucion\n';
 
       surveysReport.surveys.forEach((s) => {
         const dateObj = new Date(s.createdAt);
@@ -348,8 +371,13 @@ export default function ReportsPage() {
         }
         const commentClean = (s.comment || '').replace(/"/g, '""');
         const resNotesClean = (s.resolutionNotes || '').replace(/"/g, '""');
+        const compDetail = s.compensationType === 'WALLET_CREDIT'
+          ? `$${s.compensationAmount || 0} MXN`
+          : s.compensationType === 'COUPON'
+          ? `${s.compensationAmount || 0}% (${s.compensationCouponCode || '-'})`
+          : '-';
 
-        csvContent += `"${s.order.orderNumber}";"${dateStr}";"${timeStr}";"${s.brand.name}";"${s.customerName || '-'}";"${s.customerPhone || '-'}";${s.overallRating};${s.npsScore};${s.foodRating || '-'};${s.serviceRating || '-'};${s.speedRating || '-'};${s.cleanlinessRating || '-'};"${tagsClean}";"${commentClean}";"${s.status}";"${resNotesClean}"\n`;
+        csvContent += `"${s.order.orderNumber}";"${dateStr}";"${timeStr}";"${s.brand.name}";"${s.tableNumber || '-'}";"${s.waiterName || '-'}";"${s.customerName || '-'}";"${s.customerPhone || '-'}";${s.overallRating};${s.npsScore};${s.foodRating || '-'};${s.serviceRating || '-'};${s.speedRating || '-'};${s.cleanlinessRating || '-'};"${s.compensationType || 'NONE'}";"${compDetail}";"${tagsClean}";"${commentClean}";"${s.status}";"${resNotesClean}"\n`;
       });
     }
 
@@ -377,11 +405,15 @@ export default function ReportsPage() {
         body: JSON.stringify({
           status: 'RESOLVED',
           resolutionNotes,
+          manualCompensationType: manualCompType !== 'NONE' ? manualCompType : undefined,
+          manualCompensationAmount: manualCompType !== 'NONE' ? manualCompAmount : undefined,
         }),
       });
       if (res.ok) {
         setSelectedSurveyForResolution(null);
         setResolutionNotes('');
+        setManualCompType('NONE');
+        setManualCompAmount(50);
         fetchReportData();
       } else {
         alert('Error al resolver caso');
@@ -839,8 +871,8 @@ export default function ReportsPage() {
             {/* 4. SATISFACTION & NPS REPORT VIEW */}
             {activeTab === 'satisfaction' && surveysReport && (
               <div className="space-y-6">
-                {/* Executive NPS & Quality KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                {/* Executive NPS, CSAT & Quality KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
                   {/* NPS Global Score Card */}
                   <div className="glass-panel border border-slate-800 rounded-xl p-4 lg:col-span-2 relative overflow-hidden">
                     <div className="flex items-center justify-between">
@@ -895,6 +927,18 @@ export default function ReportsPage() {
                     </div>
                   </div>
 
+                  {/* CSAT Score Card */}
+                  <div className="glass-panel border border-slate-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between text-amber-400">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">CSAT Satisfacción</span>
+                      <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    </div>
+                    <p className="text-2xl font-black text-amber-400 mt-1">{surveysReport.stats.csatPct || 0}%</p>
+                    <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                      Calif. 4 y 5 estrellas
+                    </span>
+                  </div>
+
                   {/* Promoters Card */}
                   <div className="glass-panel border border-slate-800 rounded-xl p-4">
                     <div className="flex items-center justify-between text-emerald-400">
@@ -931,17 +975,17 @@ export default function ReportsPage() {
                     </span>
                   </div>
 
-                  {/* Urgent Detractor Alerts Card */}
+                  {/* Compensations Card */}
                   <div className="glass-panel border border-slate-800 rounded-xl p-4">
                     <div className="flex items-center justify-between text-amber-400">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Recuperación</span>
-                      <AlertTriangle className={`w-4 h-4 ${surveysReport.pendingDetractorsCount > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-600'}`} />
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Compensaciones</span>
+                      <Gift className="w-4 h-4 text-amber-400" />
                     </div>
-                    <p className={`text-2xl font-black mt-1 ${surveysReport.pendingDetractorsCount > 0 ? 'text-amber-400' : 'text-white'}`}>
-                      {surveysReport.pendingDetractorsCount}
+                    <p className="text-2xl font-black text-amber-300 mt-1">
+                      ${surveysReport.stats.totalCompensationsAmount.toFixed(0)}
                     </p>
-                    <span className="text-[10px] text-slate-500">
-                      {surveysReport.pendingDetractorsCount > 0 ? '⚠️ Casos por resolver' : '✓ Al día'}
+                    <span className="text-[10px] text-slate-400">
+                      {surveysReport.stats.totalCompensationsCount} clientes comp.
                     </span>
                   </div>
                 </div>
@@ -1013,6 +1057,23 @@ export default function ReportsPage() {
                       </button>
                     ))}
                   </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 font-bold uppercase">Compensación:</span>
+                    {(['ALL', 'WALLET_CREDIT', 'COUPON', 'NONE'] as const).map((comp) => (
+                      <button
+                        key={comp}
+                        onClick={() => setSurveyFilterComp(comp)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                          surveyFilterComp === comp
+                            ? 'bg-amber-400 text-slate-950 font-black'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        {comp === 'ALL' ? 'Todas' : comp === 'WALLET_CREDIT' ? '💰 Monedero' : comp === 'COUPON' ? '🎟️ Cupón' : 'Sin Comp.'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Detailed Reviews & Surveys Feed Table */}
@@ -1030,11 +1091,12 @@ export default function ReportsPage() {
                       <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[10px]">
                         <tr>
                           <th className="py-3 px-4">Orden / Fecha</th>
-                          <th className="py-3 px-4">Marca</th>
-                          <th className="py-3 px-4">Comensal</th>
+                          <th className="py-3 px-4">Marca / Mesa</th>
+                          <th className="py-3 px-4">Comensal / Mesero</th>
                           <th className="py-3 px-4 text-center">Calif. General</th>
                           <th className="py-3 px-4 text-center">NPS</th>
                           <th className="py-3 px-4">Aspectos & Comentarios</th>
+                          <th className="py-3 px-4 text-center">Compensación</th>
                           <th className="py-3 px-4 text-center">Estado</th>
                           <th className="py-3 px-4 text-right">Acción</th>
                         </tr>
@@ -1042,7 +1104,7 @@ export default function ReportsPage() {
                       <tbody className="divide-y divide-slate-850">
                         {surveysReport.surveys.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-slate-500">
+                            <td colSpan={9} className="py-8 text-center text-slate-500">
                               No hay encuestas registradas para el rango y filtros seleccionados.
                             </td>
                           </tr>
@@ -1067,13 +1129,20 @@ export default function ReportsPage() {
                                     {new Date(survey.createdAt).toLocaleString('es-MX')}
                                   </div>
                                 </td>
-                                <td className="py-3 px-4 text-slate-300 font-medium">
-                                  {survey.brand.name}
+                                <td className="py-3 px-4">
+                                  <div className="text-slate-300 font-medium">{survey.brand.name}</div>
+                                  {survey.tableNumber && (
+                                    <span className="text-[10px] text-amber-400 font-semibold block">
+                                      {survey.tableNumber}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-4">
                                   <div className="font-bold text-white">{survey.customerName || 'Anónimo'}</div>
-                                  {survey.customerPhone && (
-                                    <div className="text-[10px] text-slate-400 font-mono">{survey.customerPhone}</div>
+                                  {survey.waiterName && (
+                                    <div className="text-[10px] text-sky-400">
+                                      Mesero: {survey.waiterName}
+                                    </div>
                                   )}
                                   {survey.customer?.tier && (
                                     <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -1124,6 +1193,21 @@ export default function ReportsPage() {
                                     <p className="text-[10px] text-emerald-400 mt-1">
                                       <strong>Resolución:</strong> {survey.resolutionNotes}
                                     </p>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  {survey.compensationType === 'WALLET_CREDIT' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                                      <Wallet className="w-3 h-3 text-amber-400" />
+                                      +${survey.compensationAmount} MXN
+                                    </span>
+                                  ) : survey.compensationType === 'COUPON' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/30 text-sky-300">
+                                      <Gift className="w-3 h-3 text-sky-400" />
+                                      {survey.compensationAmount}% ({survey.compensationCouponCode})
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-500">-</span>
                                   )}
                                 </td>
                                 <td className="py-3 px-4 text-center">
@@ -1221,9 +1305,50 @@ export default function ReportsPage() {
                 value={resolutionNotes}
                 onChange={(e) => setResolutionNotes(e.target.value)}
                 placeholder="Ejemplo: Se contactó vía WhatsApp y se compensó con cortesía del 20% en su próxima visita. Cliente satisfecho."
-                rows={3}
+                rows={2}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 resize-none"
               />
+            </div>
+
+            {/* Manual Compensation Option */}
+            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
+              <span className="text-[11px] font-bold text-amber-400 block uppercase tracking-wider">
+                Otorgar Compensación Gerencial (Opcional)
+              </span>
+              <div className="grid grid-cols-3 gap-1.5 text-xs">
+                {(['NONE', 'WALLET_CREDIT', 'COUPON'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setManualCompType(t)}
+                    className={`py-1.5 px-2 rounded-lg font-bold border text-[11px] transition ${
+                      manualCompType === t
+                        ? 'bg-amber-400 text-slate-950 border-amber-400'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {t === 'NONE' ? 'Ninguna' : t === 'WALLET_CREDIT' ? '💰 Monedero' : '🎟️ Cupón'}
+                  </button>
+                ))}
+              </div>
+
+              {manualCompType !== 'NONE' && (
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs text-slate-400">
+                    {manualCompType === 'WALLET_CREDIT' ? 'Monto ($ MXN):' : 'Descuento (%):'}
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualCompAmount}
+                    onChange={(e) => setManualCompAmount(Number(e.target.value))}
+                    className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    {manualCompType === 'WALLET_CREDIT' ? 'a su cuenta' : 'cupón 30 días'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-2">

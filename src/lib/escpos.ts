@@ -456,6 +456,15 @@ export function generateReceiptBuffer(
     .line("/facturacion")
     .line(`Codigo de Ticket: ${order.id.slice(-8).toUpperCase()}`)
     .feed(1)
+    .divider("-")
+    .bold(true)
+    .line("COMO ESTUVO TU EXPERIENCIA?")
+    .bold(false)
+    .line(brand.surveyQrFooterText || "Escanea y califica para recibir sorpresas:")
+    .line(`/feedback?orderId=${order.id}`)
+    .line("Tu opinion nos importa y te compensamos!")
+    .divider("-")
+    .feed(1)
     .line("Gracias por su preferencia!")
     .line("DarkFlow POS v2.0");
 

@@ -18,7 +18,8 @@ import {
   AlertTriangle,
   Send,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Gift
 } from 'lucide-react';
 
 interface OrderItemData {
@@ -93,6 +94,9 @@ export default function OrderTrackingPage({
     overallRating: number;
     npsScore: number;
     status: string;
+    compensationType?: string | null;
+    compensationAmount?: number | null;
+    compensationCouponCode?: string | null;
   } | null>(null);
   const [showSubRatings, setShowSubRatings] = useState(false);
 
@@ -527,6 +531,22 @@ export default function OrderTrackingPage({
                 <span>
                   Hemos notificado a la gerencia sobre tu experiencia. Nuestro equipo revisará tu caso para garantizar la máxima calidad en tu próxima orden.
                 </span>
+              </div>
+            )}
+            {surveySubmitted.compensationType && surveySubmitted.compensationType !== 'NONE' && (
+              <div className="p-3 bg-gradient-to-r from-amber-950/40 to-slate-900 border border-amber-500/30 rounded-xl text-xs space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                  <Gift className="w-4 h-4" /> Compensación Otorgada:
+                </div>
+                {surveySubmitted.compensationType === 'WALLET_CREDIT' ? (
+                  <p className="text-amber-200 text-[11px]">
+                    Se han acreditado <strong>${surveySubmitted.compensationAmount} MXN</strong> en tu Monedero Digital para tu próxima visita.
+                  </p>
+                ) : (
+                  <p className="text-sky-300 text-[11px]">
+                    Te obsequiamos el cupón <strong>{surveySubmitted.compensationCouponCode}</strong> ({surveySubmitted.compensationAmount}% de descuento).
+                  </p>
+                )}
               </div>
             )}
           </div>

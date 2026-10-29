@@ -110,6 +110,11 @@ model Brand {
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
   targetDailySales   Float?        @default(15000)
+  autoCompensationEnabled Boolean   @default(true)
+  autoCompRatingThreshold Int       @default(2)
+  autoCompWalletAmount    Float     @default(50.0)
+  autoCompCouponDiscount  Float     @default(20.0)
+  surveyQrFooterText      String?   @default("¿Cómo estuvo tu experiencia? Escanea y califica para recibir sorpresas.")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -1083,6 +1088,18 @@ model SatisfactionSurvey {
   resolutionNotes    String?
   resolvedAt         DateTime?
   resolvedById       String?
+  compensationType       String?   @default("NONE")
+  compensationAmount     Float?
+  compensationCouponId   String?
+  compensationCouponCode String?
+  compensationWalletTxId String?
+  compensationStatus     String?   @default("NONE")
+  compensationClaimedAt  DateTime?
+  tableId                String?
+  tableNumber            String?
+  waiterId               String?
+  waiterName             String?
+  source                 String?   @default("WEB_TRACKING")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
