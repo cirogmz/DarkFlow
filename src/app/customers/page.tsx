@@ -34,10 +34,14 @@ import {
   Gift,
   Award,
   Zap,
-  Info
+  Info,
+  Download,
+  Copy,
+  Check
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { GiftCardDTO, GiftCardTransactionDTO, generateGiftCardCode } from '@/lib/giftCards';
+import { WalletTransactionDTO } from '@/lib/wallet';
 import {
   LOYALTY_TIERS,
   LoyaltyTierId,
@@ -83,6 +87,11 @@ interface Customer {
   totalOrders: number;
   totalSpent: number;
   loyaltyPoints: number;
+  walletBalance?: number;
+  walletQrCode?: string | null;
+  cashbackRatePct?: number | null;
+  totalCashbackEarned?: number;
+  totalCashbackSpent?: number;
   createdAt: string;
   updatedAt: string;
   brand?: {
@@ -102,6 +111,9 @@ interface CRMStats {
   totalPoints: number;
   totalSpent: number;
   averageSpent: number;
+  totalWalletBalance?: number;
+  totalCashbackEarned?: number;
+  totalCashbackSpent?: number;
   bronzeCount?: number;
   silverCount?: number;
   goldCount?: number;
@@ -164,6 +176,18 @@ export default function CustomersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showTierBenefitsModal, setShowTierBenefitsModal] = useState(false);
   const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState<Customer | null>(null);
+  const [selectedCustomerForWallet, setSelectedCustomerForWallet] = useState<Customer | null>(null);
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransactionDTO[]>([]);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletRechargeForm, setWalletRechargeForm] = useState({
+    amount: '',
+    type: 'MANUAL_RECHARGE',
+    reference: '',
+    notes: '',
+  });
+  const [walletSubmitting, setWalletSubmitting] = useState(false);
+  const [walletFilterType, setWalletFilterType] = useState<string>('ALL');
+  const [copiedQrCode, setCopiedQrCode] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [pointsAdjustment, setPointsAdjustment] = useState<number>(0);
   const [adjustmentReason, setAdjustmentReason] = useState<string>('');
@@ -364,6 +388,91 @@ export default function CustomersPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al eliminar cliente';
       addNotification(msg, 'error');
+    }
+  };
+
+  const fetchCustomerWallet = async (customerId: string) => {
+    setWalletLoading(true);
+    try {
+      const res = await fetch(`/api/customers/${customerId}/wallet`);
+      const data = await res.json();
+      if (res.ok && data.wallet) {
+        setWalletTransactions(data.transactions || []);
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customerId
+              ? {
+                  ...c,
+                  walletBalance: data.wallet.walletBalance,
+                  walletQrCode: data.wallet.walletQrCode,
+                  cashbackRatePct: data.wallet.cashbackRatePct,
+                  totalCashbackEarned: data.wallet.totalCashbackEarned,
+                  totalCashbackSpent: data.wallet.totalCashbackSpent,
+                }
+              : c
+          )
+        );
+        setSelectedCustomerForWallet((prev) =>
+          prev && prev.id === customerId
+            ? {
+                ...prev,
+                walletBalance: data.wallet.walletBalance,
+                walletQrCode: data.wallet.walletQrCode,
+                cashbackRatePct: data.wallet.cashbackRatePct,
+                totalCashbackEarned: data.wallet.totalCashbackEarned,
+                totalCashbackSpent: data.wallet.totalCashbackSpent,
+              }
+            : prev
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching customer wallet:', err);
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  const handleRechargeWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerForWallet) return;
+    const numAmount = parseFloat(walletRechargeForm.amount);
+    if (isNaN(numAmount) || numAmount === 0) {
+      addNotification('Ingresa un monto válido diferente de cero', 'error');
+      return;
+    }
+
+    setWalletSubmitting(true);
+    try {
+      const res = await fetch(`/api/customers/${selectedCustomerForWallet.id}/wallet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: numAmount,
+          type: walletRechargeForm.type,
+          reference: walletRechargeForm.reference,
+          notes: walletRechargeForm.notes,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar saldo');
+      }
+
+      addNotification(data.message || 'Saldo actualizado exitosamente', 'success');
+      setWalletRechargeForm({
+        amount: '',
+        type: 'MANUAL_RECHARGE',
+        reference: '',
+        notes: '',
+      });
+      fetchCustomerWallet(selectedCustomerForWallet.id);
+      fetchCustomers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión';
+      addNotification(msg, 'error');
+    } finally {
+      setWalletSubmitting(false);
     }
   };
 
@@ -689,6 +798,54 @@ export default function CustomersPage() {
               </div>
             </div>
 
+            {/* Wallet & Cashback Stats Ribbon */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                    <Wallet className="h-3.5 w-3.5" /> Saldo Total en Monederos
+                  </p>
+                  <h3 className="text-xl sm:text-2xl font-black text-emerald-300 font-mono mt-0.5">
+                    ${(stats.totalWalletBalance || 0).toFixed(2)} <span className="text-xs font-normal text-slate-400">MXN</span>
+                  </h3>
+                  <span className="text-[10px] text-slate-400">Fondos activos disponibles para canje</span>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <Coins className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-teal-950/40 to-slate-900 border border-teal-500/30 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5" /> Cashback Total Acreditado
+                  </p>
+                  <h3 className="text-xl sm:text-2xl font-black text-teal-300 font-mono mt-0.5">
+                    ${(stats.totalCashbackEarned || 0).toFixed(2)} <span className="text-xs font-normal text-slate-400">MXN</span>
+                  </h3>
+                  <span className="text-[10px] text-slate-400">Acumulado histórico por compras</span>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+                  <Award className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-amber-950/40 to-slate-900 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                    <CreditCard className="h-3.5 w-3.5" /> Cashback Redimido en Caja
+                  </p>
+                  <h3 className="text-xl sm:text-2xl font-black text-amber-300 font-mono mt-0.5">
+                    ${(stats.totalCashbackSpent || 0).toFixed(2)} <span className="text-xs font-normal text-slate-400">MXN</span>
+                  </h3>
+                  <span className="text-[10px] text-slate-400">Ahorro efectivo transferido a comensales</span>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+
             {/* Search & Filter Bar */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
               <form onSubmit={handleSearch} className="relative w-full md:w-80">
@@ -970,6 +1127,29 @@ export default function CustomersPage() {
 
                       {/* Bottom Stats & Actions */}
                       <div>
+                        {/* Monedero & Cashback Badge */}
+                        <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-xl p-2.5 mb-2.5 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                              <Wallet className="h-3.5 w-3.5" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 font-semibold uppercase">Saldo Monedero</p>
+                              <p className="text-sm font-black text-emerald-400 font-mono">
+                                ${(customer.walletBalance || 0).toFixed(2)} <span className="text-[10px] font-normal text-slate-400">MXN</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-500/20 block">
+                              {customer.cashbackRatePct || 5}% Cashback
+                            </span>
+                            <span className="text-[9px] text-slate-500 font-mono block mt-0.5">
+                              Ganado: ${(customer.totalCashbackEarned || 0).toFixed(0)}
+                            </span>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-2 text-center py-2 px-3 bg-slate-950 rounded-xl border border-slate-800/80 mb-3">
                           <div>
                             <p className="text-[10px] text-slate-500 font-semibold uppercase">Pedidos</p>
@@ -986,13 +1166,25 @@ export default function CustomersPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                        <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-800">
+                          <button
+                            onClick={() => {
+                              setSelectedCustomerForWallet(customer);
+                              fetchCustomerWallet(customer.id);
+                            }}
+                            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 hover:from-emerald-600/30 hover:to-teal-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-sm"
+                            title="Ver monedero digital, código QR y estado de cuenta"
+                          >
+                            <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+                            Monedero & QR
+                          </button>
+
                           <button
                             onClick={() => setSelectedCustomerForHistory(customer)}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors cursor-pointer"
+                            title="Historial de Pedidos y Puntos"
                           >
-                            <Clock className="h-3.5 w-3.5 text-amber-400" />
-                            Historial & Puntos
+                            <Clock className="h-4 w-4 text-amber-400" />
                           </button>
 
                           <button
@@ -2291,6 +2483,324 @@ export default function CustomersPage() {
                   <p className="text-xs text-slate-300 leading-relaxed">
                     Al registrar la fecha de nacimiento de tus clientes, el sistema identifica automáticamente a los cumpleañeros de la semana y del mes. Además, cuando un cliente alcanza el umbral de consumo o número de pedidos mediante caja o pedidos online, el sistema promueve automáticamente su estatus al siguiente nivel VIP, aumentando su tasa de acumulación de puntos y su descuento automático sin intervención manual.
                   </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Customer Digital Wallet & VIP Card Pass */}
+        {selectedCustomerForWallet && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl my-6 animate-in fade-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-950/60">
+                <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <Wallet className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-black text-white">{selectedCustomerForWallet.name}</h3>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black ${
+                        selectedCustomerForWallet.tier === 'PLATINUM' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50' :
+                        selectedCustomerForWallet.tier === 'GOLD' ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50' :
+                        selectedCustomerForWallet.tier === 'SILVER' ? 'bg-slate-300/20 text-slate-200 border border-slate-300/40' :
+                        'bg-amber-800/20 text-amber-500 border border-amber-700/40'
+                      }`}>
+                        {selectedCustomerForWallet.tier} VIP
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                      <span>Tel: {selectedCustomerForWallet.phone}</span>
+                      <span>•</span>
+                      <span>Cliente desde {new Date(selectedCustomerForWallet.createdAt).toLocaleDateString('es-MX', { month: 'short', year: 'numeric' })}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedCustomerForWallet(null)}
+                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+                {/* Visual Digital VIP Card */}
+                <div className={`p-6 rounded-3xl border shadow-xl relative overflow-hidden transition-all ${
+                  selectedCustomerForWallet.tier === 'PLATINUM'
+                    ? 'bg-gradient-to-br from-slate-950 via-cyan-950 to-slate-900 border-cyan-400/50 shadow-cyan-500/10'
+                    : selectedCustomerForWallet.tier === 'GOLD'
+                    ? 'bg-gradient-to-br from-slate-950 via-amber-950 to-slate-900 border-amber-400/50 shadow-amber-500/10'
+                    : selectedCustomerForWallet.tier === 'SILVER'
+                    ? 'bg-gradient-to-br from-slate-950 via-slate-850 to-slate-900 border-slate-500/50'
+                    : 'bg-gradient-to-br from-slate-950 via-amber-950/60 to-slate-900 border-amber-800/50'
+                }`}>
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <span className="text-[10px] font-mono tracking-widest text-slate-400 uppercase block">
+                        TARJETA DIGITAL DE CLIENTE VIP
+                      </span>
+                      <h4 className="text-lg font-black text-white tracking-wide mt-0.5">
+                        {activeBrand?.name || 'DarkFlow Pass'}
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold text-white flex items-center gap-1.5">
+                        <Crown className="h-3.5 w-3.5 text-amber-400" />
+                        <span>Membresía {selectedCustomerForWallet.tier}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-6">
+                    <div>
+                      <span className="text-xs text-slate-400 uppercase font-semibold">Saldo Disponible en Monedero</span>
+                      <div className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono tracking-tight mt-1">
+                        ${(selectedCustomerForWallet.walletBalance || 0).toFixed(2)} <span className="text-sm font-bold text-slate-300">MXN</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                          {selectedCustomerForWallet.cashbackRatePct || 5}% Cashback Automático
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 text-xs font-bold border border-purple-500/30">
+                          {selectedCustomerForWallet.loyaltyPoints} Pts
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-950/80 p-3 rounded-2xl border border-white/10 flex items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-slate-400 uppercase font-mono block">CÓDIGO DE ESCANEO / QR</span>
+                        <span className="font-mono text-xs font-bold text-white block">
+                          {selectedCustomerForWallet.walletQrCode || 'DF-WAL-PENDING'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedCustomerForWallet.walletQrCode) {
+                              navigator.clipboard.writeText(selectedCustomerForWallet.walletQrCode);
+                              setCopiedQrCode(true);
+                              setTimeout(() => setCopiedQrCode(false), 2000);
+                            }
+                          }}
+                          className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-bold transition-colors cursor-pointer"
+                        >
+                          {copiedQrCode ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                          <span>{copiedQrCode ? '¡Copiado!' : 'Copiar código QR'}</span>
+                        </button>
+                      </div>
+                      <div className="h-12 w-12 rounded-xl bg-white p-1 flex items-center justify-center flex-shrink-0">
+                        <QrCode className="h-10 w-10 text-slate-950" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between text-xs text-slate-300 gap-2">
+                    <div>
+                      <span className="text-slate-400">Total Cashback Acumulado:</span>{' '}
+                      <strong className="text-white">${(selectedCustomerForWallet.totalCashbackEarned || 0).toFixed(2)} MXN</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Total Canjeado:</span>{' '}
+                      <strong className="text-amber-400">${(selectedCustomerForWallet.totalCashbackSpent || 0).toFixed(2)} MXN</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Consumo Histórico:</span>{' '}
+                      <strong className="text-emerald-400">${selectedCustomerForWallet.totalSpent.toFixed(2)} MXN</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form to Recharge / Adjust Balance */}
+                <div className="bg-slate-950 rounded-2xl border border-slate-800 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Coins className="h-4 w-4 text-emerald-400" />
+                      Abonar Saldo / Bono Promocional
+                    </h4>
+                    <span className="text-xs text-slate-400">Ajuste con folio de auditoría</span>
+                  </div>
+
+                  <form onSubmit={handleRechargeWallet} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Monto ($ MXN) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          placeholder="ej. 200 o -50"
+                          value={walletRechargeForm.amount}
+                          onChange={(e) => setWalletRechargeForm({ ...walletRechargeForm, amount: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold focus:border-emerald-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Tipo de Movimiento *</label>
+                        <select
+                          value={walletRechargeForm.type}
+                          onChange={(e) => setWalletRechargeForm({ ...walletRechargeForm, type: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                        >
+                          <option value="MANUAL_RECHARGE">Recarga Manual de Saldo</option>
+                          <option value="PROMO_BONUS">Bono Promocional / Cortesía</option>
+                          <option value="REFUND_ADJUSTMENT">Ajuste o Compensación</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Folio / Referencia</label>
+                        <input
+                          type="text"
+                          placeholder="ej. Recarga en Caja #1"
+                          value={walletRechargeForm.reference}
+                          onChange={(e) => setWalletRechargeForm({ ...walletRechargeForm, reference: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Notas / Justificación</label>
+                      <input
+                        type="text"
+                        placeholder="Razón de la recarga o compensación..."
+                        value={walletRechargeForm.notes}
+                        onChange={(e) => setWalletRechargeForm({ ...walletRechargeForm, notes: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="submit"
+                        disabled={walletSubmitting}
+                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md shadow-emerald-500/10 cursor-pointer disabled:opacity-50"
+                      >
+                        {walletSubmitting ? 'Procesando...' : 'Aplicar Saldo a Monedero'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Wallet Transactions History Table */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <History className="h-4 w-4 text-amber-400" />
+                        Historial de Movimientos ({walletTransactions.length})
+                      </h4>
+                      <button
+                        onClick={() => fetchCustomerWallet(selectedCustomerForWallet.id)}
+                        className="p-1 text-slate-400 hover:text-white"
+                        title="Actualizar movimientos"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${walletLoading ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 text-[10px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setWalletFilterType('ALL')}
+                          className={`px-2 py-1 rounded transition ${walletFilterType === 'ALL' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWalletFilterType('EARNED_CASHBACK')}
+                          className={`px-2 py-1 rounded transition ${walletFilterType === 'EARNED_CASHBACK' ? 'bg-emerald-900/60 text-emerald-300' : 'text-slate-400'}`}
+                        >
+                          Cashback
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWalletFilterType('REDEEMED_PAYMENT')}
+                          className={`px-2 py-1 rounded transition ${walletFilterType === 'REDEEMED_PAYMENT' ? 'bg-amber-900/60 text-amber-300' : 'text-slate-400'}`}
+                        >
+                          Canjes
+                        </button>
+                      </div>
+
+                      <a
+                        href={`/api/customers/${selectedCustomerForWallet.id}/wallet/export`}
+                        download
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-colors"
+                      >
+                        <Download className="h-3.5 w-3.5 text-amber-400" />
+                        <span>Exportar CSV</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {walletTransactions.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 bg-slate-950 rounded-2xl border border-slate-800 text-xs">
+                      No hay transacciones registradas para este monedero aún.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {walletTransactions
+                        .filter(t => walletFilterType === 'ALL' || t.type === walletFilterType)
+                        .map((tx) => {
+                          const isCredit = tx.type === 'EARNED_CASHBACK' || tx.type === 'MANUAL_RECHARGE' || tx.type === 'PROMO_BONUS';
+                          return (
+                            <div
+                              key={tx.id}
+                              className="bg-slate-950 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between gap-3 text-xs"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                                  isCredit ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                }`}>
+                                  {isCredit ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-white">
+                                      {tx.type === 'EARNED_CASHBACK' ? 'Cashback por Consumo' :
+                                       tx.type === 'REDEEMED_PAYMENT' ? 'Canje en Comanda' :
+                                       tx.type === 'MANUAL_RECHARGE' ? 'Recarga Manual' :
+                                       tx.type === 'PROMO_BONUS' ? 'Bono Promocional' : 'Ajuste de Saldo'}
+                                    </span>
+                                    {tx.reference && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
+                                        {tx.reference}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                                    <span>{new Date(tx.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                    <span>•</span>
+                                    <span>Por: {tx.createdByName || 'Sistema'}</span>
+                                    {tx.notes && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="italic text-slate-400">{tx.notes}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right flex-shrink-0">
+                                <span className={`font-mono font-black text-sm ${isCredit ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                  {isCredit ? '+' : '-'}${tx.amount.toFixed(2)}
+                                </span>
+                                <p className="text-[10px] text-slate-500 font-mono">
+                                  Saldo: ${tx.balanceAfter.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -1219,7 +1219,7 @@ export default function PublicMenuPage({
 
                 <div>
                   <label className="text-xs text-slate-300 font-medium block mb-1">
-                    Teléfono celular (Opcional - Ganas Puntos de Fidelidad)
+                    Teléfono celular (Opcional - Acumula Cashback y Puntos VIP)
                   </label>
                   <div className="relative">
                     <Phone className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1231,6 +1231,12 @@ export default function PublicMenuPage({
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
+                  {customerPhone && customerPhone.trim().length >= 7 && (
+                    <div className="mt-1.5 p-2 rounded-lg bg-emerald-950/40 border border-emerald-800/40 flex items-center gap-2 text-[11px] text-emerald-300">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      <span>¡Tu compra acumulará Cashback en tu Monedero Digital y Puntos de Lealtad!</span>
+                    </div>
+                  )}
                 </div>
 
                 <div>

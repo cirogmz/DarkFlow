@@ -9,6 +9,7 @@ import {
   LOYALTY_TIERS,
   LoyaltyTierId,
 } from '@/lib/loyaltyTiers';
+import { generateCustomerWalletQrCode, getCashbackRateByTier } from '@/lib/wallet';
 
 export async function GET(req: NextRequest) {
   try {
@@ -151,6 +152,9 @@ export async function GET(req: NextRequest) {
       _sum: {
         loyaltyPoints: true,
         totalSpent: true,
+        walletBalance: true,
+        totalCashbackEarned: true,
+        totalCashbackSpent: true,
       },
       _avg: {
         totalSpent: true,
@@ -165,6 +169,9 @@ export async function GET(req: NextRequest) {
         totalPoints: aggregates._sum.loyaltyPoints || 0,
         totalSpent: aggregates._sum.totalSpent || 0,
         averageSpent: aggregates._avg.totalSpent || 0,
+        totalWalletBalance: aggregates._sum.walletBalance || 0,
+        totalCashbackEarned: aggregates._sum.totalCashbackEarned || 0,
+        totalCashbackSpent: aggregates._sum.totalCashbackSpent || 0,
         bronzeCount,
         silverCount,
         goldCount,
@@ -228,6 +235,11 @@ export async function POST(req: NextRequest) {
         pointsMultiplier: tierConfig.pointsMultiplier,
         tierDiscountPct: tierConfig.discountPct,
         loyaltyPoints: parseInt(String(initialPoints), 10) || 0,
+        walletBalance: 0,
+        walletQrCode: generateCustomerWalletQrCode(cleanPhone),
+        cashbackRatePct: getCashbackRateByTier(tierConfig.id),
+        totalCashbackEarned: 0,
+        totalCashbackSpent: 0,
         brandId: session.activeBrandId || null,
       },
     });
@@ -261,6 +273,7 @@ export async function PATCH(req: NextRequest) {
       pointsMultiplier,
       tierDiscountPct,
       pointsAdjustment,
+      cashbackRatePct,
     } = data;
 
     if (!id) {
@@ -318,6 +331,8 @@ export async function PATCH(req: NextRequest) {
         pointsMultiplier: newMultiplier,
         tierDiscountPct: newDiscount,
         loyaltyPoints: updatedPoints,
+        cashbackRatePct: cashbackRatePct !== undefined ? (cashbackRatePct === null ? null : Number(cashbackRatePct)) : customer.cashbackRatePct,
+        walletQrCode: customer.walletQrCode || generateCustomerWalletQrCode(customer.id),
       },
     });
 

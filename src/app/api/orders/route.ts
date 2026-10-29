@@ -6,6 +6,7 @@ import { orderEvents } from '@/lib/events';
 import { createPaymentSession } from '@/lib/payments';
 import { generateKotBuffer, sendToNetworkPrinter } from '@/lib/escpos';
 import { determineCustomerTier, calculateLoyaltyPointsEarned } from '@/lib/loyaltyTiers';
+import { calculateOrderCashback, generateCustomerWalletQrCode } from '@/lib/wallet';
 
 interface OrderItemInput {
   productId: string;
@@ -97,13 +98,15 @@ export async function POST(req: NextRequest) {
       couponCode,
       giftCardCode,
       giftCardPin,
+      walletAmountPaid = 0,
       paymentMethod = 'CASH',
       paymentStatus: explicitPaymentStatus,
       items
     } = await req.json();
 
+    const isWalletPay = paymentMethod === 'WALLET' || (parseFloat(String(walletAmountPaid)) > 0);
     const isGiftCardPay = paymentMethod === 'GIFT_CARD' || paymentMethod === 'MONEDERO';
-    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD' || isGiftCardPay));
+    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD' || isGiftCardPay || isWalletPay));
     const finalPaymentStatus = explicitPaymentStatus || (isDirectPaid ? 'PAID' : 'PENDING');
     const finalPaidAt = isDirectPaid ? new Date() : null;
 
@@ -180,6 +183,9 @@ export async function POST(req: NextRequest) {
     // Create Order in transaction and update table/customer status
     const order = await prisma.$transaction(async (tx) => {
       let linkedCustomerId: string | null = null;
+      let actualWalletPaid = 0;
+      let actualCashbackEarned = 0;
+      let initialWalletBalance = 0;
 
       if (customerPhone && customerPhone.trim()) {
         const cleanPhone = customerPhone.trim();
@@ -189,11 +195,30 @@ export async function POST(req: NextRequest) {
 
         if (existingCustomer) {
           linkedCustomerId = existingCustomer.id;
+          initialWalletBalance = existingCustomer.walletBalance;
           const updatedTotalSpent = existingCustomer.totalSpent + total;
           const updatedTotalOrders = existingCustomer.totalOrders + 1;
           const newTier = determineCustomerTier(updatedTotalSpent, updatedTotalOrders);
           const earned = calculateLoyaltyPointsEarned(total, existingCustomer.pointsMultiplier || newTier.pointsMultiplier);
           const newPoints = Math.max(0, existingCustomer.loyaltyPoints - numRedeemedPoints + earned);
+
+          // Handle wallet balance redemption
+          let reqWallet = parseFloat(String(walletAmountPaid)) || 0;
+          if (paymentMethod === 'WALLET' && reqWallet === 0) {
+            reqWallet = total;
+          }
+          if (reqWallet > 0) {
+            actualWalletPaid = parseFloat(Math.min(reqWallet, existingCustomer.walletBalance, total).toFixed(2));
+          }
+
+          // Calculate cashback if paid and out-of-pocket money was spent
+          const outOfPocketPaid = isDirectPaid ? Math.max(0, total - actualWalletPaid) : 0;
+          if (outOfPocketPaid > 0) {
+            const cb = calculateOrderCashback(outOfPocketPaid, newTier.id, existingCustomer.cashbackRatePct);
+            actualCashbackEarned = cb.cashbackAmount;
+          }
+
+          const newWalletBalance = parseFloat((existingCustomer.walletBalance - actualWalletPaid + actualCashbackEarned).toFixed(2));
 
           await tx.customer.update({
             where: { id: existingCustomer.id },
@@ -206,11 +231,23 @@ export async function POST(req: NextRequest) {
               tier: newTier.id,
               pointsMultiplier: newTier.pointsMultiplier,
               tierDiscountPct: newTier.discountPct,
+              walletBalance: newWalletBalance,
+              walletQrCode: existingCustomer.walletQrCode || generateCustomerWalletQrCode(existingCustomer.id),
+              totalCashbackEarned: { increment: actualCashbackEarned },
+              totalCashbackSpent: { increment: actualWalletPaid },
             },
           });
         } else {
           const newTier = determineCustomerTier(total, 1);
           const earned = calculateLoyaltyPointsEarned(total, newTier.pointsMultiplier);
+          
+          let cbEarned = 0;
+          if (isDirectPaid) {
+            const cb = calculateOrderCashback(total, newTier.id);
+            cbEarned = cb.cashbackAmount;
+            actualCashbackEarned = cbEarned;
+          }
+
           const newCustomer = await tx.customer.create({
             data: {
               name: customerName.trim(),
@@ -223,6 +260,10 @@ export async function POST(req: NextRequest) {
               tier: newTier.id,
               pointsMultiplier: newTier.pointsMultiplier,
               tierDiscountPct: newTier.discountPct,
+              walletBalance: cbEarned,
+              walletQrCode: generateCustomerWalletQrCode(cleanPhone),
+              totalCashbackEarned: cbEarned,
+              totalCashbackSpent: 0,
             },
           });
           linkedCustomerId = newCustomer.id;
@@ -259,6 +300,8 @@ export async function POST(req: NextRequest) {
           total,
           tableId: tableId || null,
           diners: diners ? parseInt(String(diners), 10) : 1,
+          walletAmountPaid: actualWalletPaid,
+          cashbackEarned: actualCashbackEarned,
           paymentMethod,
           paymentStatus: finalPaymentStatus,
           paidAt: finalPaidAt,
@@ -380,6 +423,45 @@ export async function POST(req: NextRequest) {
             currency: 'MXN',
             method: 'MONEDERO_ELECTRONICO',
             notes: `Tarjeta: ${card.code}`,
+          },
+        });
+      }
+
+      // Record wallet debit transaction if wallet balance was redeemed
+      if (actualWalletPaid > 0 && linkedCustomerId) {
+        await tx.customerWalletTransaction.create({
+          data: {
+            customerId: linkedCustomerId,
+            brandId: activeBrandId,
+            orderId: newOrder.id,
+            type: 'REDEEMED_PAYMENT',
+            amount: actualWalletPaid,
+            balanceBefore: initialWalletBalance,
+            balanceAfter: parseFloat((initialWalletBalance - actualWalletPaid).toFixed(2)),
+            reference: `Pago Comanda #${newOrder.orderNumber}`,
+            notes: 'Canje de monedero electrónico digital',
+            createdById: session.userId,
+            createdByName: session.name,
+          },
+        });
+      }
+
+      // Record wallet credit transaction if cashback was earned
+      if (actualCashbackEarned > 0 && linkedCustomerId) {
+        const balBefore = parseFloat((initialWalletBalance - actualWalletPaid).toFixed(2));
+        await tx.customerWalletTransaction.create({
+          data: {
+            customerId: linkedCustomerId,
+            brandId: activeBrandId,
+            orderId: newOrder.id,
+            type: 'EARNED_CASHBACK',
+            amount: actualCashbackEarned,
+            balanceBefore: balBefore,
+            balanceAfter: parseFloat((balBefore + actualCashbackEarned).toFixed(2)),
+            reference: `Cashback Comanda #${newOrder.orderNumber}`,
+            notes: `Cashback automático por consumo`,
+            createdById: session.userId,
+            createdByName: session.name,
           },
         });
       }

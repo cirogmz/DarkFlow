@@ -10,6 +10,7 @@ export interface LoyaltyTierConfig {
   minOrders: number;
   pointsMultiplier: number;
   discountPct: number;
+  cashbackPct: number;
   perks: string[];
 }
 
@@ -24,8 +25,10 @@ export const LOYALTY_TIERS: Record<LoyaltyTierId, LoyaltyTierConfig> = {
     minOrders: 0,
     pointsMultiplier: 1.0,
     discountPct: 0.0,
+    cashbackPct: 3.0,
     perks: [
       'Acumulación base: 1 pt por cada $10 MXN de consumo',
+      '3% de Cashback automático en tu Monedero Digital',
       'Acceso al catálogo de recompensas estándar',
     ],
   },
@@ -39,8 +42,10 @@ export const LOYALTY_TIERS: Record<LoyaltyTierId, LoyaltyTierConfig> = {
     minOrders: 5,
     pointsMultiplier: 1.25,
     discountPct: 5.0,
+    cashbackPct: 5.0,
     perks: [
       '1.25x Puntos en todos tus pedidos (+25% acelerado)',
+      '5% de Cashback automático en tu Monedero Digital',
       '5% Descuento automático permanente en consumos',
       'Postre de cortesía en tu mes de cumpleaños',
     ],
@@ -55,8 +60,10 @@ export const LOYALTY_TIERS: Record<LoyaltyTierId, LoyaltyTierConfig> = {
     minOrders: 15,
     pointsMultiplier: 1.5,
     discountPct: 10.0,
+    cashbackPct: 8.0,
     perks: [
       '1.5x Puntos en todos tus pedidos (+50% acelerado)',
+      '8% de Cashback automático en tu Monedero Digital',
       '10% Descuento automático permanente en consumos',
       'Combo de Bebida & Postre especial en tu cumpleaños',
       'Asignación prioritaria en reservaciones de mesa',
@@ -72,8 +79,10 @@ export const LOYALTY_TIERS: Record<LoyaltyTierId, LoyaltyTierConfig> = {
     minOrders: 30,
     pointsMultiplier: 2.0,
     discountPct: 15.0,
+    cashbackPct: 12.0,
     perks: [
       '2.0x Doble acumulación de puntos (100% bonus)',
+      '12% de Cashback automático en tu Monedero Digital VIP',
       '15% Descuento automático permanente en consumos',
       'Botella o Menú Degustación cortesía de cumpleaños',
       'Acceso preferencial sin fila y atención exclusiva VIP',

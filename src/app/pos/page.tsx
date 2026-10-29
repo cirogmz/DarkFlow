@@ -47,6 +47,10 @@ interface CustomerSuggestion {
   notes?: string | null;
   loyaltyPoints: number;
   totalOrders: number;
+  tier?: string;
+  walletBalance?: number;
+  walletQrCode?: string | null;
+  cashbackRatePct?: number | null;
 }
 
 interface Ingredient {
@@ -218,6 +222,12 @@ export default function POSPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSuggestion | null>(null);
   const [redeemPoints, setRedeemPoints] = useState(false);
+  const [useWalletBalance, setUseWalletBalance] = useState(false);
+  const [customWalletAmount, setCustomWalletAmount] = useState<number | ''>('');
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrInput, setQrInput] = useState('');
+  const [qrLookupLoading, setQrLookupLoading] = useState(false);
+  const [qrLookupError, setQrLookupError] = useState<string | null>(null);
 
   // Coupon state
   const [couponInput, setCouponInput] = useState('');
@@ -232,7 +242,7 @@ export default function POSPage() {
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD' | 'WALLET'>('CASH');
   const [posGiftCardCode, setPosGiftCardCode] = useState('');
   const [posGiftCardPin, setPosGiftCardPin] = useState('');
   const [posGiftCardInfo, setPosGiftCardInfo] = useState<{
@@ -431,6 +441,23 @@ export default function POSPage() {
   const cartTotal = parseFloat((cartSubtotalAfterDiscount + cartTax + tip).toFixed(2));
   const earnedPoints = Math.floor(cartTotal / 10);
 
+  // Customer Wallet & Cashback Calculations
+  const customerWalletBalance = selectedCustomer?.walletBalance || 0;
+  const customerCashbackPct = selectedCustomer?.cashbackRatePct ?? (selectedCustomer?.tier === 'PLATINUM' ? 12 : selectedCustomer?.tier === 'GOLD' ? 8 : selectedCustomer?.tier === 'SILVER' ? 5 : 3);
+  
+  let appliedWalletPaid = 0;
+  if (paymentMethod === 'WALLET' || useWalletBalance) {
+    const maxWallet = Math.min(customerWalletBalance, cartTotal);
+    if (paymentMethod === 'WALLET') {
+      appliedWalletPaid = maxWallet;
+    } else {
+      appliedWalletPaid = customWalletAmount === '' ? maxWallet : Math.min(Number(customWalletAmount), maxWallet);
+    }
+  }
+  appliedWalletPaid = parseFloat(Math.max(0, appliedWalletPaid).toFixed(2));
+  const finalRemainingToPay = Math.max(0, parseFloat((cartTotal - appliedWalletPaid).toFixed(2)));
+  const projectedCashbackEarned = selectedCustomer ? parseFloat(((finalRemainingToPay * customerCashbackPct) / 100).toFixed(2)) : 0;
+
   // Handle live coupon validation
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
@@ -555,15 +582,42 @@ export default function POSPage() {
     if (cust.notes) setOrderNotes(cust.notes);
     setShowSuggestions(false);
     setCustomerSuggestions([]);
+    setUseWalletBalance(false);
+    setCustomWalletAmount('');
   };
 
   const handleClearCustomer = () => {
     setSelectedCustomer(null);
     setRedeemPoints(false);
+    setUseWalletBalance(false);
+    setCustomWalletAmount('');
     setCustomerName('');
     setCustomerPhone('');
     setCustomerAddress('');
     setOrderNotes('');
+  };
+
+  const handleLookupQr = async (codeToLookup?: string) => {
+    const code = (codeToLookup || qrInput).trim();
+    if (!code) return;
+    setQrLookupLoading(true);
+    setQrLookupError(null);
+    try {
+      const res = await fetch(`/api/customers/lookup-qr?code=${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (res.ok && data.found && data.customer) {
+        handleSelectCustomer(data.customer);
+        addNotification(`Cliente ${data.customer.name} identificado (${data.customer.tier} • $${(data.customer.walletBalance || 0).toFixed(2)} en Monedero)`, 'success');
+        setShowQrModal(false);
+        setQrInput('');
+      } else {
+        setQrLookupError(data.error || 'Cliente o monedero no encontrado con ese código');
+      }
+    } catch {
+      setQrLookupError('Error de red al consultar código');
+    } finally {
+      setQrLookupLoading(false);
+    }
   };
 
   const handlePlaceOrder = async () => {
@@ -608,6 +662,7 @@ export default function POSPage() {
           redeemedPoints: redeemPoints ? redeemedPointsCount : 0,
           discount: liveCouponDiscount + loyaltyDiscount,
           couponCode: appliedCoupon ? appliedCoupon.code : null,
+          walletAmountPaid: appliedWalletPaid,
           paymentMethod,
           giftCardCode: paymentMethod === 'GIFT_CARD' ? posGiftCardCode.trim() : undefined,
           giftCardPin: paymentMethod === 'GIFT_CARD' ? (posGiftCardPin.trim() || undefined) : undefined,
@@ -1357,6 +1412,90 @@ export default function POSPage() {
                           </label>
                         </div>
                       )}
+
+                      {/* Monedero Digital & Cashback Badge */}
+                      <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                              <Wallet className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-bold text-white">Monedero:</span>
+                                <span className="text-xs font-black text-emerald-400 font-mono">
+                                  ${customerWalletBalance.toFixed(2)} MXN
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400">
+                                Acumula {customerCashbackPct}% Cashback por compra
+                              </span>
+                            </div>
+                          </div>
+
+                          {projectedCashbackEarned > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+                              +${projectedCashbackEarned.toFixed(2)} al pagar
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Wallet Redemption Toggle */}
+                        {customerWalletBalance > 0 && (
+                          <div className="space-y-2 bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-900/30">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="font-bold text-emerald-300 block text-xs">Pagar con Monedero Digital</span>
+                                <span className="text-[10px] text-emerald-400/80">
+                                  Saldo disponible: ${customerWalletBalance.toFixed(2)} MXN
+                                </span>
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={useWalletBalance}
+                                  onChange={(e) => {
+                                    setUseWalletBalance(e.target.checked);
+                                    if (e.target.checked) {
+                                      setCustomWalletAmount(Math.min(customerWalletBalance, cartTotal));
+                                    } else {
+                                      setCustomWalletAmount('');
+                                    }
+                                  }}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                              </label>
+                            </div>
+
+                            {useWalletBalance && (
+                              <div className="flex items-center gap-2 pt-1 border-t border-emerald-900/30">
+                                <span className="text-xs text-emerald-400 font-bold">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={Math.min(customerWalletBalance, cartTotal)}
+                                  step="1"
+                                  value={customWalletAmount}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0);
+                                    setCustomWalletAmount(val);
+                                  }}
+                                  placeholder={Math.min(customerWalletBalance, cartTotal).toFixed(2)}
+                                  className="w-full bg-slate-900 border border-slate-750 rounded px-2 py-1 text-xs text-white font-mono font-bold outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setCustomWalletAmount(Math.min(customerWalletBalance, cartTotal))}
+                                  className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold whitespace-nowrap hover:bg-emerald-500/30 cursor-pointer"
+                                >
+                                  Usar Todo (${Math.min(customerWalletBalance, cartTotal).toFixed(2)})
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1364,7 +1503,17 @@ export default function POSPage() {
                         <span className="font-bold text-slate-300 uppercase tracking-wider text-[10px] flex items-center gap-1">
                           <Search className="h-3 w-3 text-amber-400" /> Buscar Cliente Existente o Registrar
                         </span>
-                        <span className="text-[10px] text-slate-500">Auto-completado por Teléfono / Nombre</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQrLookupError(null);
+                            setQrInput('');
+                            setShowQrModal(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-[10px] font-bold transition-colors cursor-pointer"
+                        >
+                          <QrCode className="h-3.5 w-3.5" /> Escanear QR / Monedero
+                        </button>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 relative">
@@ -1721,10 +1870,24 @@ export default function POSPage() {
                     <span>${tip.toFixed(2)}</span>
                   </div>
                 )}
+                {appliedWalletPaid > 0 && (
+                  <div className="flex justify-between text-emerald-400 font-bold">
+                    <span>Saldo Monedero Digital:</span>
+                    <span>-${appliedWalletPaid.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-white font-black text-sm pt-1 border-t border-slate-800">
-                  <span>Total a Pagar:</span>
-                  <span className="text-amber-400 font-mono">${cartTotal.toFixed(2)} MXN</span>
+                  <span>{appliedWalletPaid > 0 ? `Restante a Pagar (${paymentMethod === 'WALLET' ? 'Monedero' : paymentMethod}):` : 'Total a Pagar:'}</span>
+                  <span className="text-amber-400 font-mono">${finalRemainingToPay.toFixed(2)} MXN</span>
                 </div>
+                {projectedCashbackEarned > 0 && (
+                  <div className="flex justify-between text-[11px] text-emerald-400/90 pt-1 border-t border-slate-800/60 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-emerald-400" /> Cashback por compra ({customerCashbackPct}%):
+                    </span>
+                    <span className="font-mono font-bold">+${projectedCashbackEarned.toFixed(2)} MXN</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2561,6 +2724,81 @@ export default function POSPage() {
           onSuccess={handleCompSuccess}
           onClose={() => setCompTargetOrder(null)}
         />
+      )}
+
+      {/* MODAL: QR / WALLET SCANNER */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <QrCode className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Escanear Monedero o QR de Cliente</h3>
+                  <p className="text-xs text-slate-400">Escanea el código de barra/QR o ingresa el folio</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="text-slate-400 hover:text-white text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-center space-y-2.5">
+                <p className="text-xs text-slate-300">
+                  Apunta tu lector hacia la tarjeta digital del cliente o ingresa su código (ej. <span className="font-mono text-amber-400">DF-WAL-XXXX-XXXX</span> o su teléfono):
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Código QR o Teléfono del cliente..."
+                    value={qrInput}
+                    onChange={(e) => setQrInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleLookupQr();
+                      }
+                    }}
+                    className="flex-1 bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-sm font-mono text-white placeholder-slate-500 outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleLookupQr()}
+                    disabled={qrLookupLoading || !qrInput.trim()}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
+                  >
+                    {qrLookupLoading ? 'Buscando...' : 'Buscar'}
+                  </button>
+                </div>
+              </div>
+
+              {qrLookupError && (
+                <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-800/40 text-xs text-red-300 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                  <span>{qrLookupError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardContainer>
   );

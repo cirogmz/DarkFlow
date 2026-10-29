@@ -105,6 +105,7 @@ model Brand {
   deliveryDisputes    DeliveryDispute[]
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
+  walletTransactions  CustomerWalletTransaction[]
   targetFoodCostPct  Float?        @default(30)
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
@@ -321,6 +322,9 @@ model Order {
   taxWithheldIva       Float?   @default(0)
   payoutAdjustments    Float?   @default(0)
   disputes             DeliveryDispute[]
+  walletAmountPaid     Float    @default(0.0)
+  cashbackEarned       Float    @default(0.0)
+  walletTransactions   CustomerWalletTransaction[]
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -479,10 +483,16 @@ model Customer {
   pointsMultiplier Float      @default(1.0)
   tierDiscountPct  Float      @default(0.0)
   totalOrders      Int        @default(0)
-  totalSpent       Float      @default(0.0)
-  loyaltyPoints    Int        @default(0)
-  brandId          String?
-  brand            Brand?     @relation(fields: [brandId], references: [id])
+  totalSpent          Float      @default(0.0)
+  loyaltyPoints       Int        @default(0)
+  walletBalance       Float      @default(0.0)
+  walletQrCode        String?    @unique
+  cashbackRatePct     Float?     @default(5.0)
+  totalCashbackEarned Float      @default(0.0)
+  totalCashbackSpent  Float      @default(0.0)
+  walletTransactions  CustomerWalletTransaction[]
+  brandId             String?
+  brand               Brand?     @relation(fields: [brandId], references: [id])
   orders           Order[]
   giftCards        GiftCard[]
   surveys          SatisfactionSurvey[]
@@ -1502,6 +1512,30 @@ model RoyaltyStatement {
 
   @@index([brandId, periodYear, periodMonth])
   @@index([contractId, status])
+}
+
+model CustomerWalletTransaction {
+  id            String    @id @default(uuid())
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  brandId       String?
+  brand         Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  orderId       String?
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  type          String    // EARNED_CASHBACK, REDEEMED_PAYMENT, MANUAL_RECHARGE, REFUND_ADJUSTMENT, PROMO_BONUS
+  amount        Float
+  balanceBefore Float
+  balanceAfter  Float
+  reference     String?
+  notes         String?
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime  @default(now())
+
+  @@index([customerId, createdAt])
+  @@index([brandId])
+  @@index([orderId])
+  @@index([type])
 }
 
 

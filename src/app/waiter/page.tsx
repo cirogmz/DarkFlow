@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   CreditCard,
   Banknote,
+  Wallet,
   ChevronRight,
   ArrowLeft,
   Coffee,
@@ -167,9 +168,10 @@ export default function WaiterPadPage() {
 
   // Quick Checkout in Table Modal
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState<'CASH' | 'CARD'>('CASH');
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState<'CASH' | 'CARD' | 'WALLET'>('CASH');
   const [checkoutTipPct, setCheckoutTipPct] = useState<number>(10);
   const [checkoutCashGiven, setCheckoutCashGiven] = useState<string>('');
+  const [checkoutCustomerPhone, setCheckoutCustomerPhone] = useState<string>('');
 
   // Audio alerts
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -511,6 +513,7 @@ export default function WaiterPadPage() {
           paymentMethod: checkoutPaymentMethod,
           tip: tipAmount,
           amountPaid: checkoutCashGiven ? parseFloat(checkoutCashGiven) : undefined,
+          customerPhone: checkoutCustomerPhone.trim() || undefined,
         }),
       });
 
@@ -1572,29 +1575,55 @@ export default function WaiterPadPage() {
               </div>
             </div>
 
+            {/* Customer Phone / QR for Cashback */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                <span>Cliente / Monedero (Opcional):</span>
+                <span className="text-[10px] text-emerald-400 font-bold">+ Cashback VIP</span>
+              </label>
+              <input
+                type="text"
+                value={checkoutCustomerPhone}
+                onChange={(e) => setCheckoutCustomerPhone(e.target.value)}
+                placeholder="Teléfono (ej. 5512345678) o QR (DF-WAL-...)"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 outline-none"
+              />
+            </div>
+
             {/* Payment method selector */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-3 gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => setCheckoutPaymentMethod('CASH')}
-                className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 ${
+                className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1 text-[11px] ${
                   checkoutPaymentMethod === 'CASH'
                     ? 'bg-emerald-500 text-slate-950 font-extrabold'
                     : 'bg-slate-950 text-slate-400 border border-slate-800'
                 }`}
               >
-                <Banknote className="h-4 w-4" /> Efectivo
+                <Banknote className="h-3.5 w-3.5" /> Efectivo
               </button>
               <button
                 type="button"
                 onClick={() => setCheckoutPaymentMethod('CARD')}
-                className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 ${
+                className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1 text-[11px] ${
                   checkoutPaymentMethod === 'CARD'
                     ? 'bg-blue-500 text-white font-extrabold'
                     : 'bg-slate-950 text-slate-400 border border-slate-800'
                 }`}
               >
-                <CreditCard className="h-4 w-4" /> Tarjeta / POS
+                <CreditCard className="h-3.5 w-3.5" /> Tarjeta
+              </button>
+              <button
+                type="button"
+                onClick={() => setCheckoutPaymentMethod('WALLET')}
+                className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1 text-[11px] ${
+                  checkoutPaymentMethod === 'WALLET'
+                    ? 'bg-amber-500 text-slate-950 font-extrabold'
+                    : 'bg-slate-950 text-slate-400 border border-slate-800'
+                }`}
+              >
+                <Wallet className="h-3.5 w-3.5" /> Monedero
               </button>
             </div>
 

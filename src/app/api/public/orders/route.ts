@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { orderEvents } from '@/lib/events';
 import { createPaymentSession } from '@/lib/payments';
 import { determineCustomerTier, calculateLoyaltyPointsEarned } from '@/lib/loyaltyTiers';
+import { calculateOrderCashback, generateCustomerWalletQrCode } from '@/lib/wallet';
 
 export const dynamic = 'force-dynamic';
 
@@ -141,8 +142,10 @@ export async function POST(request: NextRequest) {
     const tax = parseFloat((subtotalAfterDiscount * 0.16).toFixed(2));
     const total = parseFloat((subtotalAfterDiscount + tax).toFixed(2));
 
-    // Handle customer registration / loyalty points
+    // Handle customer registration / loyalty points & cashback wallet
     let customerId: string | null = null;
+    let actualCashbackEarned = 0;
+    let initialWalletBal = 0;
     const cleanPhone = customerPhone ? customerPhone.trim() : null;
     if (cleanPhone && cleanPhone.length >= 7) {
       const existingCustomer = await prisma.customer.findUnique({
@@ -150,10 +153,15 @@ export async function POST(request: NextRequest) {
       });
 
       if (existingCustomer) {
+        initialWalletBal = existingCustomer.walletBalance;
         const updatedTotalSpent = existingCustomer.totalSpent + total;
         const updatedTotalOrders = existingCustomer.totalOrders + 1;
         const newTier = determineCustomerTier(updatedTotalSpent, updatedTotalOrders);
         const earnedPoints = calculateLoyaltyPointsEarned(total, existingCustomer.pointsMultiplier || newTier.pointsMultiplier);
+        
+        const cb = calculateOrderCashback(total, newTier.id, existingCustomer.cashbackRatePct);
+        actualCashbackEarned = cb.cashbackAmount;
+        const newWalletBal = parseFloat((initialWalletBal + actualCashbackEarned).toFixed(2));
 
         const updated = await prisma.customer.update({
           where: { id: existingCustomer.id },
@@ -165,12 +173,18 @@ export async function POST(request: NextRequest) {
             tier: newTier.id,
             pointsMultiplier: newTier.pointsMultiplier,
             tierDiscountPct: newTier.discountPct,
+            walletBalance: newWalletBal,
+            walletQrCode: existingCustomer.walletQrCode || generateCustomerWalletQrCode(existingCustomer.id),
+            totalCashbackEarned: { increment: actualCashbackEarned },
           },
         });
         customerId = updated.id;
       } else {
         const newTier = determineCustomerTier(total, 1);
         const earnedPoints = calculateLoyaltyPointsEarned(total, newTier.pointsMultiplier);
+        const cb = calculateOrderCashback(total, newTier.id);
+        actualCashbackEarned = cb.cashbackAmount;
+
         const created = await prisma.customer.create({
           data: {
             name: customerName.trim(),
@@ -182,6 +196,10 @@ export async function POST(request: NextRequest) {
             tier: newTier.id,
             pointsMultiplier: newTier.pointsMultiplier,
             tierDiscountPct: newTier.discountPct,
+            walletBalance: actualCashbackEarned,
+            walletQrCode: generateCustomerWalletQrCode(cleanPhone),
+            totalCashbackEarned: actualCashbackEarned,
+            totalCashbackSpent: 0,
           },
         });
         customerId = created.id;
@@ -260,6 +278,7 @@ export async function POST(request: NextRequest) {
           paidAt: isGiftCardPay ? new Date() : null,
           prepTimeTarget: calculatedSla,
           currentStage: 'STARTER',
+          cashbackEarned: actualCashbackEarned,
           items: {
             create: validatedItems.map((i) => {
               const prod = dbProducts.find((p) => p.id === i.productId);
@@ -354,6 +373,24 @@ export async function POST(request: NextRequest) {
             gateway: 'GIFT_CARD',
             status: 'COMPLETED',
             gatewayPaymentId: `GC-${card.code}-${Date.now()}`,
+          },
+        });
+      }
+
+      // Record cashback credit transaction if customer is registered and cashback earned
+      if (actualCashbackEarned > 0 && customerId) {
+        await tx.customerWalletTransaction.create({
+          data: {
+            customerId,
+            brandId: brand.id,
+            orderId: createdOrder.id,
+            type: 'EARNED_CASHBACK',
+            amount: actualCashbackEarned,
+            balanceBefore: initialWalletBal,
+            balanceAfter: parseFloat((initialWalletBal + actualCashbackEarned).toFixed(2)),
+            reference: `Cashback Pedido #${orderNumber}`,
+            notes: 'Cashback acreditado automáticamente por comanda digital',
+            createdByName: 'Menú Digital QR',
           },
         });
       }
