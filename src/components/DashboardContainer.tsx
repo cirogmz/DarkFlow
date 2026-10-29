@@ -26,7 +26,8 @@ import {
   Clock,
   Smartphone,
   TabletSmartphone,
-  Briefcase
+  Briefcase,
+  Megaphone
 } from 'lucide-react';
 import Link from 'next/link';
 import QuickClockModal from '@/components/QuickClockModal';
@@ -161,6 +162,7 @@ export default function DashboardContainer({ children }: { children: React.React
     { name: 'Inventario', path: '/inventory', icon: Package, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Corte de Caja', path: '/cash', icon: Coins, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
     { name: 'Clientes & Puntos', path: '/customers', icon: HeartHandshake, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },
+    { name: 'Marketing & Campañas', path: '/marketing', icon: Megaphone, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Promociones & Combos', path: '/promotions', icon: Tag, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Delivery & Apps', path: '/integrations', icon: Radio, roles: ['SUPER_ADMIN', 'BRAND_ADMIN'] },
     { name: 'Repartidores', path: '/drivers', icon: Truck, roles: ['SUPER_ADMIN', 'BRAND_ADMIN', 'CASHIER'] },

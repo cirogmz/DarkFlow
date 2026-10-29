@@ -106,6 +106,7 @@ model Brand {
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
   walletTransactions  CustomerWalletTransaction[]
+  marketingCampaigns MarketingCampaign[]
   targetFoodCostPct  Float?        @default(30)
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
@@ -496,6 +497,7 @@ model Customer {
   totalCashbackEarned Float      @default(0.0)
   totalCashbackSpent  Float      @default(0.0)
   walletTransactions  CustomerWalletTransaction[]
+  campaignRecipients CampaignRecipient[]
   brandId             String?
   brand               Brand?     @relation(fields: [brandId], references: [id])
   orders           Order[]
@@ -1562,3 +1564,61 @@ model CustomerWalletTransaction {
 }
 
 
+
+model MarketingCampaign {
+  id               String    @id @default(uuid())
+  folio            String    @unique
+  name             String
+  channel          String    @default("WHATSAPP") // "WHATSAPP", "EMAIL", "SMS"
+  triggerType      String    @default("MANUAL")   // "MANUAL", "BIRTHDAY_TRIGGER", "INACTIVE_RECOVERY", "VIP_PROMOTION"
+  status           String    @default("DRAFT")    // "DRAFT", "SCHEDULED", "SENDING", "SENT", "CANCELLED"
+  targetSegment    String    @default("ALL")      // "ALL", "BIRTHDAY_MONTH", "INACTIVE_30_DAYS", "VIP_PLATINUM", "VIP_GOLD", "VIP_SILVER", "TOP_SPENDERS"
+  subject          String?
+  messageTemplate  String
+  couponCode       String?
+  discountPct      Float?
+  walletBonusAmount Float?
+  scheduledAt      DateTime?
+  sentAt           DateTime?
+  totalRecipients  Int       @default(0)
+  sentCount        Int       @default(0)
+  deliveredCount   Int       @default(0)
+  clicksCount      Int       @default(0)
+  conversionsCount Int       @default(0)
+  brandId          String
+  brand            Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  recipients       CampaignRecipient[]
+  createdById      String?
+  createdByName    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([brandId])
+  @@index([status])
+  @@index([channel])
+  @@index([triggerType])
+}
+
+model CampaignRecipient {
+  id             String    @id @default(uuid())
+  campaignId     String
+  campaign       MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerName   String
+  phone          String?
+  email          String?
+  status         String    @default("PENDING") // "PENDING", "SENT", "DELIVERED", "FAILED", "CONVERTED"
+  couponCode     String?
+  customMessage  String?
+  whatsappUrl    String?
+  sentAt         DateTime?
+  convertedAt    DateTime?
+  orderId        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([campaignId])
+  @@index([customerId])
+  @@index([status])
+}

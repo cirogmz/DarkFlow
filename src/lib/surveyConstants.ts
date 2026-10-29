@@ -24,3 +24,4 @@ export const POPULAR_SURVEY_TAGS = {
     'Mesa / área sucia',
   ],
 } as const;
+
