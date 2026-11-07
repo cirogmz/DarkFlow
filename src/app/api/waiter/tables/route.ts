@@ -102,6 +102,9 @@ export async function GET(req: NextRequest) {
         capacity: t.capacity,
         status: t.status, // AVAILABLE, OCCUPIED, PREBILL, RESERVED
         zone: t.zone,
+        waiterCallStatus: t.waiterCallStatus || 'IDLE',
+        waiterCallNotes: t.waiterCallNotes,
+        waiterCallAt: t.waiterCallAt,
         assignedWaiter: t.assignedWaiter || activeOrder?.waiter || null,
         activeOrder: activeOrder
           ? {
@@ -113,6 +116,8 @@ export async function GET(req: NextRequest) {
               total: activeOrder.total,
               subtotal: activeOrder.subtotal,
               tax: activeOrder.tax,
+              paidAmount: activeOrder.paidAmount || 0,
+              paymentStatus: activeOrder.paymentStatus,
               createdAt: activeOrder.createdAt,
               elapsedMinutes,
               prebillPrintedAt: activeOrder.prebillPrintedAt,

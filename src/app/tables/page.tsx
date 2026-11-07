@@ -2104,6 +2104,16 @@ export default function TablesPage() {
                   </a>
                 </div>
 
+                <a
+                  href={`/m/${activeBrand?.slug}/cuenta?table=${selectedTableForQr.number}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>Probar Portal de Pago QR & Split Bill</span>
+                </a>
+
                 <button
                   onClick={() => setSelectedTableForQr(null)}
                   className="w-full py-2 bg-slate-950 hover:bg-slate-850 text-slate-400 hover:text-white font-bold text-xs rounded-xl border border-slate-800 cursor-pointer"

@@ -143,6 +143,10 @@ model Table {
   orders    Order[]
   reservations Reservation[]
   waitlistEntries WaitlistEntry[]
+  waiterCallStatus String?   @default("IDLE")
+  waiterCallNotes  String?
+  waiterCallAt     DateTime?
+  billRequestedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -363,6 +367,8 @@ model OrderItem {
   discountAmount     Float?    @default(0)
   promoRuleId        String?
   promoBadge         String?
+  paidQuantity       Int       @default(0)
+  isPaid             Boolean   @default(false)
 }
 
 model Purchase {
@@ -587,6 +593,9 @@ model PaymentTransaction {
   method           String?
   splitIndex       Int?
   notes            String?
+  payerName        String?
+  payerPhone       String?
+  itemBreakdown    String?
   gatewayPaymentId String?
   gatewayOrderId   String?
   paymentUrl       String?

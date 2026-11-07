@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, use } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { 
   ShoppingBag, 
   Search, 
@@ -26,7 +27,8 @@ import {
   Flame,
   Clock,
   Zap,
-  Timer
+  Timer,
+  Receipt
 } from 'lucide-react';
 import { PriceRuleItem, calculateItemPriceRule, isRuleActiveNow, getRuleRemainingSeconds, formatRuleCountdown } from '@/lib/priceRules';
 
@@ -582,11 +584,21 @@ export default function PublicMenuPage({
             </div>
           </div>
 
-          {/* Table Badge */}
+          {/* Table Badge & Split Bill Button */}
           {selectedTableNumber ? (
-            <div className="bg-slate-800 border border-slate-700 rounded-full px-3 py-1 flex items-center gap-1.5 text-xs text-amber-400 font-bold shadow-sm">
-              <Utensils className="w-3.5 h-3.5" />
-              <span>Mesa {selectedTableNumber}</span>
+            <div className="flex items-center gap-2">
+              <div className="bg-slate-800 border border-slate-700 rounded-full px-3 py-1 flex items-center gap-1.5 text-xs text-amber-400 font-bold shadow-sm">
+                <Utensils className="w-3.5 h-3.5" />
+                <span>Mesa {selectedTableNumber}</span>
+              </div>
+              <Link
+                href={`/m/${slug}/cuenta?table=${selectedTableNumber}`}
+                className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 rounded-full px-2.5 py-1 flex items-center gap-1 text-[11px] font-bold shadow-sm transition-all"
+                title="Ver comanda, propina y pagar con tarjeta o monedero"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span>Pagar Cuenta</span>
+              </Link>
             </div>
           ) : (
             <span className="text-[11px] text-slate-400 font-medium">Auto-servicio</span>

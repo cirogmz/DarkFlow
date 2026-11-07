@@ -69,6 +69,8 @@ interface TableOrder {
   tax: number;
   createdAt: string;
   elapsedMinutes: number;
+  paidAmount?: number;
+  paymentStatus?: string;
   expoStatus?: string | null;
   expoNotifiedAt?: string | null;
   prebillPrintedAt?: string | null;
@@ -88,8 +90,11 @@ interface TableData {
   number: string;
   name: string;
   capacity: number;
-  status: 'AVAILABLE' | 'OCCUPIED' | 'PREBILL' | 'RESERVED';
+  status: 'AVAILABLE' | 'OCCUPIED' | 'PREBILL' | 'RESERVED' | 'BILL_REQUESTED';
   zone: string;
+  waiterCallStatus?: string | null;
+  waiterCallNotes?: string | null;
+  waiterCallAt?: string | null;
   assignedWaiter?: { id: string; name: string } | null;
   activeOrder?: TableOrder | null;
   reservation?: {
@@ -752,6 +757,12 @@ export default function WaiterPadPage() {
 
                         {/* Capacity / Diners badge & Expo Ready Indicator */}
                         <div className="flex items-center gap-1">
+                          {table.waiterCallStatus && table.waiterCallStatus !== 'IDLE' && (
+                            <span className="flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 animate-pulse shadow-md">
+                              <Bell className="h-2.5 w-2.5" />
+                              {table.waiterCallStatus === 'BILL_REQUESTED' ? 'Cuenta' : table.waiterCallStatus === 'SERVICE_HELP' ? 'Ayuda' : 'Llamado'}
+                            </span>
+                          )}
                           {(readyPassTables.has(String(table.number)) || table.activeOrder?.expoStatus === 'NOTIFIED_WAITER') && (
                             <span className="flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded bg-cyan-500 text-slate-950 animate-bounce shadow-md">
                               <Bell className="h-2.5 w-2.5" /> En Pase
@@ -987,6 +998,36 @@ export default function WaiterPadPage() {
         {/* ===================================================================== */}
         {currentView === 'TABLE_DETAIL' && selectedTable && selectedTable.activeOrder && (
           <div className="h-full flex flex-col overflow-y-auto p-4 space-y-4">
+            {/* Assistance Call Banner */}
+            {selectedTable.waiterCallStatus && selectedTable.waiterCallStatus !== 'IDLE' && (
+              <div className="p-3 bg-amber-950/90 border border-amber-500/60 rounded-2xl flex items-center justify-between gap-3 text-xs text-amber-200 shadow-xl animate-pulse">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <p className="font-black text-amber-300">¡Llamado de Comensal en Mesa #{selectedTable.number}!</p>
+                    <p className="text-[11px] text-amber-200/90">{selectedTable.waiterCallNotes || 'Solicitud recibida desde el portal QR'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/waiter/tables/${selectedTable.id}/dismiss-call`, { method: 'POST' });
+                      if (res.ok) {
+                        addNotification('Llamado marcado como atendido', 'success');
+                        setSelectedTable((prev) => (prev ? { ...prev, waiterCallStatus: 'IDLE', waiterCallNotes: null } : null));
+                        loadTablesData();
+                      }
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shrink-0 cursor-pointer shadow-md transition-all"
+                >
+                  Atendido
+                </button>
+              </div>
+            )}
+
             {/* Table Header Summary */}
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-3">
               <div className="flex items-start justify-between">
