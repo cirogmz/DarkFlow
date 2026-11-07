@@ -112,6 +112,12 @@ model Brand {
   autoCompWalletAmount    Float     @default(50.0)
   autoCompCouponDiscount  Float     @default(20.0)
   surveyQrFooterText      String?   @default("¿Cómo estuvo tu experiencia? Escanea y califica para recibir sorpresas.")
+  kioskEnabled            Boolean   @default(true)
+  kioskHeroTitle          String?   @default("¡Bienvenido! Ordena aquí")
+  kioskHeroSubtitle       String?   @default("Toca la pantalla para comenzar tu pedido")
+  kioskIdleTimeoutSeconds Int       @default(60)
+  kioskAllowCashAtCounter Boolean   @default(true)
+  kioskPagersEnabled      Boolean   @default(true)
   targetFoodCostPct  Float?        @default(30)
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
@@ -249,6 +255,7 @@ model Order {
   customerName String
   customerPhone String?
   customerAddress String?
+  locatorNumber String?
   notes        String?
   subtotal     Float
   tax          Float

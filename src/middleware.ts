@@ -8,7 +8,10 @@ export function middleware(request: NextRequest) {
   // Define public paths accessible without employee session
   const isPublicPath = 
     path === '/login' || 
-    path.startsWith('/m/') || 
+    path.startsWith('/m') || 
+    path.startsWith('/kiosk') ||
+    path.startsWith('/feedback') ||
+    path.startsWith('/facturacion') ||
     path.startsWith('/order-tracking/') ||
     path.startsWith('/api/public/');
 
@@ -18,7 +21,7 @@ export function middleware(request: NextRequest) {
   }
 
   // If authenticated and trying to access login, redirect to home/dashboard
-  if (isPublicPath && session) {
+  if (path === '/login' && session) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
