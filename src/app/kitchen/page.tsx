@@ -19,13 +19,15 @@ import {
   Layers,
   Utensils,
   Check,
-  Wifi
+  Wifi,
+  Award
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import { playKitchenChime, playAlertChime } from '@/lib/sound';
 import ExpoStationView from '@/components/kitchen/ExpoStationView';
 import BarStationView from '@/components/kitchen/BarStationView';
 import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
+import DishQualityAuditModal from '@/components/DishQualityAuditModal';
 
 interface OrderItem {
   id: string;
@@ -139,7 +141,8 @@ export default function KitchenPage() {
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
 
-  const { addNotification } = useAppStore();
+  const { addNotification, activeBrand } = useAppStore();
+  const [dishAuditModalOpen, setDishAuditModalOpen] = useState(false);
 
   // Read URL station param if available (e.g. /kitchen?station=BARRA)
   useEffect(() => {
@@ -529,6 +532,16 @@ export default function KitchenPage() {
               >
                 Probar
               </button>
+
+              <button
+                type="button"
+                onClick={() => setDishAuditModalOpen(true)}
+                className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow transition cursor-pointer"
+                title="Auditoría visual de calidad en pase con IA"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>Auditar Platillo IA</span>
+              </button>
             </div>
 
             {/* Quick Summary Badges */}
@@ -672,6 +685,18 @@ export default function KitchenPage() {
           defaultMode="KOT"
         />
       )}
+
+      {/* Dish Quality Audit Modal (Expo QC) */}
+      <DishQualityAuditModal
+        isOpen={dishAuditModalOpen}
+        onClose={() => setDishAuditModalOpen(false)}
+        brandId={activeBrand?.id || ''}
+        onAuditCompleted={() => {
+          addNotification('Auditoría de platillo con IA registrada exitosamente', 'success');
+          setDishAuditModalOpen(false);
+          fetchActiveOrders();
+        }}
+      />
     </DashboardContainer>
   );
 

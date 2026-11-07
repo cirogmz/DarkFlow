@@ -20,8 +20,10 @@ import {
   Scale,
   FileText,
   Boxes,
-  ThermometerSnowflake
+  ThermometerSnowflake,
+  Scan
 } from 'lucide-react';
+import { useAppStore } from '@/lib/store';
 import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
 import RequisitionsTab from '@/components/inventory/RequisitionsTab';
 import PurchaseOrdersTab from '@/components/inventory/PurchaseOrdersTab';
@@ -29,6 +31,7 @@ import { BatchTrackingTab } from '@/components/inventory/BatchTrackingTab';
 import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
 import WasteManagementHubTab from '@/components/inventory/WasteManagementHubTab';
 import ColdChainMonitorTab from '@/components/inventory/ColdChainMonitorTab';
+import AiVisionDashboardTab from '@/components/AiVisionDashboardTab';
 
 interface Ingredient {
   id: string;
@@ -165,6 +168,7 @@ interface TransferItem {
 }
 
 export default function InventoryPage() {
+  const { activeBrand } = useAppStore();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -178,7 +182,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain' | 'aivision'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -802,6 +806,14 @@ export default function InventoryPage() {
             }`}
           >
             <ThermometerSnowflake className="h-4 w-4 text-cyan-400" /> Cadena de Frío IoT
+          </button>
+          <button
+            onClick={() => setActiveTab('aivision')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'aivision' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Scan className="h-4 w-4 text-rose-400" /> 📸 AI Waste Vision
           </button>
         </div>
 
@@ -1509,6 +1521,11 @@ export default function InventoryPage() {
             warehouses={warehouses}
             onRefreshAll={fetchInventoryData}
           />
+        )}
+
+        {/* TAB 11: AI WASTE VISION & DISH QUALITY */}
+        {activeTab === 'aivision' && (
+          <AiVisionDashboardTab brandId={activeBrand?.id || ''} />
         )}
 
         {/* MODAL: ADD INGREDIENT */}

@@ -499,3 +499,4 @@ export async function resolveTerminalPaymentIntent(params: SimulateTerminalResul
     };
   }
 }
+

@@ -86,6 +86,7 @@ model Brand {
   invoices       Invoice[]
   printers       Printer[]
   smartTerminals SmartTerminal[]
+  dishQualityAudits DishQualityAudit[]
   clipApiKey     String?
   clipSandboxMode Boolean      @default(true)
   mpPointSandboxMode Boolean   @default(true)
@@ -200,6 +201,7 @@ model Product {
   comboItems  ComboItem[]
   modifierGroups ProductModifierGroup[]
   prepItems   DailyPrepItem[]
+  dishQualityAudits DishQualityAudit[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -351,6 +353,7 @@ model Order {
   walletAmountPaid     Float    @default(0.0)
   cashbackEarned       Float    @default(0.0)
   walletTransactions   CustomerWalletTransaction[]
+  dishQualityAudits    DishQualityAudit[]
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -770,6 +773,13 @@ model WasteLog {
   capaResolvedById    String?
   capaResolvedByName  String?
   capaResolutionNotes String?
+  imageUrl            String?
+  aiAnalyzed          Boolean          @default(false)
+  aiConfidence        Float?
+  aiCategory          String?
+  aiDetectedItems     String?
+  aiSuggestions       String?
+  aiEstimatedWeightGrams Float?
   warehouseId         String?
   warehouse           Warehouse?       @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   brandId             String
@@ -1697,4 +1707,31 @@ model CampaignRecipient {
   @@index([campaignId])
   @@index([customerId])
   @@index([status])
+}
+
+model DishQualityAudit {
+  id                  String       @id @default(uuid())
+  brandId             String
+  brand               Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderId             String?
+  order               Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  productId           String?
+  product             Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  imageUrl            String
+  overallScore        Float        // 0 to 100
+  presentationScore   Float        // 0 to 100
+  portionScore        Float        // 0 to 100
+  colorScore          Float        // 0 to 100
+  temperatureScore    Float?       // optional temperature score
+  passed              Boolean      @default(true)
+  detectedDefects     String?      // JSON array of strings
+  aiFeedback          String       // Chef feedback & recommendations
+  station             String?      @default("EXPO")
+  auditedById         String?
+  auditedByName       String?
+  createdAt           DateTime     @default(now())
+
+  @@index([brandId, createdAt])
+  @@index([productId])
+  @@index([passed])
 }
