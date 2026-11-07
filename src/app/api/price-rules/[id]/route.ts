@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,6 +34,11 @@ export async function PUT(
       categoryIds,
       productIds,
       zone,
+      isFlashDeal,
+      flashDealExpiresAt,
+      badgeLabel,
+      minOrderAmount,
+      priority,
     } = body;
 
     const updated = await prisma.priceRule.update({
@@ -61,6 +68,16 @@ export async function PUT(
               : productIds || null
             : existing.productIds,
         zone: zone !== undefined ? zone?.trim() || null : existing.zone,
+        isFlashDeal: isFlashDeal !== undefined ? Boolean(isFlashDeal) : existing.isFlashDeal,
+        flashDealExpiresAt:
+          flashDealExpiresAt !== undefined
+            ? flashDealExpiresAt
+              ? new Date(flashDealExpiresAt)
+              : null
+            : existing.flashDealExpiresAt,
+        badgeLabel: badgeLabel !== undefined ? badgeLabel?.trim() || null : existing.badgeLabel,
+        minOrderAmount: minOrderAmount !== undefined ? Number(minOrderAmount) : existing.minOrderAmount,
+        priority: priority !== undefined ? Number(priority) : existing.priority,
       },
     });
 

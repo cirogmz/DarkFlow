@@ -12,6 +12,10 @@ interface OrderItemInput {
   productId: string;
   quantity: number;
   price: number;
+  originalPrice?: number | null;
+  discountAmount?: number | null;
+  promoRuleId?: string | null;
+  promoBadge?: string | null;
   notes?: string | null;
   modifiers?: unknown;
   serviceStage?: string | null;
@@ -327,6 +331,10 @@ export async function POST(req: NextRequest) {
                 productId: item.productId,
                 quantity: item.quantity,
                 price: item.price,
+                originalPrice: item.originalPrice !== undefined ? item.originalPrice : item.price,
+                discountAmount: item.discountAmount || 0,
+                promoRuleId: item.promoRuleId || null,
+                promoBadge: item.promoBadge || null,
                 notes: item.notes || null,
                 modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
                 status: item.status || 'PENDING',

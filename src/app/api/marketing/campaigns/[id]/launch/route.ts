@@ -6,9 +6,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieHeader = req.headers.get('cookie') || '';
     const session = getSessionFromCookies(cookieHeader);
 
@@ -16,7 +17,7 @@ export async function POST(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const campaign = await launchCampaign(params.id, {
+    const campaign = await launchCampaign(id, {
       id: session.userId,
       name: session.name || session.email,
     });

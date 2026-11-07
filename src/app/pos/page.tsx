@@ -31,12 +31,15 @@ import {
   CheckSquare,
   Square,
   Flame,
-  Gift
+  Gift,
+  Clock,
+  Timer,
+  Zap
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
 import CompAuthorizationModal from '@/components/pos/CompAuthorizationModal';
-import { PriceRuleItem, calculateItemPriceRule } from '@/lib/priceRules';
+import { PriceRuleItem, calculateItemPriceRule, isRuleActiveNow, getRuleRemainingSeconds, formatRuleCountdown } from '@/lib/priceRules';
 
 interface CustomerSuggestion {
   id: string;
@@ -204,6 +207,17 @@ export default function POSPage() {
   const [combos, setCombos] = useState<PosCombo[]>([]);
   const [tables, setTables] = useState<TableOption[]>([]);
   const [priceRules, setPriceRules] = useState<PriceRuleItem[]>([]);
+  const [now, setNow] = useState(new Date());
+
+  // Real-time ticker for live Happy Hour countdown in POS
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const activePriceRules = React.useMemo(() => {
+    return priceRules.filter((r) => isRuleActiveNow(r, now));
+  }, [priceRules, now]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -670,6 +684,9 @@ export default function POSPage() {
             productId: i.productId,
             quantity: i.quantity,
             price: i.price,
+            originalPrice: i.originalPrice || i.price,
+            discountAmount: i.originalPrice && i.originalPrice > i.price ? (i.originalPrice - i.price) * i.quantity : 0,
+            promoBadge: i.appliedPromo || null,
             notes: i.notes,
             modifiers: i.modifiers,
             serviceStage: i.serviceStage,
@@ -739,6 +756,9 @@ export default function POSPage() {
             productId: i.productId,
             quantity: i.quantity,
             price: i.price,
+            originalPrice: i.originalPrice || i.price,
+            discountAmount: i.originalPrice && i.originalPrice > i.price ? (i.originalPrice - i.price) * i.quantity : 0,
+            promoBadge: i.appliedPromo || null,
             notes: i.notes,
             modifiers: i.modifiers,
             serviceStage: i.serviceStage,
@@ -869,6 +889,35 @@ export default function POSPage() {
             </div>
           </div>
 
+          {/* Active Happy Hour / Flash Deals Banner */}
+          {activePriceRules.length > 0 && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/30 rounded-xl p-3 flex items-center justify-between text-xs shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                  <Flame className="w-4 h-4 animate-pulse" />
+                </span>
+                <div className="min-w-0">
+                  <div className="font-black text-amber-300 flex items-center gap-1.5 truncate">
+                    <span>{activePriceRules[0].badgeLabel || activePriceRules[0].name}</span>
+                    {activePriceRules.length > 1 && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.2 rounded-full shrink-0">
+                        +{activePriceRules.length - 1} más
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {activePriceRules[0].description || 'Tarifa dinámica activa aplicada automáticamente en caja'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 font-mono font-bold text-amber-400 bg-black/50 px-2.5 py-1 rounded-lg border border-amber-500/30 shrink-0">
+                <Clock className="w-3.5 h-3.5 animate-pulse" />
+                <span>{formatRuleCountdown(getRuleRemainingSeconds(activePriceRules[0], now))}</span>
+              </div>
+            </div>
+          )}
+
           {/* Product & Combo Grid */}
           <div className="flex-1 overflow-y-auto pr-1">
             {selectedCategory === 'combos' ? (
@@ -933,7 +982,7 @@ export default function POSPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-6">
                 {filteredProducts.map((prod) => {
                   const stock = checkStockStatus(prod);
-                  const promo = calculateItemPriceRule(prod, 1, priceRules);
+                  const promo = calculateItemPriceRule(prod, 1, priceRules, now);
 
                   return (
                     <div 
@@ -2593,7 +2642,7 @@ export default function POSPage() {
             return { groupName: g.name, optionName: opt.name, price: opt.price, ingredientId: opt.ingredientId, ingredientQuantity: opt.ingredientQuantity };
           }).filter(Boolean)
         ) as Array<{ groupName: string; optionName: string; price: number; ingredientId?: string | null; ingredientQuantity?: number | null }>);
-        const promo = calculateItemPriceRule(customizingProduct, 1, priceRules);
+        const promo = calculateItemPriceRule(customizingProduct, 1, priceRules, now);
         const basePrice = promo.hasPromo ? promo.effectiveUnitPrice : customizingProduct.price;
         const extraPrice = selectedModifiers.reduce((sum, m) => sum + m.price, 0);
         const totalPrice = basePrice + extraPrice;

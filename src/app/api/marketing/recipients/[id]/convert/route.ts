@@ -6,9 +6,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieHeader = req.headers.get('cookie') || '';
     const session = getSessionFromCookies(cookieHeader);
 
@@ -17,7 +18,7 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => ({}));
-    const recipient = await trackRecipientConversion(params.id, body.orderId);
+    const recipient = await trackRecipientConversion(id, body.orderId);
 
     if (!recipient) {
       return NextResponse.json({ error: 'Destinatario no encontrado' }, { status: 404 });

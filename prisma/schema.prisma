@@ -359,6 +359,10 @@ model OrderItem {
   startedAt    DateTime?
   finishedAt   DateTime?
   servedAt     DateTime?
+  originalPrice      Float?
+  discountAmount     Float?    @default(0)
+  promoRuleId        String?
+  promoBadge         String?
 }
 
 model Purchase {
@@ -917,6 +921,11 @@ model PriceRule {
   categoryIds     String?   // Comma-separated or JSON list of category IDs
   productIds      String?   // Comma-separated or JSON list of product IDs
   zone            String?   // Optional: "Salón", "Terraza", "Barra", or null for all
+  isFlashDeal        Boolean   @default(false)
+  flashDealExpiresAt DateTime?
+  badgeLabel         String?
+  minOrderAmount     Float?    @default(0)
+  priority           Int       @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

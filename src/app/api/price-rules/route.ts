@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSessionFromCookies } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const cookieHeader = req.headers.get("cookie") || "";
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     const rules = await prisma.priceRule.findMany({
       where,
-      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ priority: "desc" }, { isActive: "desc" }, { createdAt: "desc" }],
     });
 
     return NextResponse.json({ rules });
@@ -61,6 +63,11 @@ export async function POST(req: NextRequest) {
       categoryIds,
       productIds,
       zone,
+      isFlashDeal = false,
+      flashDealExpiresAt,
+      badgeLabel,
+      minOrderAmount = 0,
+      priority = 0,
     } = body;
 
     if (!name || !name.trim()) {
@@ -84,6 +91,11 @@ export async function POST(req: NextRequest) {
         categoryIds: typeof categoryIds === "object" ? JSON.stringify(categoryIds) : categoryIds || null,
         productIds: typeof productIds === "object" ? JSON.stringify(productIds) : productIds || null,
         zone: zone?.trim() || null,
+        isFlashDeal: Boolean(isFlashDeal),
+        flashDealExpiresAt: flashDealExpiresAt ? new Date(flashDealExpiresAt) : null,
+        badgeLabel: badgeLabel?.trim() || null,
+        minOrderAmount: Number(minOrderAmount) || 0,
+        priority: Number(priority) || 0,
       },
     });
 

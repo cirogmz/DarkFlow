@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieHeader = req.headers.get('cookie') || '';
     const session = getSessionFromCookies(cookieHeader);
 
@@ -18,7 +19,7 @@ export async function GET(
     }
 
     const campaign = await prisma.marketingCampaign.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         brand: true,
         recipients: {
@@ -44,9 +45,10 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieHeader = req.headers.get('cookie') || '';
     const session = getSessionFromCookies(cookieHeader);
 
@@ -56,7 +58,7 @@ export async function PATCH(
 
     const body = await req.json();
     const campaign = await prisma.marketingCampaign.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!campaign) {
@@ -79,14 +81,14 @@ export async function PATCH(
     }
 
     const updated = await prisma.marketingCampaign.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
     });
 
     await recordAuditLog({
       action: 'MARKETING_CAMPAIGN_UPDATE',
       entityType: 'MARKETING_CAMPAIGN',
-      entityId: params.id,
+      entityId: id,
       severity: 'INFO',
       details: `✏️ Campaña "${updated.name}" actualizada. Modificaciones: ${Object.keys(updateData).join(', ')}`,
       brandId: updated.brandId,
@@ -105,9 +107,10 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieHeader = req.headers.get('cookie') || '';
     const session = getSessionFromCookies(cookieHeader);
 
@@ -116,7 +119,7 @@ export async function DELETE(
     }
 
     const campaign = await prisma.marketingCampaign.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!campaign) {
@@ -125,11 +128,11 @@ export async function DELETE(
 
     if (campaign.status === 'DRAFT') {
       await prisma.marketingCampaign.delete({
-        where: { id: params.id },
+        where: { id },
       });
     } else {
       await prisma.marketingCampaign.update({
-        where: { id: params.id },
+        where: { id },
         data: { status: 'CANCELLED' },
       });
     }
@@ -137,7 +140,7 @@ export async function DELETE(
     await recordAuditLog({
       action: 'MARKETING_CAMPAIGN_DELETE',
       entityType: 'MARKETING_CAMPAIGN',
-      entityId: params.id,
+      entityId: id,
       severity: 'WARNING',
       details: `🗑️ Campaña "${campaign.name}" (${campaign.folio}) eliminada o cancelada por ${session.name || session.email}`,
       brandId: campaign.brandId,

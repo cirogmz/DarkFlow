@@ -21,9 +21,11 @@ import {
   CalendarDays,
   DollarSign,
   SlidersHorizontal,
-  Edit
+  Edit,
+  Zap,
+  Timer
 } from 'lucide-react';
-import { PriceRuleItem, isRuleActiveNow } from '@/lib/priceRules';
+import { PriceRuleItem, isRuleActiveNow, getRuleRemainingSeconds, formatRuleCountdown } from '@/lib/priceRules';
 
 interface CouponItem {
   id: string;
@@ -127,7 +129,19 @@ export default function PromotionsPage() {
   const [ruleAppliesToAll, setRuleAppliesToAll] = useState(true);
   const [ruleSelectedProducts, setRuleSelectedProducts] = useState<string[]>([]);
   const [ruleZone, setRuleZone] = useState('');
+  const [ruleIsFlashDeal, setRuleIsFlashDeal] = useState(false);
+  const [ruleFlashDealExpiresAt, setRuleFlashDealExpiresAt] = useState('');
+  const [ruleBadgeLabel, setRuleBadgeLabel] = useState('');
+  const [ruleMinOrderAmount, setRuleMinOrderAmount] = useState<number>(0);
+  const [rulePriority, setRulePriority] = useState<number>(0);
   const [submittingRule, setSubmittingRule] = useState(false);
+  const [now, setNow] = useState(new Date());
+
+  // Real-time ticker for live countdowns
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Load all promotions data
   const loadData = useCallback(async () => {
@@ -416,6 +430,11 @@ export default function PromotionsPage() {
     setRuleAppliesToAll(true);
     setRuleSelectedProducts([]);
     setRuleZone('');
+    setRuleIsFlashDeal(false);
+    setRuleFlashDealExpiresAt('');
+    setRuleBadgeLabel('');
+    setRuleMinOrderAmount(0);
+    setRulePriority(0);
     setIsRuleModalOpen(true);
   };
 
@@ -442,7 +461,84 @@ export default function PromotionsPage() {
     }
     setRuleSelectedProducts(pIds);
     setRuleZone(rule.zone || '');
+    setRuleIsFlashDeal(Boolean(rule.isFlashDeal));
+    setRuleFlashDealExpiresAt(
+      rule.flashDealExpiresAt
+        ? new Date(rule.flashDealExpiresAt).toISOString().slice(0, 16)
+        : ''
+    );
+    setRuleBadgeLabel(rule.badgeLabel || '');
+    setRuleMinOrderAmount(rule.minOrderAmount || 0);
+    setRulePriority(rule.priority || 0);
     setIsRuleModalOpen(true);
+  };
+
+  const applyPresetRule = (presetType: 'HAPPY_HOUR' | 'ALITAS_JUEVES' | 'FLASH_DEAL' | 'BREAKFAST_3X2' | 'BURGER_FRIDAY') => {
+    if (presetType === 'HAPPY_HOUR') {
+      setRuleName('Happy Hour 2x1 Cervezas');
+      setRuleDesc('Válido de 17:00 a 20:00 hrs en cervezas y coctelería.');
+      setRuleType('BUY_X_GET_Y');
+      setRuleBuyQty(2);
+      setRuleGetQty(1);
+      setRuleDaysOfWeek([1, 2, 3, 4, 5]);
+      setRuleStartTime('17:00');
+      setRuleEndTime('20:00');
+      setRuleIsFlashDeal(false);
+      setRuleFlashDealExpiresAt('');
+      setRuleBadgeLabel('🍻 2x1 HAPPY HOUR');
+      setRulePriority(10);
+    } else if (presetType === 'ALITAS_JUEVES') {
+      setRuleName('Jueves de Alitas -20%');
+      setRuleDesc('Todo el día jueves con 20% de descuento directo.');
+      setRuleType('PERCENTAGE_DISCOUNT');
+      setRuleDiscountValue(20);
+      setRuleDaysOfWeek([4]);
+      setRuleStartTime('00:00');
+      setRuleEndTime('23:59');
+      setRuleIsFlashDeal(false);
+      setRuleFlashDealExpiresAt('');
+      setRuleBadgeLabel('🍗 JUEVES 20%');
+      setRulePriority(5);
+    } else if (presetType === 'FLASH_DEAL') {
+      const exp = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      setRuleName('Flash Deal 2 Horas -30% OFF');
+      setRuleDesc('Oferta relámpago con tiempo limitado por las próximas 2 horas.');
+      setRuleType('PERCENTAGE_DISCOUNT');
+      setRuleDiscountValue(30);
+      setRuleDaysOfWeek([0, 1, 2, 3, 4, 5, 6]);
+      setRuleStartTime('00:00');
+      setRuleEndTime('23:59');
+      setRuleIsFlashDeal(true);
+      setRuleFlashDealExpiresAt(exp.toISOString().slice(0, 16));
+      setRuleBadgeLabel('⚡ FLASH 30% OFF');
+      setRulePriority(20);
+    } else if (presetType === 'BREAKFAST_3X2') {
+      setRuleName('Cafetería & Desayunos 3x2');
+      setRuleDesc('Pide 3 platillos o cafés y paga solo 2 todas las mañanas.');
+      setRuleType('BUY_X_GET_Y');
+      setRuleBuyQty(3);
+      setRuleGetQty(2);
+      setRuleDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
+      setRuleStartTime('08:00');
+      setRuleEndTime('12:00');
+      setRuleIsFlashDeal(false);
+      setRuleFlashDealExpiresAt('');
+      setRuleBadgeLabel('☕ 3x2 MAÑANAS');
+      setRulePriority(5);
+    } else if (presetType === 'BURGER_FRIDAY') {
+      setRuleName('Viernes Burger Clásica $99');
+      setRuleDesc('Precio especial fijo en hamburguesas clásicas todos los viernes.');
+      setRuleType('FIXED_PRICE');
+      setRuleDiscountValue(99);
+      setRuleDaysOfWeek([5]);
+      setRuleStartTime('12:00');
+      setRuleEndTime('23:59');
+      setRuleIsFlashDeal(false);
+      setRuleFlashDealExpiresAt('');
+      setRuleBadgeLabel('🍔 VIERNES $99');
+      setRulePriority(10);
+    }
+    addNotification('Plantilla cargada. Ajusta detalles y guarda la regla.', 'info');
   };
 
   const handleSavePriceRule = async (e: React.FormEvent) => {
@@ -471,6 +567,11 @@ export default function PromotionsPage() {
         appliesToAll: ruleAppliesToAll,
         productIds: ruleAppliesToAll ? null : ruleSelectedProducts,
         zone: ruleZone.trim() || null,
+        isFlashDeal: Boolean(ruleIsFlashDeal),
+        flashDealExpiresAt: ruleIsFlashDeal && ruleFlashDealExpiresAt ? new Date(ruleFlashDealExpiresAt).toISOString() : null,
+        badgeLabel: ruleBadgeLabel.trim() || null,
+        minOrderAmount: Number(ruleMinOrderAmount) || 0,
+        priority: Number(rulePriority) || 0,
       };
 
       const url = editingRuleId ? `/api/price-rules/${editingRuleId}` : '/api/price-rules';
@@ -512,7 +613,6 @@ export default function PromotionsPage() {
   const totalActiveCoupons = coupons.filter(c => c.isActive).length;
   const totalRedemptions = coupons.reduce((sum, c) => sum + (c._count?.orders || c.usedCount || 0), 0);
   const totalActiveCombos = combos.filter(c => c.isActive).length;
-  const now = new Date();
   const totalActivePriceRules = priceRules.filter(r => r.isActive).length;
   const totalLiveNowRules = priceRules.filter(r => isRuleActiveNow(r, now)).length;
 
@@ -966,21 +1066,30 @@ export default function PromotionsPage() {
                       <div className="space-y-3">
                         {/* Status Header */}
                         <div className="flex items-center justify-between gap-2">
-                          {isLive ? (
-                            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
-                              <Flame className="w-3.5 h-3.5 text-amber-400" />
-                              ¡ACTIVO AHORA!
-                            </span>
-                          ) : rule.isActive ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                              <Clock className="w-3 h-3 text-slate-400" />
-                              Programado
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">
-                              Inactivo
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {isLive ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                                <Flame className="w-3.5 h-3.5 text-amber-400" />
+                                ¡ACTIVO AHORA!
+                              </span>
+                            ) : rule.isActive ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                Programado
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">
+                                Inactivo
+                              </span>
+                            )}
+
+                            {rule.isFlashDeal && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                <Zap className="w-3 h-3" />
+                                FLASH
+                              </span>
+                            )}
+                          </div>
 
                           <div className="flex items-center gap-1">
                             <button
@@ -1009,10 +1118,17 @@ export default function PromotionsPage() {
                           </div>
                         </div>
 
-                        {/* Title and Promo Type */}
+                        {/* Title, Badge Label and Promo Type */}
                         <div>
                           <div className="flex items-baseline justify-between gap-2">
-                            <h3 className="font-extrabold text-white text-base leading-tight">{rule.name}</h3>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-extrabold text-white text-base leading-tight">{rule.name}</h3>
+                              {rule.badgeLabel && (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono">
+                                  {rule.badgeLabel}
+                                </span>
+                              )}
+                            </div>
                             <span className="text-sm font-black text-amber-400 font-mono shrink-0">
                               {rule.type === 'PERCENTAGE_DISCOUNT' && `-${rule.discountValue}%`}
                               {rule.type === 'FIXED_PRICE' && `$${rule.discountValue.toFixed(2)}`}
@@ -1023,6 +1139,19 @@ export default function PromotionsPage() {
                             <p className="text-xs text-slate-400 mt-1">{rule.description}</p>
                           )}
                         </div>
+
+                        {/* Live Countdown Clock if active right now */}
+                        {isLive && (
+                          <div className="flex items-center justify-between bg-black/40 border border-amber-500/30 rounded-xl px-3 py-1.5 text-xs text-amber-300">
+                            <span className="flex items-center gap-1.5 font-bold">
+                              <Timer className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                              Tiempo Restante:
+                            </span>
+                            <span className="font-mono font-black text-amber-400 text-sm">
+                              {formatRuleCountdown(getRuleRemainingSeconds(rule, now))}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Schedule & Days */}
                         <div className="bg-slate-950/70 border border-slate-850 rounded-xl p-3 space-y-2 text-xs">
@@ -1055,7 +1184,7 @@ export default function PromotionsPage() {
                           </div>
                         </div>
 
-                        {/* Scope / Zone info */}
+                        {/* Scope / Zone / Min Order info */}
                         <div className="text-[11px] text-slate-400 space-y-1">
                           <div className="flex justify-between">
                             <span>Aplica a:</span>
@@ -1063,6 +1192,18 @@ export default function PromotionsPage() {
                               {rule.appliesToAll ? 'Todo el Menú' : 'Productos seleccionados'}
                             </span>
                           </div>
+                          {rule.minOrderAmount && rule.minOrderAmount > 0 ? (
+                            <div className="flex justify-between">
+                              <span>Pedido Mínimo:</span>
+                              <span className="font-bold text-amber-400 font-mono">${rule.minOrderAmount.toFixed(2)} MXN</span>
+                            </div>
+                          ) : null}
+                          {rule.priority && rule.priority > 0 ? (
+                            <div className="flex justify-between">
+                              <span>Prioridad:</span>
+                              <span className="font-bold text-slate-300">{rule.priority}</span>
+                            </div>
+                          ) : null}
                           {rule.zone && (
                             <div className="flex justify-between">
                               <span>Zona:</span>
@@ -1349,6 +1490,51 @@ export default function PromotionsPage() {
               </div>
 
               <form onSubmit={handleSavePriceRule} className="p-5 space-y-4 text-xs">
+                {/* Presets Bar */}
+                <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    Plantillas Rápidas Preconfiguradas:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => applyPresetRule('HAPPY_HOUR')}
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold rounded-lg border border-amber-500/30 text-[11px] transition-all"
+                    >
+                      🍻 Happy Hour 2x1 (17-20h)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetRule('ALITAS_JUEVES')}
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold rounded-lg border border-amber-500/30 text-[11px] transition-all"
+                    >
+                      🍗 Jueves Alitas 20% OFF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetRule('FLASH_DEAL')}
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-orange-400 font-bold rounded-lg border border-orange-500/30 text-[11px] transition-all"
+                    >
+                      ⚡ Flash Deal 2 Horas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetRule('BREAKFAST_3X2')}
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-emerald-400 font-bold rounded-lg border border-emerald-500/30 text-[11px] transition-all"
+                    >
+                      ☕ Cafetería 3x2 Mañanas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetRule('BURGER_FRIDAY')}
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-purple-400 font-bold rounded-lg border border-purple-500/30 text-[11px] transition-all"
+                    >
+                      🍔 Viernes Burger $99
+                    </button>
+                  </div>
+                </div>
+
                 {/* Name & Description */}
                 <div className="space-y-3">
                   <div>
@@ -1365,6 +1551,33 @@ export default function PromotionsPage() {
                     />
                   </div>
 
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-300 uppercase tracking-wider mb-1">
+                        Etiqueta Distintiva (Badge Label)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej. 🍻 2x1, ⚡ FLASH 30%, 🔥 -20%"
+                        value={ruleBadgeLabel}
+                        onChange={(e) => setRuleBadgeLabel(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white outline-none focus:border-amber-400 font-bold text-amber-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-300 uppercase tracking-wider mb-1">
+                        Zona Específica (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Barra, Terraza, Salón"
+                        value={ruleZone}
+                        onChange={(e) => setRuleZone(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block font-bold text-slate-300 uppercase tracking-wider mb-1">
                       Descripción (Opcional)
@@ -1377,6 +1590,97 @@ export default function PromotionsPage() {
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white outline-none focus:border-amber-400"
                     />
                   </div>
+                </div>
+
+                {/* Flash Deal Config */}
+                <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className={`w-4 h-4 ${ruleIsFlashDeal ? 'text-orange-400 animate-pulse' : 'text-slate-500'}`} />
+                      <div>
+                        <span className="font-bold text-slate-200">¿Es Oferta Relámpago (Flash Deal)?</span>
+                        <p className="text-[10px] text-slate-400">Cuenta regresiva de urgencia visible en POS y Menú QR</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !ruleIsFlashDeal;
+                        setRuleIsFlashDeal(nextVal);
+                        if (nextVal && !ruleFlashDealExpiresAt) {
+                          const exp = new Date(Date.now() + 2 * 60 * 60 * 1000);
+                          setRuleFlashDealExpiresAt(exp.toISOString().slice(0, 16));
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                        ruleIsFlashDeal ? 'bg-orange-500' : 'bg-slate-800'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          ruleIsFlashDeal ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {ruleIsFlashDeal && (
+                    <div className="pt-2 border-t border-slate-850 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="font-bold text-orange-400">Expira en:</label>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const exp = new Date(Date.now() + 1 * 60 * 60 * 1000);
+                              setRuleFlashDealExpiresAt(exp.toISOString().slice(0, 16));
+                            }}
+                            className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded text-[10px] border border-slate-750"
+                          >
+                            +1h
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const exp = new Date(Date.now() + 2 * 60 * 60 * 1000);
+                              setRuleFlashDealExpiresAt(exp.toISOString().slice(0, 16));
+                            }}
+                            className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded text-[10px] border border-slate-750"
+                          >
+                            +2h
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const exp = new Date(Date.now() + 4 * 60 * 60 * 1000);
+                              setRuleFlashDealExpiresAt(exp.toISOString().slice(0, 16));
+                            }}
+                            className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded text-[10px] border border-slate-750"
+                          >
+                            +4h
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const exp = new Date();
+                              exp.setHours(23, 59, 0, 0);
+                              setRuleFlashDealExpiresAt(exp.toISOString().slice(0, 16));
+                            }}
+                            className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-orange-300 rounded text-[10px] border border-orange-500/30"
+                          >
+                            Fin Turno
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="datetime-local"
+                        required={ruleIsFlashDeal}
+                        value={ruleFlashDealExpiresAt}
+                        onChange={(e) => setRuleFlashDealExpiresAt(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono outline-none focus:border-orange-400"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Promo Type & Values */}
@@ -1546,6 +1850,37 @@ export default function PromotionsPage() {
                       value={ruleEndTime}
                       onChange={(e) => setRuleEndTime(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Min Order & Priority */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-300 uppercase tracking-wider mb-1">
+                      Pedido Mínimo ($ MXN)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="0 = Sin mínimo"
+                      value={ruleMinOrderAmount}
+                      onChange={(e) => setRuleMinOrderAmount(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white font-mono outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-300 uppercase tracking-wider mb-1">
+                      Prioridad de Aplicación (0-100)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={rulePriority}
+                      onChange={(e) => setRulePriority(parseInt(e.target.value, 10) || 0)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white font-mono outline-none focus:border-amber-400"
                     />
                   </div>
                 </div>

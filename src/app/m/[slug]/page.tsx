@@ -23,9 +23,12 @@ import {
   Lock,
   CheckCircle2,
   ShieldCheck,
-  Flame
+  Flame,
+  Clock,
+  Zap,
+  Timer
 } from 'lucide-react';
-import { PriceRuleItem, calculateItemPriceRule } from '@/lib/priceRules';
+import { PriceRuleItem, calculateItemPriceRule, isRuleActiveNow, getRuleRemainingSeconds, formatRuleCountdown } from '@/lib/priceRules';
 
 interface PublicIngredient {
   id: string;
@@ -153,6 +156,17 @@ export default function PublicMenuPage({
   const [combos, setCombos] = useState<PublicCombo[]>([]);
   const [tables, setTables] = useState<PublicTable[]>([]);
   const [priceRules, setPriceRules] = useState<PriceRuleItem[]>([]);
+  const [now, setNow] = useState(new Date());
+
+  // Real-time ticker for live Happy Hour & Flash Deal countdowns
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const activePriceRules = useMemo(() => {
+    return priceRules.filter((r) => isRuleActiveNow(r, now));
+  }, [priceRules, now]);
 
   // Filtering state
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -673,6 +687,39 @@ export default function PublicMenuPage({
         </div>
       </header>
 
+      {/* Happy Hour & Flash Deals Live Banner */}
+      {activePriceRules.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600 text-slate-950 font-bold px-4 py-2.5 shadow-lg border-b border-amber-500/40">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="p-1 rounded-full bg-slate-950/20 text-white shrink-0 animate-pulse">
+                <Flame className="w-4 h-4 fill-amber-300 text-amber-300" />
+              </span>
+              <div className="min-w-0">
+                <span className="font-black text-white text-sm tracking-tight flex items-center gap-1.5 truncate">
+                  {activePriceRules[0].badgeLabel || activePriceRules[0].name}
+                  {activePriceRules.length > 1 && (
+                    <span className="text-[10px] bg-black/40 text-amber-300 px-1.5 py-0.2 rounded-full shrink-0">
+                      +{activePriceRules.length - 1} más
+                    </span>
+                  )}
+                </span>
+                {activePriceRules[0].description && (
+                  <p className="text-[11px] text-amber-100 hidden sm:block truncate">
+                    {activePriceRules[0].description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 font-mono text-xs font-black bg-slate-950 text-amber-400 px-2.5 py-1 rounded-xl shadow border border-amber-400/40 shrink-0">
+              <Clock className="w-3.5 h-3.5 animate-pulse" />
+              <span>{formatRuleCountdown(getRuleRemainingSeconds(activePriceRules[0], now))}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Menu Content */}
       <main className="max-w-3xl mx-auto w-full px-4 pt-4 space-y-6">
         {/* Combos Showcase */}
@@ -755,7 +802,7 @@ export default function PublicMenuPage({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {category.products.map((product) => {
-                    const promo = calculateItemPriceRule(product, 1, priceRules);
+                    const promo = calculateItemPriceRule(product, 1, priceRules, now);
                     return (
                       <div
                         key={product.id}
@@ -880,7 +927,7 @@ export default function PublicMenuPage({
           }).filter(Boolean) as CartModifier[]
         );
 
-        const promo = calculateItemPriceRule(selectedProduct, modalQty, priceRules);
+        const promo = calculateItemPriceRule(selectedProduct, modalQty, priceRules, now);
         const extraPrice = selectedModifiers.reduce((sum, m) => sum + m.price, 0);
         const baseUnitPrice = promo.hasPromo ? promo.effectiveUnitPrice : selectedProduct.price;
         const totalPrice = (baseUnitPrice + extraPrice) * modalQty;
@@ -896,9 +943,17 @@ export default function PublicMenuPage({
               <div className="flex justify-between items-start">
                 <div>
                   {promo.hasPromo && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1">
-                      <Flame className="w-3 h-3 text-amber-400" /> {promo.badgeText}
-                    </span>
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <Flame className="w-3 h-3 text-amber-400" /> {promo.badgeText}
+                      </span>
+                      {promo.remainingSeconds !== undefined && promo.remainingSeconds > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-black/40 text-amber-400 border border-amber-500/30">
+                          <Clock className="w-3 h-3" />
+                          {formatRuleCountdown(promo.remainingSeconds)}
+                        </span>
+                      )}
+                    </div>
                   )}
                   <h3 className="text-lg font-bold text-white">{selectedProduct.name}</h3>
                   <div className="flex items-center gap-2">

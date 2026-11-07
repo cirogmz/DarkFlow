@@ -408,6 +408,10 @@ export function generateReceiptBuffer(
         }
       });
     }
+
+    if (item.promoBadge) {
+      builder.line(`   * PROMO: ${item.promoBadge}`);
+    }
   }
 
   builder.divider("-");

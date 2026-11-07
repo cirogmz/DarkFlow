@@ -4,6 +4,7 @@ import { orderEvents } from '@/lib/events';
 import { createPaymentSession } from '@/lib/payments';
 import { determineCustomerTier, calculateLoyaltyPointsEarned } from '@/lib/loyaltyTiers';
 import { calculateOrderCashback, generateCustomerWalletQrCode } from '@/lib/wallet';
+import { calculateItemPriceRule } from '@/lib/priceRules';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,7 +90,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate subtotal from authoritative product prices plus modifiers
+    // Fetch active price rules for brand (Happy Hour / dynamic rules)
+    const activePriceRules = await prisma.priceRule.findMany({
+      where: { brandId: brand.id, isActive: true },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    // Calculate subtotal from authoritative product prices with dynamic price rules & modifiers
     let subtotal = 0;
     const validatedItems = items.map((item: PublicOrderItemInput) => {
       const p = dbProducts.find((dbP) => dbP.id === item.productId)!;
@@ -97,13 +104,34 @@ export async function POST(request: NextRequest) {
       if (item.modifiers && Array.isArray(item.modifiers)) {
         extraModifiersPrice = item.modifiers.reduce((sum: number, mod: { price?: number }) => sum + (parseFloat(String(mod.price || 0)) || 0), 0);
       }
-      const unitPrice = p.price + extraModifiersPrice;
-      const itemSubtotal = unitPrice * item.quantity;
+
+      const ruleEval = calculateItemPriceRule(
+        { id: p.id, price: p.price, categoryId: p.categoryId },
+        item.quantity,
+        activePriceRules,
+        new Date(),
+        matchedTable?.zone || undefined
+      );
+
+      const effectiveUnitPrice = ruleEval.hasPromo
+        ? ruleEval.effectiveUnitPrice + extraModifiersPrice
+        : p.price + extraModifiersPrice;
+
+      const originalUnitPrice = p.price + extraModifiersPrice;
+      const itemSubtotal = ruleEval.hasPromo
+        ? ruleEval.effectiveLineTotal + (extraModifiersPrice * item.quantity)
+        : effectiveUnitPrice * item.quantity;
+
       subtotal += itemSubtotal;
+
       return {
         productId: p.id,
         quantity: item.quantity,
-        price: unitPrice,
+        price: effectiveUnitPrice,
+        originalPrice: originalUnitPrice,
+        discountAmount: ruleEval.savings,
+        promoRuleId: ruleEval.rule?.id || null,
+        promoBadge: ruleEval.badgeText || null,
         notes: item.notes ? item.notes.trim() : null,
         modifiers: item.modifiers ? (typeof item.modifiers === 'string' ? item.modifiers : JSON.stringify(item.modifiers)) : null,
       };
@@ -293,6 +321,10 @@ export async function POST(request: NextRequest) {
                 productId: i.productId,
                 quantity: i.quantity,
                 price: i.price,
+                originalPrice: i.originalPrice !== undefined ? i.originalPrice : i.price,
+                discountAmount: i.discountAmount || 0,
+                promoRuleId: i.promoRuleId || null,
+                promoBadge: i.promoBadge || null,
                 notes: i.notes,
                 modifiers: i.modifiers,
                 status: 'PENDING',
