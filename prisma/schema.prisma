@@ -85,6 +85,10 @@ model Brand {
   pacEnvironment String        @default("SANDBOX")
   invoices       Invoice[]
   printers       Printer[]
+  smartTerminals SmartTerminal[]
+  clipApiKey     String?
+  clipSandboxMode Boolean      @default(true)
+  mpPointSandboxMode Boolean   @default(true)
   attendanceRecords AttendanceRecord[]
   reservations   Reservation[]
   waitlistEntries WaitlistEntry[]
@@ -286,6 +290,7 @@ model Order {
   paidAt        DateTime?
   paymentTransactionId String?
   paymentTransactions PaymentTransaction[]
+  smartTerminalIntents SmartTerminalIntent[]
   invoiceId    String?      @unique
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   globalInvoiceId String?
@@ -847,6 +852,54 @@ model Printer {
   updatedAt        DateTime  @updatedAt
 
   @@index([brandId])
+}
+
+model SmartTerminal {
+  id              String   @id @default(uuid())
+  brandId         String
+  brand           Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name            String
+  provider        String   @default("CLIP")
+  serialNumber    String
+  deviceId        String
+  zone            String   @default("Salón")
+  isActive        Boolean  @default(true)
+  status          String   @default("ONLINE")
+  lastHeartbeatAt DateTime?
+  notes           String?
+  intents         SmartTerminalIntent[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([serialNumber, brandId])
+  @@index([brandId])
+  @@index([provider])
+}
+
+model SmartTerminalIntent {
+  id               String        @id @default(uuid())
+  terminalId       String
+  terminal         SmartTerminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  brandId          String
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount           Float
+  tip              Float         @default(0)
+  currency         String        @default("MXN")
+  status           String        @default("PENDING")
+  providerIntentId String?
+  authCode         String?
+  cardBrand        String?
+  cardLast4        String?
+  errorMessage     String?
+  rawWebhookData   String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([terminalId])
+  @@index([brandId])
+  @@index([orderId])
+  @@index([status])
 }
 
 model AttendanceRecord {

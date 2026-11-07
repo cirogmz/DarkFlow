@@ -39,6 +39,7 @@ import {
   Server
 } from 'lucide-react';
 import { TAX_REGIMES } from '@/lib/cfdi';
+import SmartTerminalsTab from '@/components/SmartTerminalsTab';
 
 interface PrinterData {
   id: string;
@@ -114,7 +115,7 @@ interface DeliveryMetrics {
 
 export default function IntegrationsPage() {
   const { activeBrand, addNotification } = useAppStore();
-  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING' | 'PRINTERS'>('SIMULATOR');
+  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING' | 'PRINTERS' | 'TERMINALS'>('SIMULATOR');
 
   // Hardware Bridge / Printers State
   const [printers, setPrinters] = useState<PrinterData[]>([]);
@@ -846,6 +847,17 @@ export default function IntegrationsPage() {
           >
             <Printer className="w-4 h-4 text-cyan-400" />
             Hardware Bridge & Impresoras {printers.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">{printers.length}</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab('TERMINALS')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'TERMINALS'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <CreditCard className="w-4 h-4 text-amber-400" />
+            Terminales Smart POS (Clip & Point)
           </button>
         </div>
 
@@ -1882,6 +1894,9 @@ export default function IntegrationsPage() {
             </div>
           </div>
         )}
+
+        {/* TAB 7: SMART TERMINALS */}
+        {activeTab === 'TERMINALS' && <SmartTerminalsTab />}
       </div>
     </DashboardContainer>
   );

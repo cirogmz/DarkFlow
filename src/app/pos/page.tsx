@@ -39,6 +39,7 @@ import {
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
 import CompAuthorizationModal from '@/components/pos/CompAuthorizationModal';
+import SmartTerminalModal from '@/components/SmartTerminalModal';
 import { PriceRuleItem, calculateItemPriceRule, isRuleActiveNow, getRuleRemainingSeconds, formatRuleCountdown } from '@/lib/priceRules';
 
 interface CustomerSuggestion {
@@ -256,7 +257,14 @@ export default function POSPage() {
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD' | 'WALLET'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD' | 'WALLET' | 'SMART_TERMINAL'>('CASH');
+  const [smartTerminalModalData, setSmartTerminalModalData] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    orderNumber: string;
+    totalAmount: number;
+    tableNumber?: string;
+  } | null>(null);
   const [posGiftCardCode, setPosGiftCardCode] = useState('');
   const [posGiftCardPin, setPosGiftCardPin] = useState('');
   const [posGiftCardInfo, setPosGiftCardInfo] = useState<{
@@ -298,7 +306,7 @@ export default function POSPage() {
   const [splitItemAssignments, setSplitItemAssignments] = useState<Record<string, number>>({});
   const [processingSplitPayment, setProcessingSplitPayment] = useState(false);
 
-  const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, updateCartAllergenAlert, clearCart, addNotification } = useAppStore();
+  const { cart, addToCart, removeFromCart, updateCartQty, updateCartNotes, updateCartAllergenAlert, clearCart, addNotification, activeBrand } = useAppStore();
 
   const fetchInitialData = React.useCallback(async () => {
     try {
@@ -720,6 +728,14 @@ export default function POSPage() {
             isOpen: true,
             order: data.order,
             paymentSession: data.paymentSession,
+          });
+        } else if (paymentMethod === 'SMART_TERMINAL') {
+          setSmartTerminalModalData({
+            isOpen: true,
+            orderId: data.order.id,
+            orderNumber: data.order.orderNumber,
+            totalAmount: data.order.total,
+            tableNumber: selectedTableId ? tables.find((t) => t.id === selectedTableId)?.number : undefined,
           });
         }
       } else {
@@ -1718,7 +1734,7 @@ export default function POSPage() {
                 <label className="text-xs font-bold text-slate-300 block">
                   Método de Cobro
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('CASH')}
@@ -1742,7 +1758,20 @@ export default function POSPage() {
                     }`}
                   >
                     <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[10px] leading-tight">Terminal</span>
+                    <span className="text-[10px] leading-tight">Manual</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('SMART_TERMINAL')}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
+                      paymentMethod === 'SMART_TERMINAL'
+                        ? 'bg-sky-500/20 border-sky-500 text-sky-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-sm">📟</span>
+                    <span className="text-[10px] leading-tight">Smart POS</span>
                   </button>
 
                   <button
@@ -1755,7 +1784,7 @@ export default function POSPage() {
                     }`}
                   >
                     <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
-                    <span className="text-[10px] leading-tight">Stripe</span>
+                    <span className="text-[10px] leading-tight">Stripe QR</span>
                   </button>
 
                   <button
@@ -1768,13 +1797,13 @@ export default function POSPage() {
                     }`}
                   >
                     <Wallet className="w-3.5 h-3.5 text-sky-400" />
-                    <span className="text-[10px] leading-tight">Mercado Pago</span>
+                    <span className="text-[10px] leading-tight">MP QR</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('GIFT_CARD')}
-                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer col-span-2 sm:col-span-1 ${
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
                       paymentMethod === 'GIFT_CARD'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
@@ -2213,6 +2242,24 @@ export default function POSPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Smart POS Terminal Push Modal (Clip / Point) */}
+      {smartTerminalModalData && (
+        <SmartTerminalModal
+          isOpen={smartTerminalModalData.isOpen}
+          onClose={() => setSmartTerminalModalData(null)}
+          brandId={activeBrand?.id || ''}
+          orderId={smartTerminalModalData.orderId}
+          orderNumber={smartTerminalModalData.orderNumber}
+          total={smartTerminalModalData.totalAmount}
+          tableName={smartTerminalModalData.tableNumber}
+          onPaymentSuccess={() => {
+            addNotification(`Cobro de Orden #${smartTerminalModalData.orderNumber} aprobado en terminal Smart POS`, 'success');
+            setSmartTerminalModalData(null);
+            fetchInitialData();
+          }}
+        />
       )}
 
       {/* Split Bill & Partial Payment Modal */}

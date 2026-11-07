@@ -32,9 +32,11 @@ import {
   Sparkles,
   XCircle,
   Search,
-  Filter
+  Filter,
+  CreditCard
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
+import SmartTerminalModal from '@/components/SmartTerminalModal';
 import { useRouter } from 'next/navigation';
 
 interface TableOrderItem {
@@ -157,6 +159,10 @@ export default function TablesPage() {
   const [isThermalOpen, setIsThermalOpen] = useState(false);
   const [thermalInitialMode, setThermalInitialMode] = useState<'CUSTOMER' | 'KITCHEN'>('CUSTOMER');
   const [thermalOrderData, setThermalOrderData] = useState<ThermalOrderData | null>(null);
+
+  // Modal: Smart Terminal POS Push
+  const [smartTerminalModalOpen, setSmartTerminalModalOpen] = useState(false);
+  const [smartTerminalOrder, setSmartTerminalOrder] = useState<{ id: string; orderNumber: string; total: number; tableNumber: string } | null>(null);
 
   // Modal: Table QR Code for Diner Self-Ordering
   const [selectedTableForQr, setSelectedTableForQr] = useState<RestaurantTable | null>(null);
@@ -2004,10 +2010,27 @@ export default function TablesPage() {
 
               <div className="space-y-2 pt-1 border-t border-slate-800">
                 <button
+                  onClick={() => {
+                    const activeOrder = selectedTableForBill.orders?.[0];
+                    if (activeOrder) {
+                      setSmartTerminalOrder({
+                        id: activeOrder.id,
+                        orderNumber: activeOrder.orderNumber,
+                        total: activeOrder.total,
+                        tableNumber: selectedTableForBill.number,
+                      });
+                      setSmartTerminalModalOpen(true);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs rounded-lg shadow-lg flex items-center justify-center gap-2 cursor-pointer transition"
+                >
+                  <CreditCard className="h-4 w-4" /> Cobrar con Smart POS (Clip / Point)
+                </button>
+                <button
                   onClick={() => handleReleaseTable(selectedTableForBill.id)}
                   className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-lg shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <CheckCircle2 className="h-4 w-4" /> Cobrar y Liberar Mesa
+                  <CheckCircle2 className="h-4 w-4" /> Cobrar y Liberar Mesa (Efectivo/Manual)
                 </button>
                 <button
                   onClick={() => handleRequestBill(selectedTableForBill.id)}
@@ -2018,6 +2041,29 @@ export default function TablesPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Smart POS Terminal Modal */}
+        {smartTerminalOrder && (
+          <SmartTerminalModal
+            isOpen={smartTerminalModalOpen}
+            onClose={() => {
+              setSmartTerminalModalOpen(false);
+              setSmartTerminalOrder(null);
+            }}
+            brandId={activeBrand?.id || ''}
+            orderId={smartTerminalOrder.id}
+            orderNumber={smartTerminalOrder.orderNumber}
+            total={smartTerminalOrder.total}
+            tableName={smartTerminalOrder.tableNumber}
+            onPaymentSuccess={() => {
+              addNotification(`Mesa ${smartTerminalOrder.tableNumber} cobrada exitosamente con Smart POS`, 'success');
+              setSmartTerminalModalOpen(false);
+              setSmartTerminalOrder(null);
+              setSelectedTableForBill(null);
+              fetchTables();
+            }}
+          />
         )}
 
         {/* ESC/POS Thermal Printing Dialog */}
