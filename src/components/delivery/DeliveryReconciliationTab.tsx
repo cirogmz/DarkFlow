@@ -27,7 +27,10 @@ import {
   Layers,
   FileCheck2,
   BadgeAlert,
-  Download
+  Download,
+  Upload,
+  Copy,
+  FileText
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 
@@ -128,7 +131,7 @@ interface MetricsData {
 
 export default function DeliveryReconciliationTab() {
   const { activeBrand, addNotification } = useAppStore();
-  const [subTab, setSubTab] = useState<'SETTLEMENTS' | 'UNRECONCILED' | 'DISPUTES' | 'SIMULATOR'>('SETTLEMENTS');
+  const [subTab, setSubTab] = useState<'SETTLEMENTS' | 'AUDIT_PARSER' | 'UNRECONCILED' | 'DISPUTES' | 'RULES' | 'SIMULATOR'>('SETTLEMENTS');
 
   // Loading states
   const [loading, setLoading] = useState(false);
@@ -136,6 +139,28 @@ export default function DeliveryReconciliationTab() {
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [unreconciledOrders, setUnreconciledOrders] = useState<UnreconciledOrder[]>([]);
   const [disputes, setDisputes] = useState<DisputeItem[]>([]);
+
+  // Audit Parser & Discrepancy State
+  const [statementText, setStatementText] = useState('');
+  const [statementPlatform, setStatementPlatform] = useState<string>('UBER_EATS');
+  const [statementDeposit, setStatementDeposit] = useState('');
+  const [statementFileName, setStatementFileName] = useState('');
+  const [auditing, setAuditing] = useState(false);
+  const [auditResult, setAuditResult] = useState<any>(null);
+  const [savingAuditSettlement, setSavingAuditSettlement] = useState(false);
+
+  // Claim Dossier Modal State
+  const [dossierModalOpen, setDossierModalOpen] = useState(false);
+  const [currentDossierText, setCurrentDossierText] = useState('');
+  const [currentDossierFolio, setCurrentDossierFolio] = useState('');
+  const [loadingDossier, setLoadingDossier] = useState(false);
+
+  // Contract Rules State
+  const [uberRate, setUberRate] = useState('22.0');
+  const [rappiRate, setRappiRate] = useState('20.0');
+  const [didiRate, setDidiRate] = useState('18.0');
+  const [loadingRules, setLoadingRules] = useState(false);
+  const [savingRules, setSavingRules] = useState(false);
 
   // Filters
   const [platformFilter, setPlatformFilter] = useState('ALL');
@@ -227,6 +252,188 @@ export default function DeliveryReconciliationTab() {
     loadUnreconciled();
     loadDisputes();
   }, [loadSettlements, loadUnreconciled, loadDisputes]);
+
+  // Cargar Tasas Contractuales
+  const loadContractRules = useCallback(async () => {
+    if (!activeBrand?.id) return;
+    try {
+      setLoadingRules(true);
+      const res = await fetch(`/api/delivery/audit/rules?brandId=${activeBrand.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUberRate(String(data.uberCommissionRate ?? 22.0));
+        setRappiRate(String(data.rappiCommissionRate ?? 20.0));
+        setDidiRate(String(data.didiCommissionRate ?? 18.0));
+      }
+    } catch (err) {
+      console.error('Error fetching delivery rules:', err);
+    } finally {
+      setLoadingRules(false);
+    }
+  }, [activeBrand?.id]);
+
+  useEffect(() => {
+    if (subTab === 'RULES') {
+      loadContractRules();
+    }
+  }, [subTab, loadContractRules]);
+
+  // Guardar Tasas Contractuales
+  const handleSaveRules = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeBrand?.id) return;
+    try {
+      setSavingRules(true);
+      const res = await fetch('/api/delivery/audit/rules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandId: activeBrand.id,
+          uberCommissionRate: parseFloat(uberRate),
+          rappiCommissionRate: parseFloat(rappiRate),
+          didiCommissionRate: parseFloat(didiRate),
+        }),
+      });
+      if (!res.ok) throw new Error('Error al guardar tasas');
+      addNotification('Tasas contractuales de delivery actualizadas exitosamente', 'success');
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      setSavingRules(false);
+    }
+  };
+
+  // Cargar Plantilla de Muestra
+  const loadSampleStatement = (platform: 'UBER_EATS' | 'RAPPI' | 'DIDI_FOOD') => {
+    setStatementPlatform(platform);
+    const today = new Date().toISOString().slice(0, 10);
+    if (platform === 'UBER_EATS') {
+      setStatementText(
+`Order ID,Date,Gross Sales,Commission Rate,Platform Fee,Tax on Fee,Retencion ISR,Retencion IVA,Promotions,Adjustments,Net Payout,Status
+UBER-77123,${today},450.00,28.0,126.00,20.16,4.50,36.00,0.00,0.00,263.34,COMPLETED
+UBER-77124,${today},380.00,28.0,106.40,17.02,3.80,30.40,0.00,0.00,222.38,COMPLETED
+UBER-77125,${today},290.00,22.0,63.80,10.21,2.90,23.20,0.00,0.00,189.89,CANCELLED`
+      );
+      setStatementDeposit('620.00');
+      setStatementFileName('uber_eats_payout_w46.csv');
+    } else if (platform === 'RAPPI') {
+      setStatementText(
+`ID Orden,Fecha,Venta Bruta,Comision Rappi,IVA Comision,Retencion ISR,Retencion IVA,Promociones,Ajustes,Total Pagado,Estatus
+RAPPI-8891,${today},520.00,104.00,16.64,5.20,41.60,0.00,150.00,202.56,COMPLETED
+RAPPI-8892,${today},310.00,62.00,9.92,3.10,24.80,0.00,0.00,210.18,COMPLETED`
+      );
+      setStatementDeposit('400.00');
+      setStatementFileName('rappi_liquidacion_semanal.csv');
+    } else {
+      setStatementText(
+`Numero de Pedido,Fecha,Subtotal,Tasa Comision,Comision,Impuestos,Retenciones,Reembolsos,Pago Neto,Estado
+DIDI-4412,${today},410.00,18.0,73.80,11.81,36.90,0.00,287.49,COMPLETED
+DIDI-4413,${today},350.00,25.0,87.50,14.00,31.50,0.00,217.00,COMPLETED`
+      );
+      setStatementDeposit('490.00');
+      setStatementFileName('didi_food_cierre.csv');
+    }
+  };
+
+  // Ejecutar Auditoría sobre archivo
+  const handleRunAudit = async () => {
+    if (!statementText.trim() || !activeBrand?.id) {
+      addNotification('Por favor pega o carga el contenido de un estado de cuenta CSV', 'warning');
+      return;
+    }
+
+    try {
+      setAuditing(true);
+      // 1. Parsear archivo
+      const parseRes = await fetch('/api/delivery/audit/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileContent: statementText, platform: statementPlatform }),
+      });
+      const parseData = await parseRes.json();
+      if (!parseRes.ok) throw new Error(parseData.error || 'Error al parsear archivo');
+
+      // 2. Conciliar y detectar discrepancias
+      const reconRes = await fetch('/api/delivery/audit/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandId: activeBrand.id,
+          platform: parseData.platform || statementPlatform,
+          statementRows: parseData.rows,
+          bankDepositAmount: statementDeposit ? parseFloat(statementDeposit) : 0,
+          saveSettlement: false,
+        }),
+      });
+      const reconData = await reconRes.json();
+      if (!reconRes.ok) throw new Error(reconData.error || 'Error al conciliar órdenes');
+
+      setAuditResult({
+        ...reconData,
+        statementRows: parseData.rows,
+      });
+      addNotification(`Auditoría completada: ${reconData.discrepancies.length} discrepancias detectadas`, 'success');
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      setAuditing(false);
+    }
+  };
+
+  // Guardar liquidación y generar disputas oficiales
+  const handleSaveAuditSettlement = async () => {
+    if (!auditResult || !activeBrand?.id) return;
+    try {
+      setSavingAuditSettlement(true);
+      const res = await fetch('/api/delivery/audit/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandId: activeBrand.id,
+          platform: auditResult.platform || statementPlatform,
+          statementRows: auditResult.statementRows,
+          bankDepositAmount: statementDeposit ? parseFloat(statementDeposit) : auditResult.bankDepositAmount,
+          saveSettlement: true,
+          statementFileName: statementFileName || 'estado_cuenta.csv',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al guardar liquidación');
+
+      addNotification(`Liquidación ${data.folio} registrada exitosamente con ${auditResult.discrepancies.length} disputas`, 'success');
+      loadSettlements();
+      loadDisputes();
+
+      if (data.dossier) {
+        setCurrentDossierText(data.dossier);
+        setCurrentDossierFolio(data.folio);
+        setDossierModalOpen(true);
+      }
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      setSavingAuditSettlement(false);
+    }
+  };
+
+  // Ver Expediente Formal de Reclamo (Dossier)
+  const handleViewDossier = async (settlementId: string, folio: string) => {
+    try {
+      setLoadingDossier(true);
+      setCurrentDossierFolio(folio);
+      setCurrentDossierText('');
+      setDossierModalOpen(true);
+      const res = await fetch(`/api/delivery/audit/dossier/${settlementId}`);
+      if (!res.ok) throw new Error('Error al cargar expediente de disputa');
+      const data = await res.json();
+      setCurrentDossierText(data.dossierContent || '');
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      setLoadingDossier(false);
+    }
+  };
 
   // Initialize dates for new settlement modal
   const openNewSettlementModal = () => {
@@ -564,6 +771,17 @@ export default function DeliveryReconciliationTab() {
             Liquidaciones & Depósitos ({settlements.length})
           </button>
           <button
+            onClick={() => setSubTab('AUDIT_PARSER')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              subTab === 'AUDIT_PARSER'
+                ? 'bg-emerald-600 text-white border border-emerald-500 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+            Auditoría Inteligente CSV
+          </button>
+          <button
             onClick={() => setSubTab('UNRECONCILED')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
               subTab === 'UNRECONCILED'
@@ -588,6 +806,17 @@ export default function DeliveryReconciliationTab() {
                 {disputes.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setSubTab('RULES')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              subTab === 'RULES'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Scale className="w-4 h-4 text-purple-400" />
+            Tasas Contractuales
           </button>
           <button
             onClick={() => setSubTab('SIMULATOR')}
@@ -754,6 +983,14 @@ export default function DeliveryReconciliationTab() {
                             >
                               Detalle
                             </button>
+                            <button
+                              onClick={() => handleViewDossier(s.id, s.folio)}
+                              className="px-2 py-1 bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-800/40 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                              title="Ver Expediente Formal de Reclamo (Claim Dossier)"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              Dossier
+                            </button>
                             <a
                               href={`/api/delivery/settlements/${s.id}/export`}
                               download
@@ -776,6 +1013,260 @@ export default function DeliveryReconciliationTab() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUBTAB: AUDITORÍA INTELIGENTE CSV & DISCREPANCIAS */}
+      {subTab === 'AUDIT_PARSER' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                  Auditoría Automatizada de Estados de Cuenta de Delivery
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Importa el archivo CSV o pega el reporte semanal de Uber Eats, Rappi o DiDi Food para auditar comisiones, reembolsos indebidos y pedidos omitidos.
+                </p>
+              </div>
+
+              {/* Botones de prueba rápida */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-slate-400 font-semibold uppercase">Plantillas de prueba:</span>
+                <button
+                  type="button"
+                  onClick={() => loadSampleStatement('UBER_EATS')}
+                  className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all"
+                >
+                  Uber Eats
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSampleStatement('RAPPI')}
+                  className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-all"
+                >
+                  Rappi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSampleStatement('DIDI_FOOD')}
+                  className="px-2.5 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-semibold transition-all"
+                >
+                  DiDi Food
+                </button>
+              </div>
+            </div>
+
+            {/* Controles de Entrada */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase">Plataforma</label>
+                <select
+                  value={statementPlatform}
+                  onChange={(e) => setStatementPlatform(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="UBER_EATS">Uber Eats</option>
+                  <option value="RAPPI">Rappi</option>
+                  <option value="DIDI_FOOD">DiDi Food</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase">
+                  Monto Recibido en Banco ($ MXN SPEI)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-slate-500 text-xs">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Depósito real en cuenta"
+                    value={statementDeposit}
+                    onChange={(e) => setStatementDeposit(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-7 pr-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase">Cargar Archivo CSV / TXT</label>
+                <input
+                  type="file"
+                  accept=".csv,.txt,.tsv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setStatementFileName(file.name);
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        setStatementText(String(event.target?.result || ''));
+                      };
+                      reader.readAsText(file);
+                    }
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-emerald-400 hover:file:bg-slate-700"
+                />
+              </div>
+            </div>
+
+            {/* Textarea para datos CSV */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-300 uppercase">
+                  Contenido del Estado de Cuenta ({statementFileName || 'Texto sin procesar'})
+                </label>
+                {statementText && (
+                  <button
+                    type="button"
+                    onClick={() => { setStatementText(''); setAuditResult(null); }}
+                    className="text-[11px] text-red-400 hover:underline"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={5}
+                placeholder="Pega aquí las filas de tu estado de cuenta en formato CSV o haz clic en una de las plantillas de prueba arriba..."
+                value={statementText}
+                onChange={(e) => setStatementText(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={handleRunAudit}
+                disabled={auditing || !statementText.trim()}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-900/30 flex items-center gap-2 disabled:opacity-50"
+              >
+                {auditing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {auditing ? 'Auditando Comandas...' : 'Auditar y Detectar Discrepancias'}
+              </button>
+            </div>
+          </div>
+
+          {/* RESULTADOS DE AUDITORÍA */}
+          {auditResult && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl space-y-6 p-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-black text-white">Dictamen de Auditoría Financiera</h3>
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      auditResult.discrepancies.length > 0
+                        ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {auditResult.discrepancies.length > 0
+                        ? `${auditResult.discrepancies.length} DISCREPANCIAS DETECTADAS`
+                        : '100% CONCILIADO SIN ERRORES'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Plataforma: <strong className="text-white">{auditResult.platform}</strong> • Órdenes auditadas: <strong className="text-white">{auditResult.ordersCount}</strong>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveAuditSettlement}
+                    disabled={savingAuditSettlement}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-emerald-900/30"
+                  >
+                    {savingAuditSettlement ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    Guardar Liquidación & Abrir Disputas
+                  </button>
+                </div>
+              </div>
+
+              {/* RIBBON DE METRICAS DEL CORTE */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Venta Bruta Reportada</span>
+                  <p className="text-lg font-black text-white font-mono mt-0.5">${auditResult.grossSales.toFixed(2)}</p>
+                </div>
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Comisión Plataforma</span>
+                  <p className="text-lg font-black text-red-400 font-mono mt-0.5">-${auditResult.platformCommission.toFixed(2)}</p>
+                </div>
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Pago Neto Calculado</span>
+                  <p className="text-lg font-black text-emerald-400 font-mono mt-0.5">${auditResult.netPayoutCalculated.toFixed(2)}</p>
+                </div>
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Total en Reclamación</span>
+                  <p className="text-lg font-black text-amber-300 font-mono mt-0.5">${auditResult.totalClaimedDisputes.toFixed(2)} MXN</p>
+                </div>
+              </div>
+
+              {/* LISTA DE DISCREPANCIAS */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-red-400" />
+                  Hallazgos y Anomalías Detectadas ({auditResult.discrepancies.length})
+                </h4>
+
+                {auditResult.discrepancies.length === 0 ? (
+                  <div className="p-6 bg-slate-950 rounded-xl border border-slate-800 text-center text-xs text-slate-400">
+                    No se detectaron discrepancias. Las comisiones y retenciones coinciden exactamente con los acuerdos comerciales.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {auditResult.discrepancies.map((d: any, idx: number) => {
+                      const badgeColor =
+                        d.disputeType === 'COMMISSION_OVERCHARGE'
+                          ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                          : d.disputeType === 'WRONGFUL_REFUND'
+                          ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                          : d.disputeType === 'CANCELLED_WITHOUT_PAYOUT'
+                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+
+                      return (
+                        <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${badgeColor}`}>
+                                {d.disputeType === 'COMMISSION_OVERCHARGE'
+                                  ? 'SOBRECOBRO DE COMISIÓN'
+                                  : d.disputeType === 'WRONGFUL_REFUND'
+                                  ? 'REEMBOLSO INJUSTIFICADO'
+                                  : d.disputeType === 'CANCELLED_WITHOUT_PAYOUT'
+                                  ? 'CANCELACIÓN SIN PAGO'
+                                  : 'COMANDA NO LIQUIDADA'}
+                              </span>
+                              <span className="text-xs font-bold text-white font-mono">
+                                Ticket #{d.orderNumber}
+                              </span>
+                              {d.externalOrderId && (
+                                <span className="text-xs text-slate-500 font-mono">
+                                  ({d.externalOrderId})
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-300">{d.reason}</p>
+                            <p className="text-[11px] text-slate-500">Evidencia: {d.evidence}</p>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] text-slate-500 uppercase block">Monto a Reclamar</span>
+                            <span className="text-base font-black text-red-400 font-mono">
+                              +${d.claimedAmount.toFixed(2)} MXN
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1039,6 +1530,82 @@ export default function DeliveryReconciliationTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* SUBTAB: REGLAS Y TASAS CONTRACTUALES */}
+      {subTab === 'RULES' && (
+        <form onSubmit={handleSaveRules} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Scale className="w-5 h-5 text-purple-400" />
+              Tasas Contractuales Acordadas por Plataforma
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Configura los porcentajes de comisión firmados en tu contrato comercial con cada agregador. El motor de auditoría contrastará cada pedido contra esta tasa para detectar sobrecobros.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block">Uber Eats</span>
+              <label className="block text-xs text-slate-400">Comisión Base Contractual (%):</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={uberRate}
+                  onChange={(e) => setUberRate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
+                />
+                <span className="absolute right-3 top-2 text-slate-500 font-bold">%</span>
+              </div>
+              <span className="text-[11px] text-slate-500">Tasa promedio en México: 20% - 25%</span>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block">Rappi</span>
+              <label className="block text-xs text-slate-400">Comisión Base Contractual (%):</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={rappiRate}
+                  onChange={(e) => setRappiRate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                />
+                <span className="absolute right-3 top-2 text-slate-500 font-bold">%</span>
+              </div>
+              <span className="text-[11px] text-slate-500">Tasa promedio en México: 18% - 24%</span>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <span className="text-xs font-bold text-purple-400 uppercase tracking-wider block">DiDi Food</span>
+              <label className="block text-xs text-slate-400">Comisión Base Contractual (%):</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={didiRate}
+                  onChange={(e) => setDidiRate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono font-bold focus:outline-none focus:border-purple-500"
+                />
+                <span className="absolute right-3 top-2 text-slate-500 font-bold">%</span>
+              </div>
+              <span className="text-[11px] text-slate-500">Tasa promedio en México: 16% - 22%</span>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4 border-t border-slate-800">
+            <button
+              type="submit"
+              disabled={savingRules}
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-900/30 flex items-center gap-2"
+            >
+              <Check className="w-4 h-4" />
+              {savingRules ? 'Guardando...' : 'Guardar Tasas Contractuales'}
+            </button>
+          </div>
+        </form>
       )}
 
       {/* MODAL 1: NUEVA CONCILIACIÓN MANUAL */}
@@ -1414,6 +1981,89 @@ export default function DeliveryReconciliationTab() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: DOSSIER DE RECLAMO FORMAL */}
+      {dossierModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Dossier de Reclamo Formal</h3>
+                  <p className="text-xs text-slate-400">Carta técnica de aclaración para ejecutivos de cuenta o soporte de app</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDossierModalOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-950/50">
+              {loadingDossier ? (
+                <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-3">
+                  <RefreshCw className="w-6 h-6 animate-spin text-purple-400" />
+                  <p className="text-xs font-medium">Cargando dossier de reclamación...</p>
+                </div>
+              ) : currentDossierText ? (
+                <pre className="p-4 bg-slate-950 border border-slate-800/80 rounded-2xl text-[11px] font-mono text-slate-300 whitespace-pre-wrap leading-relaxed select-all">
+                  {currentDossierText}
+                </pre>
+              ) : (
+                <p className="text-xs text-slate-500 text-center py-10">No se encontró contenido para este dossier.</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-800 bg-slate-900/80 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (currentDossierText) {
+                      navigator.clipboard.writeText(currentDossierText);
+                      addNotification('Dossier copiado al portapapeles', 'success');
+                    }
+                  }}
+                  disabled={!currentDossierText}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
+                >
+                  <Copy className="w-4 h-4 text-purple-400" />
+                  Copiar Texto
+                </button>
+                <button
+                  onClick={() => {
+                    if (!currentDossierText) return;
+                    const blob = new Blob([currentDossierText], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `dossier_reclamo_${currentDossierFolio || 'liquidacion'}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    addNotification('Archivo descargado con éxito', 'success');
+                  }}
+                  disabled={!currentDossierText}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar (.txt)
+                </button>
+              </div>
+
+              <button
+                onClick={() => setDossierModalOpen(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

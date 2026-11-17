@@ -137,6 +137,9 @@ model Brand {
   whatsappBotInvoices WhatsAppBotInvoiceRequest[]
   tipPoolConfig  TipPoolConfig?
   tipSettlements TipSettlement[]
+  uberCommissionRate Float?        @default(22.0)
+  rappiCommissionRate Float?       @default(20.0)
+  didiCommissionRate Float?        @default(18.0)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -1534,6 +1537,11 @@ model DeliveryPayoutSettlement {
   reconciledById        String?
   reconciledByName      String?
   reconciledAt          DateTime?
+  statementFileName     String?
+  dossierGeneratedAt    DateTime?
+  dossierContent        String?
+  totalClaimedDisputes  Float             @default(0)
+  totalRecoveredDisputes Float            @default(0)
   orders                Order[]
   disputes              DeliveryDispute[]
   createdAt             DateTime          @default(now())
