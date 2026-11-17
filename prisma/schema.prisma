@@ -127,6 +127,13 @@ model Brand {
   targetLaborCostPct Float?        @default(20)
   targetPrimeCostPct Float?        @default(55)
   targetDailySales   Float?        @default(15000)
+  whatsappBotEnabled Boolean       @default(true)
+  whatsappPhoneNumberId String?
+  whatsappAccessToken String?
+  whatsappWebhookVerifyToken String?
+  whatsappWelcomeMsg String?       @default("¡Hola! 👋 Bienvenido al Asistente Virtual. Puedo ayudarte a: 📄 Facturar tu ticket en 1 minuto, 🛵 Rastrear tu pedido, o 📋 Consultar nuestro menú digital. ¿En qué puedo apoyarte hoy?")
+  whatsappConversations WhatsAppConversation[]
+  whatsappBotInvoices WhatsAppBotInvoiceRequest[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -350,6 +357,7 @@ model Order {
   cashbackEarned       Float    @default(0.0)
   walletTransactions   CustomerWalletTransaction[]
   dishQualityAudits    DishQualityAudit[]
+  whatsappBotInvoices  WhatsAppBotInvoiceRequest[]
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -835,6 +843,7 @@ model Invoice {
   replacementUuid       String?
   cancellationDate      DateTime?
   cancellationAcuse     String?
+  whatsappBotInvoices   WhatsAppBotInvoiceRequest[]
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -1741,4 +1750,66 @@ model DishQualityAudit {
   @@index([brandId, createdAt])
   @@index([productId])
   @@index([passed])
+}
+
+model WhatsAppConversation {
+  id               String            @id @default(uuid())
+  brandId          String
+  brand            Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerPhone    String
+  customerName     String?
+  lastMessageText  String?
+  lastMessageAt    DateTime          @default(now())
+  unreadCount      Int               @default(0)
+  status           String            @default("ACTIVE") // ACTIVE, RESOLVED, HANDED_OFF
+  currentIntent    String?           // INVOICE_REQUEST, ORDER_TRACKING, GENERAL_INQUIRY
+  contextData      String?           // JSON: step, extracted ticket, RFC
+  messages         WhatsAppMessage[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([brandId, customerPhone])
+  @@index([brandId, lastMessageAt])
+}
+
+model WhatsAppMessage {
+  id               String               @id @default(uuid())
+  conversationId   String
+  conversation     WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction        String               // INBOUND, OUTBOUND
+  senderType       String               @default("BOT") // CUSTOMER, BOT, AGENT
+  messageType      String               @default("TEXT") // TEXT, IMAGE, INTERACTIVE, DOCUMENT
+  content          String
+  mediaUrl         String?
+  intentDetected   String?
+  metadata         String?              // JSON: orderId, invoiceId, etc.
+  status           String               @default("DELIVERED") // PENDING, SENT, DELIVERED, READ, FAILED
+  createdAt        DateTime             @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model WhatsAppBotInvoiceRequest {
+  id               String    @id @default(uuid())
+  brandId          String
+  brand            Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerPhone    String
+  ticketNumber     String
+  orderId          String?
+  order            Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  rfc              String
+  taxName          String
+  taxZipCode       String
+  fiscalRegime     String
+  cfdiUse          String
+  customerEmail    String
+  invoiceId        String?
+  invoice          Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  status           String    @default("COMPLETED") // COMPLETED, FAILED, DATA_REQUIRED, PENDING_ORDER
+  errorMessage     String?
+  createdAt        DateTime  @default(now())
+
+  @@index([brandId, customerPhone])
+  @@index([ticketNumber])
+  @@index([invoiceId])
 }

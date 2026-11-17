@@ -427,3 +427,4 @@ export default function AiVisionDashboardTab({ brandId }: AiVisionDashboardTabPr
     </div>
   );
 }
+

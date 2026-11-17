@@ -36,10 +36,12 @@ import {
   Sliders,
   Terminal,
   Play,
-  Server
+  Server,
+  MessageSquare
 } from 'lucide-react';
 import { TAX_REGIMES } from '@/lib/cfdi';
 import SmartTerminalsTab from '@/components/SmartTerminalsTab';
+import WhatsAppBotTab from '@/components/WhatsAppBotTab';
 
 interface PrinterData {
   id: string;
@@ -115,7 +117,7 @@ interface DeliveryMetrics {
 
 export default function IntegrationsPage() {
   const { activeBrand, addNotification } = useAppStore();
-  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING' | 'PRINTERS' | 'TERMINALS'>('SIMULATOR');
+  const [activeTab, setActiveTab] = useState<'SIMULATOR' | 'PAYMENTS' | 'AUDIT' | 'CREDENTIALS' | 'INVOICING' | 'PRINTERS' | 'TERMINALS' | 'WHATSAPP_BOT'>('SIMULATOR');
 
   // Hardware Bridge / Printers State
   const [printers, setPrinters] = useState<PrinterData[]>([]);
@@ -858,6 +860,17 @@ export default function IntegrationsPage() {
           >
             <CreditCard className="w-4 h-4 text-amber-400" />
             Terminales Smart POS (Clip & Point)
+          </button>
+          <button
+            onClick={() => setActiveTab('WHATSAPP_BOT')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'WHATSAPP_BOT'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 text-emerald-400" />
+            WhatsApp Bot (Facturas & Pedidos)
           </button>
         </div>
 
@@ -1897,6 +1910,9 @@ export default function IntegrationsPage() {
 
         {/* TAB 7: SMART TERMINALS */}
         {activeTab === 'TERMINALS' && <SmartTerminalsTab />}
+
+        {/* TAB 8: WHATSAPP BOT */}
+        {activeTab === 'WHATSAPP_BOT' && <WhatsAppBotTab brandId={activeBrand?.id || ''} />}
       </div>
     </DashboardContainer>
   );
