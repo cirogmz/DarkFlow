@@ -38,6 +38,7 @@ model User {
   receivedPurchaseOrders PurchaseOrder[]   @relation("PurchaseOrderReceiver")
   createdPrepLists      DailyPrepList[]
   franchiseContracts    FranchiseContract[] @relation("FranchiseUser")
+  tipDisbursements      TipDisbursementItem[] @relation("UserTipDisbursements")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -138,6 +139,8 @@ model Brand {
   whatsappWelcomeMsg String?       @default("¡Hola! 👋 Bienvenido al Asistente Virtual. Puedo ayudarte a: 📄 Facturar tu ticket en 1 minuto, 🛵 Rastrear tu pedido, o 📋 Consultar nuestro menú digital. ¿En qué puedo apoyarte hoy?")
   whatsappConversations WhatsAppConversation[]
   whatsappBotInvoices WhatsAppBotInvoiceRequest[]
+  tipPoolConfig  TipPoolConfig?
+  tipSettlements TipSettlement[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -1805,4 +1808,92 @@ model WhatsAppBotInvoiceRequest {
   @@index([brandId, customerPhone])
   @@index([ticketNumber])
   @@index([invoiceId])
+}
+
+model TipPoolConfig {
+  id                 String            @id @default(uuid())
+  brandId            String            @unique
+  brand              Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  isEnabled          Boolean           @default(true)
+  distributionModel  String            @default("POINTS_HOURS") // POINTS_HOURS, PERCENTAGE_DIRECT, EQUAL_SPLIT
+  includeCashTips    Boolean           @default(true)
+  includeCardTips    Boolean           @default(true)
+  includeDigitalTips Boolean           @default(true)
+  kitchenKickoutPct  Float             @default(0) // % de propina o venta para cocina
+  barKickoutPct      Float             @default(0) // % de propina o venta para barra
+  minHoursRequired   Float             @default(1.0) // Horas mínimas requeridas para participar en el reparto
+  roleRules          TipPoolRoleRule[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+model TipPoolRoleRule {
+  id              String        @id @default(uuid())
+  configId        String
+  config          TipPoolConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  role            String        // WAITER, BARTENDER, KITCHEN, RUNNER, HOSTESS, DISHWASHER, CASHIER
+  roleDisplayName String        // Nombre legible del puesto
+  pointsWeight    Float         @default(10) // Puntos base para el cálculo ponderado por horas
+  percentageShare Float         @default(0) // % asignado para el modelo de porcentajes
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([configId, role])
+}
+
+model TipSettlement {
+  id                  String                @id @default(uuid())
+  folio               String                @unique // e.g. TIP-20261116-001
+  brandId             String
+  brand               Brand                 @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  shift               String                @default("ALL_DAY") // MORNING, EVENING, NIGHT, ALL_DAY
+  periodStart         DateTime
+  periodEnd           DateTime
+  cashTips            Float                 @default(0)
+  cardTips            Float                 @default(0)
+  digitalTips         Float                 @default(0)
+  totalTips           Float                 @default(0)
+  totalHoursWorked    Float                 @default(0)
+  totalPoints         Float                 @default(0)
+  status              String                @default("DRAFT") // DRAFT, CALCULATED, APPROVED, DISPERSED, CANCELLED
+  notes               String?
+  approvedById        String?
+  approvedByName      String?
+  approvedAt          DateTime?
+  dispersedAt         DateTime?
+  cashSessionId       String?
+  distributionDetails TipDisbursementItem[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([brandId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TipDisbursementItem {
+  id               String        @id @default(uuid())
+  settlementId     String
+  settlement       TipSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  userId           String?
+  user             User?         @relation("UserTipDisbursements", fields: [userId], references: [id], onDelete: SetNull)
+  employeeName     String
+  role             String
+  hoursWorked      Float         @default(0)
+  pointsWeight     Float         @default(1)
+  weightedPoints   Float         @default(0) // hoursWorked * pointsWeight
+  sharePercentage  Float         @default(0)
+  allocatedAmount  Float         @default(0)
+  adjustedAmount   Float         @default(0)
+  adjustmentReason String?
+  payoutMethod     String        @default("CASH") // CASH, PAYROLL, SPEI
+  payoutStatus     String        @default("PENDING") // PENDING, PAID
+  paidAt           DateTime?
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([settlementId])
+  @@index([userId])
 }

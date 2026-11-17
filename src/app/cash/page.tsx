@@ -35,6 +35,8 @@ import {
   DenominationsMap,
   formatCurrency 
 } from '@/lib/cashCuts';
+import { useAppStore } from '@/lib/store';
+import TipPoolTab from '@/components/TipPoolTab';
 
 interface CashMovement {
   id: string;
@@ -146,7 +148,8 @@ export default function CashPage() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // Active view tab
-  const [activeTab, setActiveTab] = useState<'flow' | 'cuts' | 'sessions'>('flow');
+  const [activeTab, setActiveTab] = useState<'flow' | 'cuts' | 'sessions' | 'tips'>('flow');
+  const { activeBrand } = useAppStore();
 
   // Modals state
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -686,6 +689,18 @@ export default function CashPage() {
               {pastSessions.length}
             </span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('tips')}
+            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'tips'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Coins className="w-4 h-4" />
+            Reparto de Propinas & Pool
+          </button>
         </div>
 
         {/* TAB 1: FLUJO DE CAJA & MOVIMIENTOS */}
@@ -1106,6 +1121,9 @@ export default function CashPage() {
             </div>
           </div>
         )}
+
+        {/* TAB 4: REPARTO DE PROPINAS & POOL */}
+        {activeTab === 'tips' && <TipPoolTab brandId={activeBrand?.id || ''} />}
 
         {/* ========================================================================= */}
         {/* MODAL: ABRIR TURNO DE CAJA                                                */}
