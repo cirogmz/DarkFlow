@@ -144,6 +144,17 @@ model Brand {
   uberCommissionRate Float?        @default(22.0)
   rappiCommissionRate Float?       @default(20.0)
   didiCommissionRate Float?        @default(18.0)
+  autoGlobalInvoiceEnabled Boolean  @default(false)
+  globalInvoicePeriodicity String   @default("01") // "01": Diario, "02": Semanal, "03": Quincenal, "04": Mensual
+  globalInvoiceCronHour    Int      @default(23)
+  globalInvoiceCronMinute  Int      @default(55)
+  globalInvoiceMinTickets  Int      @default(1)
+  lastGlobalInvoiceAt      DateTime?
+  lastGlobalInvoiceFolio   String?
+  lastGlobalInvoiceStatus  String?  // SUCCESS, FAILED, NO_TICKETS
+  lastGlobalInvoiceError   String?
+  autoGlobalInvoiceEmailNotification Boolean @default(true)
+  notificationEmail        String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }

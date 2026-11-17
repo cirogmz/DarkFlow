@@ -21,7 +21,11 @@ import {
   ShieldAlert, 
   Calendar, 
   FileCode,
-  DollarSign
+  DollarSign,
+  Clock,
+  Play,
+  Bell,
+  Mail
 } from 'lucide-react';
 import { 
   TAX_REGIMES, 
@@ -80,7 +84,7 @@ interface FiscalConsoleProps {
 }
 
 export default function FiscalConsole({ activeBrand, addNotification, onConfigUpdated }: FiscalConsoleProps) {
-  const [subTab, setSubTab] = useState<'CONFIG' | 'GLOBAL' | 'HISTORY'>('GLOBAL');
+  const [subTab, setSubTab] = useState<'CONFIG' | 'GLOBAL' | 'SCHEDULER' | 'HISTORY'>('GLOBAL');
 
   // ==========================================
   // 1. CONFIGURATION STATE
@@ -123,6 +127,25 @@ export default function FiscalConsole({ activeBrand, addNotification, onConfigUp
   const [cancellationReason, setCancellationReason] = useState('02');
   const [replacementUuid, setReplacementUuid] = useState('');
   const [processingCancellation, setProcessingCancellation] = useState(false);
+
+  // ==========================================
+  // 4. AUTOMATED GLOBAL INVOICE SCHEDULER STATE
+  // ==========================================
+  const [autoGlobalInvoiceEnabled, setAutoGlobalInvoiceEnabled] = useState(false);
+  const [schedulerPeriodicity, setSchedulerPeriodicity] = useState('01');
+  const [schedulerCronHour, setSchedulerCronHour] = useState(23);
+  const [schedulerCronMinute, setSchedulerCronMinute] = useState(55);
+  const [schedulerMinTickets, setSchedulerMinTickets] = useState(1);
+  const [lastGlobalInvoiceAt, setLastGlobalInvoiceAt] = useState<string | null>(null);
+  const [lastGlobalInvoiceFolio, setLastGlobalInvoiceFolio] = useState<string | null>(null);
+  const [lastGlobalInvoiceStatus, setLastGlobalInvoiceStatus] = useState<string | null>(null);
+  const [lastGlobalInvoiceError, setLastGlobalInvoiceError] = useState<string | null>(null);
+  const [autoEmailNotification, setAutoEmailNotification] = useState(true);
+  const [notificationEmail, setNotificationEmail] = useState('');
+  const [loadingScheduler, setLoadingScheduler] = useState(false);
+  const [savingScheduler, setSavingScheduler] = useState(false);
+  const [runningSchedulerNow, setRunningSchedulerNow] = useState(false);
+  const [unbilledSummary, setUnbilledSummary] = useState({ count: 0, subtotal: 0, tax: 0, total: 0 });
 
   // Load configuration from API
   const loadConfig = useCallback(async () => {
@@ -196,6 +219,38 @@ export default function FiscalConsole({ activeBrand, addNotification, onConfigUp
     }
   }, [activeBrand?.id, searchQuery, typeFilter, statusFilter, addNotification]);
 
+  // Load Scheduler Configuration
+  const loadSchedulerConfig = useCallback(async () => {
+    if (!activeBrand?.id) return;
+    try {
+      setLoadingScheduler(true);
+      const res = await fetch('/api/invoices/global/scheduler');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.brand) {
+          setAutoGlobalInvoiceEnabled(data.brand.autoGlobalInvoiceEnabled ?? false);
+          setSchedulerPeriodicity(data.brand.globalInvoicePeriodicity || '01');
+          setSchedulerCronHour(data.brand.globalInvoiceCronHour ?? 23);
+          setSchedulerCronMinute(data.brand.globalInvoiceCronMinute ?? 55);
+          setSchedulerMinTickets(data.brand.globalInvoiceMinTickets ?? 1);
+          setLastGlobalInvoiceAt(data.brand.lastGlobalInvoiceAt || null);
+          setLastGlobalInvoiceFolio(data.brand.lastGlobalInvoiceFolio || null);
+          setLastGlobalInvoiceStatus(data.brand.lastGlobalInvoiceStatus || null);
+          setLastGlobalInvoiceError(data.brand.lastGlobalInvoiceError || null);
+          setAutoEmailNotification(data.brand.autoGlobalInvoiceEmailNotification ?? true);
+          setNotificationEmail(data.brand.notificationEmail || '');
+        }
+        if (data.summary) {
+          setUnbilledSummary(data.summary);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading global invoice scheduler:', err);
+    } finally {
+      setLoadingScheduler(false);
+    }
+  }, [activeBrand?.id]);
+
   // Effects
   useEffect(() => {
     loadConfig();
@@ -205,8 +260,63 @@ export default function FiscalConsole({ activeBrand, addNotification, onConfigUp
   useEffect(() => {
     if (subTab === 'HISTORY') {
       loadInvoicesList();
+    } else if (subTab === 'SCHEDULER') {
+      loadSchedulerConfig();
     }
-  }, [subTab, loadInvoicesList]);
+  }, [subTab, loadInvoicesList, loadSchedulerConfig]);
+
+  // Save Scheduler Config
+  const handleSaveSchedulerConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingScheduler(true);
+      const res = await fetch('/api/invoices/global/scheduler', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          autoGlobalInvoiceEnabled,
+          globalInvoicePeriodicity: schedulerPeriodicity,
+          globalInvoiceCronHour: Number(schedulerCronHour),
+          globalInvoiceCronMinute: Number(schedulerCronMinute),
+          globalInvoiceMinTickets: Number(schedulerMinTickets),
+          autoGlobalInvoiceEmailNotification: autoEmailNotification,
+          notificationEmail: notificationEmail.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al guardar configuración');
+      addNotification('Configuración de timbrado automático SAT guardada exitosamente', 'success');
+      loadSchedulerConfig();
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      setSavingScheduler(false);
+    }
+  };
+
+  // Run Scheduler Now (Manual test trigger)
+  const handleRunSchedulerNow = async () => {
+    if (!confirm('¿Deseas disparar manualmente el timbrado global en este momento? Las comandas pendientes acumuladas serán timbradas como CFDI 4.0 Público en General.')) {
+      return;
+    }
+    try {
+      setRunningSchedulerNow(true);
+      const res = await fetch('/api/invoices/global/scheduler', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al ejecutar timbrado global');
+      addNotification(data.message || 'Timbrado global completado con éxito', 'success');
+      loadSchedulerConfig();
+      loadGlobalPreview();
+      loadInvoicesList();
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      setRunningSchedulerNow(false);
+    }
+  };
 
   // Save Config
   const handleSaveConfig = async (e: React.FormEvent) => {
@@ -388,6 +498,22 @@ export default function FiscalConsole({ activeBrand, addNotification, onConfigUp
               <span className="px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 font-mono text-[10px] border border-purple-800">
                 {eligibleOrders.length}
               </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSubTab('SCHEDULER')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              subTab === 'SCHEDULER'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            Programación Automática (Cron SAT)
+            {autoGlobalInvoiceEnabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             )}
           </button>
 
@@ -745,6 +871,381 @@ export default function FiscalConsole({ activeBrand, addNotification, onConfigUp
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* SUB-TAB: SCHEDULER (AUTOMATIZACIÓN RECURRENTE CRON SAT)      */}
+      {/* ============================================================ */}
+      {subTab === 'SCHEDULER' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Clock className="w-5 h-5 text-purple-400" />
+                Automatización de Factura Global SAT (Cron Scheduler)
+              </h3>
+              <p className="text-xs text-slate-400 max-w-2xl">
+                Consolida y timbra automáticamente las comandas no facturadas dentro del horario configurado cumpliendo con la Regla 2.7.1.21 de la RMF 2026 del SAT.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={loadSchedulerConfig}
+                disabled={loadingScheduler}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingScheduler ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRunSchedulerNow}
+                disabled={runningSchedulerNow}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-purple-600/20 cursor-pointer"
+              >
+                {runningSchedulerNow ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Procesando Timbrado...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    Ejecutar Lote Ahora (Manual)
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Ribbon & Status Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Scheduler State */}
+            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                <span>Estado del Scheduler</span>
+                <span className={`w-2 h-2 rounded-full ${autoGlobalInvoiceEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className={`text-base font-bold ${autoGlobalInvoiceEnabled ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {autoGlobalInvoiceEnabled ? 'Activo / Programado' : 'Inactivo (Pausado)'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-mono">
+                Corte {schedulerCronHour.toString().padStart(2, '0')}:{schedulerCronMinute.toString().padStart(2, '0')} hrs
+              </p>
+            </div>
+
+            {/* Card 2: Periodicidad SAT */}
+            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                <span>Periodicidad SAT</span>
+                <span className="font-mono text-purple-400 text-[10px]">Clave {schedulerPeriodicity}</span>
+              </div>
+              <div className="text-base font-bold text-white">
+                {schedulerPeriodicity === '01' ? 'Diario (Cierre)' : schedulerPeriodicity === '02' ? 'Semanal' : schedulerPeriodicity === '03' ? 'Quincenal' : 'Mensual'}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Regla 2.7.1.21 RMF
+              </p>
+            </div>
+
+            {/* Card 3: Comandas Pendientes */}
+            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                <span>Comandas sin Facturar</span>
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold font-mono text-amber-400">{unbilledSummary.count}</span>
+                <span className="text-xs text-slate-400">tickets</span>
+              </div>
+              <p className="text-[11px] font-mono text-slate-400">
+                Total: ${unbilledSummary.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              </p>
+            </div>
+
+            {/* Card 4: Último Lote Timbrado */}
+            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                <span>Último Lote Timbrado</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  lastGlobalInvoiceStatus === 'SUCCESS'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : lastGlobalInvoiceStatus === 'FAILED'
+                    ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                    : lastGlobalInvoiceStatus === 'NO_TICKETS'
+                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                    : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {lastGlobalInvoiceStatus || 'SIN TIMBRAR'}
+                </span>
+              </div>
+              <div className="text-sm font-bold font-mono text-white truncate">
+                {lastGlobalInvoiceFolio || 'N/A'}
+              </div>
+              <p className="text-[11px] text-slate-500 truncate">
+                {lastGlobalInvoiceAt ? new Date(lastGlobalInvoiceAt).toLocaleString('es-MX') : 'Sin historial reciente'}
+              </p>
+            </div>
+          </div>
+
+          {/* Formulario de Configuración del Cron */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-6">
+            <div className="border-b border-slate-800 pb-4">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-purple-400" />
+                Parámetros de Programación y Reglas de Corte
+              </h4>
+              <p className="text-xs text-slate-400 mt-1">
+                Ajusta las políticas con las que el sistema agrupa, calcula impuestos y sella el CFDI global de forma desatendida.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveSchedulerConfig} className="space-y-6">
+              {/* Switch Activar Timbrado Automático */}
+              <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                <div>
+                  <label className="text-xs font-bold text-white block">
+                    Activar Facturación Global Automática
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    Al activarlo, el sistema consolidará y timbrará periódicamente las comandas que no solicitaron factura individual.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoGlobalInvoiceEnabled}
+                    onChange={(e) => setAutoGlobalInvoiceEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Periodicidad SAT */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Periodicidad SAT (InformacionGlobal)
+                  </label>
+                  <select
+                    value={schedulerPeriodicity}
+                    onChange={(e) => setSchedulerPeriodicity(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-bold"
+                  >
+                    <option value="01">01 - Diario (Recomendado para restaurantes)</option>
+                    <option value="02">02 - Semanal</option>
+                    <option value="03">03 - Quincenal</option>
+                    <option value="04">04 - Mensual</option>
+                  </select>
+                  <p className="text-[10px] text-slate-500">Clave del catálogo c_Periodicidad del SAT.</p>
+                </div>
+
+                {/* Horario de Corte */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Horario de Corte (Hora y Minuto)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={schedulerCronHour}
+                      onChange={(e) => setSchedulerCronHour(parseInt(e.target.value) || 0)}
+                      className="w-1/2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono text-center focus:outline-none focus:border-purple-500"
+                    />
+                    <span className="text-slate-400 font-bold">:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={schedulerCronMinute}
+                      onChange={(e) => setSchedulerCronMinute(parseInt(e.target.value) || 0)}
+                      className="w-1/2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono text-center focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500">Formato 24 hrs. Por defecto 23:55 hrs.</p>
+                </div>
+
+                {/* Umbral Mínimo de Comandas */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Mínimo de Comandas Requeridas
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={schedulerMinTickets}
+                    onChange={(e) => setSchedulerMinTickets(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                  />
+                  <p className="text-[10px] text-slate-500">Si se acumulan menos comandas, el lote se pospone.</p>
+                </div>
+              </div>
+
+              {/* Notificaciones y Webhooks */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                      <Mail className="w-3.5 h-3.5 text-purple-400" />
+                      Notificación por Correo al Timbrar
+                    </label>
+                    <input
+                      type="checkbox"
+                      checked={autoEmailNotification}
+                      onChange={(e) => setAutoEmailNotification(e.target.checked)}
+                      className="rounded bg-slate-950 border-slate-800 text-purple-600 focus:ring-0"
+                    />
+                  </div>
+                  <input
+                    type="email"
+                    placeholder="contabilidad@mirestaurante.com"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    disabled={!autoEmailNotification}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 disabled:opacity-40"
+                  />
+                  <p className="text-[10px] text-slate-500">Recibe copia del XML y PDF oficial del SAT en cada corte.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-purple-400" />
+                    Endpoint Webhook para Cron Jobs Externos
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/cron/global-invoicing`}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-[11px] font-mono text-slate-400 select-all focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/api/cron/global-invoicing`;
+                        navigator.clipboard.writeText(url);
+                        addNotification('URL de Cron copiada al portapapeles', 'info');
+                      }}
+                      className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition cursor-pointer"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">Configurable en Vercel Cron, Google Cloud Scheduler o crontab de Linux.</p>
+                </div>
+              </div>
+
+              {lastGlobalInvoiceError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-400 text-xs">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>Último error reportado: {lastGlobalInvoiceError}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={savingScheduler}
+                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-purple-600/20 cursor-pointer"
+                >
+                  {savingScheduler ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Guardar Configuración de Scheduler
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Historial Reciente de Facturas Globales */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-purple-400" />
+                  Historial de CFDIs Globales Emitidos
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Comprobantes fiscales CFDI 4.0 con periodicidad de cierre timbrados ante el SAT.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubTab('HISTORY')}
+                className="text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer"
+              >
+                Ver Bitácora Completa &rarr;
+              </button>
+            </div>
+
+            {recentGlobalInvoices.length === 0 ? (
+              <div className="p-8 text-center bg-slate-950 border border-slate-800/80 rounded-xl text-slate-500 text-xs">
+                No se han emitido facturas globales en esta marca todavía.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px] bg-slate-950">
+                      <th className="py-2.5 px-3">Folio</th>
+                      <th className="py-2.5 px-3">UUID Fiscal (SAT)</th>
+                      <th className="py-2.5 px-3">Periodicidad</th>
+                      <th className="py-2.5 px-3 text-center">Comandas</th>
+                      <th className="py-2.5 px-3 text-right">Subtotal</th>
+                      <th className="py-2.5 px-3 text-right">IVA (16%)</th>
+                      <th className="py-2.5 px-3 text-right">Total</th>
+                      <th className="py-2.5 px-3 text-center">Estatus</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono">
+                    {recentGlobalInvoices.map((inv) => (
+                      <tr key={inv.id} className="hover:bg-slate-800/30">
+                        <td className="py-2.5 px-3 text-white font-bold">{inv.serie}-{inv.folio}</td>
+                        <td className="py-2.5 px-3 text-slate-400 text-[11px] font-sans truncate max-w-[140px]" title={inv.uuid}>
+                          {inv.uuid.slice(0, 18)}...
+                        </td>
+                        <td className="py-2.5 px-3 font-sans text-purple-300">
+                          {inv.globalPeriodicity === '01' ? 'Diario' : inv.globalPeriodicity === '02' ? 'Semanal' : inv.globalPeriodicity === '03' ? 'Quincenal' : 'Mensual'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-bold">
+                          {inv._count?.globalOrders ?? 0}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">${inv.subtotal.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right text-slate-400">${inv.iva.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right text-emerald-400 font-bold">${inv.total.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            inv.status === 'TIMBRADO'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          }`}>
+                            {inv.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
