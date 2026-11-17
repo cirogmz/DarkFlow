@@ -109,6 +109,8 @@ model Brand {
   temperatureAlerts  TemperatureAlert[]
   deliverySettlements DeliveryPayoutSettlement[]
   deliveryDisputes    DeliveryDispute[]
+  barBottles          BarBottle[]
+  barLiquorAudits     BarLiquorAudit[]
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
   walletTransactions  CustomerWalletTransaction[]
@@ -252,6 +254,8 @@ model Ingredient {
   childSubRecipes  SubRecipeItem[] @relation("ChildSubRecipe")
   productionBatches ProductionBatch[]
   warehouseStocks  WarehouseStock[]
+  barBottles       BarBottle[]
+  barLiquorAuditItems BarLiquorAuditItem[]
   warehouseTransfers WarehouseTransfer[]
   wasteLogs        WasteLog[]
   auditItems       InventoryAuditItem[]
@@ -1915,4 +1919,78 @@ model TipDisbursementItem {
 
   @@index([settlementId])
   @@index([userId])
+}
+
+model BarBottle {
+  id                    String            @id @default(uuid())
+  brandId               String
+  brand                 Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  ingredientId          String
+  ingredient            Ingredient        @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  bottleLabel           String            // e.g. "Tequila Don Julio 70 #1"
+  station               String            @default("Barra Principal") // Barra Principal, Terraza, Barra Móvil
+  capacityMl            Float             @default(750) // 750, 1000, 700
+  currentMl             Float             @default(750) // mL actuales en la botella
+  tareWeightGrams       Float             @default(450) // Peso de la botella vacía de vidrio
+  densityGramsPerMl     Float             @default(0.95) // Densidad típica de destilado
+  cost                  Float             @default(0) // Costo total de la botella
+  status                String            @default("OPEN") // SEALED, OPEN, EMPTY, LOST
+  openedAt              DateTime?
+  openedByName          String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([brandId, station, status])
+}
+
+model BarLiquorAudit {
+  id                    String            @id @default(uuid())
+  folio                 String            @unique // e.g. BAR-202611-001
+  brandId               String
+  brand                 Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  station               String            @default("Barra Principal")
+  shift                 String            @default("TURNO_COMPLETO") // MATUTINO, VESPERTINO, NOCHE, TURNO_COMPLETO
+  periodStart           DateTime
+  periodEnd             DateTime
+  auditedById           String?
+  auditedByName         String?           @default("Capitán de Barra")
+  status                String            @default("COMPLETED") // DRAFT, COMPLETED, DISCREPANCY_FLAGGED
+  totalCocktailsSold    Int               @default(0)
+  totalTheoreticalMl    Float             @default(0)
+  totalActualMl         Float             @default(0)
+  varianceMl            Float             @default(0) // totalActualMl - totalTheoreticalMl
+  overPourPercentage    Float             @default(0) // (varianceMl / totalTheoreticalMl) * 100
+  financialLossAmount   Float             @default(0) // $ MXN en costo de licor perdido
+  notes                 String?
+  items                 BarLiquorAuditItem[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([brandId, station, shift])
+  @@index([brandId, createdAt])
+}
+
+model BarLiquorAuditItem {
+  id                    String            @id @default(uuid())
+  auditId               String
+  audit                 BarLiquorAudit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  ingredientId          String
+  ingredient            Ingredient        @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  bottleLabel           String
+  bottleCapacityMl      Float             @default(750)
+  costPerMl             Float             @default(0)
+  startLevelMl          Float             @default(750)
+  endLevelMl            Float             @default(0)
+  newBottlesAddedMl     Float             @default(0) // Botellas cerradas abiertas durante el turno
+  actualPouredMl        Float             @default(0) // start + added - end
+  theoreticalPouredMl   Float             @default(0) // Recetas de cócteles vendidos * ml
+  cocktailsSoldCount    Int               @default(0)
+  varianceMl            Float             @default(0) // actualPouredMl - theoreticalPouredMl
+  variancePercentage    Float             @default(0)
+  financialVariance     Float             @default(0) // varianceMl * costPerMl
+  shrinkageReason       String?           @default("OVER_POUR") // OVER_POUR, SPILLAGE, UNRECORDED_COURTESY, BROKEN_BOTTLE, ACCURATE
+  notes                 String?
+  createdAt             DateTime          @default(now())
+
+  @@index([auditId, ingredientId])
 }

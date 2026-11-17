@@ -21,7 +21,8 @@ import {
   FileText,
   Boxes,
   ThermometerSnowflake,
-  Scan
+  Scan,
+  Wine
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
@@ -32,6 +33,7 @@ import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
 import WasteManagementHubTab from '@/components/inventory/WasteManagementHubTab';
 import ColdChainMonitorTab from '@/components/inventory/ColdChainMonitorTab';
 import AiVisionDashboardTab from '@/components/AiVisionDashboardTab';
+import BarLiquorAuditTab from '@/components/inventory/BarLiquorAuditTab';
 
 interface Ingredient {
   id: string;
@@ -182,7 +184,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain' | 'aivision'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain' | 'aivision' | 'bar'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -814,6 +816,14 @@ export default function InventoryPage() {
             }`}
           >
             <Scan className="h-4 w-4 text-rose-400" /> 📸 AI Waste Vision
+          </button>
+          <button
+            onClick={() => setActiveTab('bar')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'bar' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Wine className="h-4 w-4 text-purple-400" /> 🍸 Control de Barra
           </button>
         </div>
 
@@ -1526,6 +1536,11 @@ export default function InventoryPage() {
         {/* TAB 11: AI WASTE VISION & DISH QUALITY */}
         {activeTab === 'aivision' && (
           <AiVisionDashboardTab brandId={activeBrand?.id || ''} />
+        )}
+
+        {/* TAB 12: BAR LIQUOR AUDIT & SHRINKAGE CONTROL */}
+        {activeTab === 'bar' && (
+          <BarLiquorAuditTab activeBrand={activeBrand} />
         )}
 
         {/* MODAL: ADD INGREDIENT */}
