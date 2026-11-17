@@ -37,11 +37,13 @@ import {
   Info,
   Download,
   Copy,
-  Check
+  Check,
+  Building2
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { GiftCardDTO, GiftCardTransactionDTO, generateGiftCardCode } from '@/lib/giftCards';
 import { WalletTransactionDTO } from '@/lib/wallet';
+import CorporateCreditTab from '@/components/corporate/CorporateCreditTab';
 import {
   LOYALTY_TIERS,
   LoyaltyTierId,
@@ -123,7 +125,7 @@ interface CRMStats {
 
 export default function CustomersPage() {
   const { activeBrand, addNotification } = useAppStore();
-  const [activeMainTab, setActiveMainTab] = useState<'crm' | 'giftcards'>('crm');
+  const [activeMainTab, setActiveMainTab] = useState<'crm' | 'giftcards' | 'corporate'>('crm');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<CRMStats>({
@@ -580,17 +582,24 @@ export default function CustomersPage() {
                   <Users className="h-8 w-8 text-amber-400" />
                   Clientes & Fidelización CRM
                 </>
-              ) : (
+              ) : activeMainTab === 'giftcards' ? (
                 <>
                   <CreditCard className="h-8 w-8 text-amber-400" />
                   Monedero Electrónico & Gift Cards
+                </>
+              ) : (
+                <>
+                  <Building2 className="h-8 w-8 text-brand-primary" />
+                  Crédito Corporativo B2B & Cuentas por Cobrar
                 </>
               )}
             </h1>
             <p className="text-sm text-slate-400 mt-1">
               {activeMainTab === 'crm'
                 ? 'Gestiona tu base de clientes, historial de pedidos, preferencias y programa de puntos de lealtad.'
-                : 'Emisión de tarjetas de regalo, monederos de saldo prepago para clientes VIP, recargas y auditoría de saldo.'}
+                : activeMainTab === 'giftcards'
+                ? 'Emisión de tarjetas de regalo, monederos de saldo prepago para clientes VIP, recargas y auditoría de saldo.'
+                : 'Gestión de líneas de crédito a empresas, pagarés de consumo, cortes de cuenta y cobranza.'}
             </p>
           </div>
 
@@ -666,6 +675,17 @@ export default function CustomersPage() {
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
               {giftCardsSummary.totalCards}
             </span>
+          </button>
+          <button
+            onClick={() => setActiveMainTab('corporate')}
+            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              activeMainTab === 'corporate'
+                ? 'border-brand-primary text-brand-primary'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            🏢 Crédito Corporativo B2B
           </button>
         </div>
 
@@ -1879,6 +1899,13 @@ export default function CustomersPage() {
           </div>
         )}
       </>
+    )}
+
+    {/* ========================================================================= */}
+    {/* TAB 3: CRÉDITO CORPORATIVO B2B & CUENTAS POR COBRAR                      */}
+    {/* ========================================================================= */}
+    {activeMainTab === 'corporate' && (
+      <CorporateCreditTab activeBrand={activeBrand} addNotification={addNotification} />
     )}
 
     {/* Modal: Create Customer */}

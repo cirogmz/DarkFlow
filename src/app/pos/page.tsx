@@ -34,7 +34,8 @@ import {
   Gift,
   Clock,
   Timer,
-  Zap
+  Zap,
+  Building2
 } from 'lucide-react';
 import ThermalTicketModal, { ThermalOrderData } from '@/components/ThermalTicketModal';
 import InvoicePdfModal, { InvoiceOrderData } from '@/components/InvoicePdfModal';
@@ -257,7 +258,24 @@ export default function POSPage() {
   
   // Modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD' | 'WALLET' | 'SMART_TERMINAL'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'STRIPE' | 'MERCADOPAGO' | 'GIFT_CARD' | 'WALLET' | 'SMART_TERMINAL' | 'CORPORATE_CREDIT'>('CASH');
+  
+  // Corporate Credit POS State
+  const [corporateAccountsList, setCorporateAccountsList] = useState<Array<{
+    id: string;
+    accountNumber: string;
+    companyName: string;
+    creditLimit: number;
+    currentBalance: number;
+    availableCredit: number;
+    status: string;
+  }>>([]);
+  const [selectedCorpAccountId, setSelectedCorpAccountId] = useState('');
+  const [corpSignedBy, setCorpSignedBy] = useState('');
+  const [corpEmployeeId, setCorpEmployeeId] = useState('');
+  const [corpDepartment, setCorpDepartment] = useState('');
+  const [corpNotes, setCorpNotes] = useState('');
+  const [loadingCorpAccounts, setLoadingCorpAccounts] = useState(false);
   const [smartTerminalModalData, setSmartTerminalModalData] = useState<{
     isOpen: boolean;
     orderId: string;
@@ -342,9 +360,26 @@ export default function POSPage() {
     }
   }, []);
 
+  const fetchCorporateAccounts = React.useCallback(async () => {
+    if (!activeBrand?.id) return;
+    setLoadingCorpAccounts(true);
+    try {
+      const res = await fetch(`/api/corporate/accounts?brandId=${activeBrand.id}&status=ACTIVE`);
+      const data = await res.json();
+      if (res.ok) {
+        setCorporateAccountsList(data.accounts || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch corporate accounts for POS', e);
+    } finally {
+      setLoadingCorpAccounts(false);
+    }
+  }, [activeBrand?.id]);
+
   useEffect(() => {
     fetchInitialData();
-  }, [fetchInitialData]);
+    fetchCorporateAccounts();
+  }, [fetchInitialData, fetchCorporateAccounts]);
 
   // Read URL query parameters for tableId, orderId, or source
   useEffect(() => {
@@ -667,6 +702,19 @@ export default function POSPage() {
       }
     }
 
+    if (paymentMethod === 'CORPORATE_CREDIT') {
+      if (!selectedCorpAccountId) {
+        alert('Por favor selecciona una cuenta corporativa con crédito disponible para cargar el consumo.');
+        return;
+      }
+      const acc = corporateAccountsList.find(a => a.id === selectedCorpAccountId);
+      if (acc && finalRemainingToPay > acc.availableCredit) {
+        if (!confirm(`El total a pagar ($${finalRemainingToPay.toFixed(2)} MXN) excede el crédito disponible de la empresa ($${acc.availableCredit.toFixed(2)} MXN). ¿Deseas continuar con el cargo?`)) {
+          return;
+        }
+      }
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/orders', {
@@ -688,6 +736,11 @@ export default function POSPage() {
           paymentMethod,
           giftCardCode: paymentMethod === 'GIFT_CARD' ? posGiftCardCode.trim() : undefined,
           giftCardPin: paymentMethod === 'GIFT_CARD' ? (posGiftCardPin.trim() || undefined) : undefined,
+          corporateAccountId: paymentMethod === 'CORPORATE_CREDIT' ? selectedCorpAccountId : undefined,
+          corporateSignedBy: paymentMethod === 'CORPORATE_CREDIT' ? (corpSignedBy.trim() || finalCustomerName) : undefined,
+          corporateEmployeeId: paymentMethod === 'CORPORATE_CREDIT' ? corpEmployeeId.trim() : undefined,
+          corporateDepartment: paymentMethod === 'CORPORATE_CREDIT' ? corpDepartment.trim() : undefined,
+          corporateNotes: paymentMethod === 'CORPORATE_CREDIT' ? corpNotes.trim() : undefined,
           items: cart.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -1812,6 +1865,22 @@ export default function POSPage() {
                     <Coins className="w-3.5 h-3.5 text-amber-400" />
                     <span className="text-[10px] leading-tight">Monedero</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('CORPORATE_CREDIT');
+                      fetchCorporateAccounts();
+                    }}
+                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition cursor-pointer ${
+                      paymentMethod === 'CORPORATE_CREDIT'
+                        ? 'bg-purple-500/20 border-purple-500 text-purple-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-purple-400" />
+                    <span className="text-[10px] leading-tight">Crédito B2B</span>
+                  </button>
                 </div>
 
                 {/* Monedero / Gift Card Code & Verification */}
@@ -1877,6 +1946,73 @@ export default function POSPage() {
                         {giftCardError}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Crédito Corporativo B2B Form */}
+                {paymentMethod === 'CORPORATE_CREDIT' && (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-purple-500/40 space-y-2.5 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-purple-400" /> Línea de Crédito Corporativa
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">Pagaré Mercantil</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Seleccionar Empresa / Cuenta *
+                      </label>
+                      <select
+                        value={selectedCorpAccountId}
+                        onChange={(e) => setSelectedCorpAccountId(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 cursor-pointer"
+                      >
+                        <option value="">-- Selecciona una empresa con crédito --</option>
+                        {corporateAccountsList.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            [{acc.accountNumber}] {acc.companyName} (Disp: ${acc.availableCredit.toFixed(2)})
+                          </option>
+                        ))}
+                      </select>
+                      {corporateAccountsList.length === 0 && !loadingCorpAccounts && (
+                        <p className="text-[10px] text-amber-400 mt-1">No hay cuentas corporativas activas registradas para esta marca.</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 mb-1">Firma / Autoriza *</label>
+                        <input
+                          type="text"
+                          placeholder="Nombre quien consume"
+                          value={corpSignedBy}
+                          onChange={(e) => setCorpSignedBy(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 mb-1">No. Nómina / Gafete</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. EMP-1042"
+                          value={corpEmployeeId}
+                          onChange={(e) => setCorpEmployeeId(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Departamento / Centro de Costos</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Dirección / Sistemas / Ventas"
+                        value={corpDepartment}
+                        onChange={(e) => setCorpDepartment(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

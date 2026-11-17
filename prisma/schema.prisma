@@ -111,6 +111,7 @@ model Brand {
   deliveryDisputes    DeliveryDispute[]
   barBottles          BarBottle[]
   barLiquorAudits     BarLiquorAudit[]
+  corporateCreditAccounts CorporateCreditAccount[]
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
   walletTransactions  CustomerWalletTransaction[]
@@ -379,6 +380,9 @@ model Order {
   walletTransactions   CustomerWalletTransaction[]
   dishQualityAudits    DishQualityAudit[]
   whatsappBotInvoices  WhatsAppBotInvoiceRequest[]
+  corporateAccountId   String?
+  corporateAccount     CorporateCreditAccount?     @relation(fields: [corporateAccountId], references: [id], onDelete: SetNull)
+  corporateCreditVoucher CorporateCreditVoucher?
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -562,6 +566,7 @@ model Customer {
   orders           Order[]
   giftCards        GiftCard[]
   surveys          SatisfactionSurvey[]
+  corporateCreditAccounts CorporateCreditAccount[]
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 }
@@ -2000,4 +2005,99 @@ model BarLiquorAuditItem {
   createdAt             DateTime          @default(now())
 
   @@index([auditId, ingredientId])
+}
+
+model CorporateCreditAccount {
+  id                    String            @id @default(uuid())
+  brandId               String
+  brand                 Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customerId            String?
+  customer              Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  accountNumber         String            @unique // e.g. CORP-001
+  companyName           String            // Razón Social
+  tradeName             String?           // Nombre Comercial
+  rfc                   String?           // RFC fiscal mexicano
+  taxRegime             String?           // Régimen fiscal SAT (601, 612, etc.)
+  cfdiUse               String?           @default("G03")
+  billingAddress        String?
+  billingEmail          String?
+  contactName           String            // Contacto principal
+  contactPhone          String
+  creditLimit           Float             @default(10000.0) // Límite de crédito en MXN
+  currentBalance        Float             @default(0.0) // Saldo utilizado / por cobrar
+  availableCredit       Float             @default(10000.0) // Límite - Saldo
+  paymentTermsDays      Int               @default(15) // Días naturales para pago (7, 15, 30)
+  status                String            @default("ACTIVE") // ACTIVE, SUSPENDED, OVER_LIMIT, CLOSED
+  authorizedRepin       String?           // PIN opcional para validar consumos
+  notes                 String?
+  orders                Order[]
+  vouchers              CorporateCreditVoucher[]
+  payments              CorporateCreditPayment[]
+  statements            CorporateAccountStatement[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([brandId, status])
+}
+
+model CorporateCreditVoucher {
+  id                    String            @id @default(uuid())
+  accountId             String
+  account               CorporateCreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  orderId               String?           @unique
+  order                 Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  voucherFolio          String            @unique // e.g. VOU-2026-0001
+  amount                Float
+  signedByName          String            // Nombre de quien autoriza o consume
+  employeeId            String?           // Número de nómina / gafete
+  department            String?           // Departamento o centro de costos
+  signatureData         String?           // Firma digitalizada o hash de aprobación
+  status                String            @default("PENDING") // PENDING, SETTLED, INVOICED, CANCELLED
+  statementId           String?
+  statement             CorporateAccountStatement? @relation(fields: [statementId], references: [id], onDelete: SetNull)
+  notes                 String?
+  createdAt             DateTime          @default(now())
+
+  @@index([accountId, status])
+  @@index([statementId])
+}
+
+model CorporateCreditPayment {
+  id                    String            @id @default(uuid())
+  accountId             String
+  account               CorporateCreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  receiptFolio          String            @unique // e.g. REC-2026-0001
+  amount                Float
+  paymentMethod         String            @default("SPEI") // SPEI, TRANSFER, CHECK, CASH, CARD
+  bankReference         String?           // Referencia bancaria / folio de transferencia
+  balanceBefore         Float
+  balanceAfter          Float
+  receivedById          String?
+  receivedByName        String?
+  notes                 String?
+  createdAt             DateTime          @default(now())
+
+  @@index([accountId])
+}
+
+model CorporateAccountStatement {
+  id                    String            @id @default(uuid())
+  accountId             String
+  account               CorporateCreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  statementFolio        String            @unique // e.g. EDC-2026-0001
+  periodStart           DateTime
+  periodEnd             DateTime
+  previousBalance       Float             @default(0.0)
+  chargesAmount         Float             @default(0.0)
+  paymentsAmount        Float             @default(0.0)
+  closingBalance        Float             @default(0.0)
+  dueDate               DateTime
+  status                String            @default("GENERATED") // GENERATED, SENT, PAID, OVERDUE, INVOICED
+  invoiceId             String?
+  notes                 String?
+  vouchers              CorporateCreditVoucher[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([accountId, status])
 }

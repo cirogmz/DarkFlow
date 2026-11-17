@@ -7,6 +7,7 @@ import { createPaymentSession } from '@/lib/payments';
 import { generateKotBuffer, sendToNetworkPrinter } from '@/lib/escpos';
 import { determineCustomerTier, calculateLoyaltyPointsEarned } from '@/lib/loyaltyTiers';
 import { calculateOrderCashback, generateCustomerWalletQrCode } from '@/lib/wallet';
+import { validateCreditAvailability, generateVoucherFolio } from '@/lib/corporateCredit';
 
 interface OrderItemInput {
   productId: string;
@@ -105,12 +106,18 @@ export async function POST(req: NextRequest) {
       walletAmountPaid = 0,
       paymentMethod = 'CASH',
       paymentStatus: explicitPaymentStatus,
+      corporateAccountId,
+      corporateSignedBy,
+      corporateEmployeeId,
+      corporateDepartment,
+      corporateNotes,
       items
     } = await req.json();
 
     const isWalletPay = paymentMethod === 'WALLET' || (parseFloat(String(walletAmountPaid)) > 0);
     const isGiftCardPay = paymentMethod === 'GIFT_CARD' || paymentMethod === 'MONEDERO';
-    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD' || isGiftCardPay || isWalletPay));
+    const isCorporatePay = paymentMethod === 'CORPORATE_CREDIT';
+    const isDirectPaid = explicitPaymentStatus === 'PAID' || (!explicitPaymentStatus && (paymentMethod === 'CASH' || paymentMethod === 'CARD' || isGiftCardPay || isWalletPay || isCorporatePay));
     const finalPaymentStatus = explicitPaymentStatus || (isDirectPaid ? 'PAID' : 'PENDING');
     const finalPaidAt = isDirectPaid ? new Date() : null;
 
@@ -170,6 +177,26 @@ export async function POST(req: NextRequest) {
     // Points earned: 1 pt per $10 MXN total spent
     const pointsEarned = Math.floor(total / 10);
     const numRedeemedPoints = Math.max(0, parseInt(String(redeemedPoints), 10) || 0);
+
+    // Validate Corporate Credit Account if payment method is CORPORATE_CREDIT
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let validatedCorporateAccount: any = null;
+    if (isCorporatePay) {
+      if (!corporateAccountId) {
+        return NextResponse.json({ error: 'Debes seleccionar una cuenta corporativa para autorizar el cargo a crédito.' }, { status: 400 });
+      }
+      const corpAcc = await prisma.corporateCreditAccount.findUnique({
+        where: { id: corporateAccountId },
+      });
+      if (!corpAcc) {
+        return NextResponse.json({ error: 'Cuenta corporativa no encontrada.' }, { status: 404 });
+      }
+      const val = validateCreditAvailability(corpAcc, total);
+      if (!val.allowed) {
+        return NextResponse.json({ error: val.reason }, { status: 400 });
+      }
+      validatedCorporateAccount = corpAcc;
+    }
 
     // Generate unique order number
     const totalOrdersCount = await prisma.order.count();
@@ -306,6 +333,7 @@ export async function POST(req: NextRequest) {
           diners: diners ? parseInt(String(diners), 10) : 1,
           walletAmountPaid: actualWalletPaid,
           cashbackEarned: actualCashbackEarned,
+          corporateAccountId: isCorporatePay ? corporateAccountId : null,
           paymentMethod,
           paymentStatus: finalPaymentStatus,
           paidAt: finalPaidAt,
@@ -470,6 +498,50 @@ export async function POST(req: NextRequest) {
             notes: `Cashback automático por consumo`,
             createdById: session.userId,
             createdByName: session.name,
+          },
+        });
+      }
+
+      // Record Corporate Credit Voucher and adjust account balance if paid via credit line
+      if (isCorporatePay && validatedCorporateAccount) {
+        const voucherFolio = generateVoucherFolio();
+        await tx.corporateCreditVoucher.create({
+          data: {
+            accountId: validatedCorporateAccount.id,
+            orderId: newOrder.id,
+            voucherFolio,
+            amount: total,
+            signedByName: corporateSignedBy ? corporateSignedBy.trim() : (customerName || 'Autorizado Empresa'),
+            employeeId: corporateEmployeeId ? corporateEmployeeId.trim() : null,
+            department: corporateDepartment ? corporateDepartment.trim() : null,
+            notes: corporateNotes ? corporateNotes.trim() : null,
+            status: 'PENDING',
+          },
+        });
+
+        const newBalance = Math.round((validatedCorporateAccount.currentBalance + total) * 100) / 100;
+        const newAvailable = Math.max(0, Math.round((validatedCorporateAccount.creditLimit - newBalance) * 100) / 100);
+        const newStatus = newBalance > validatedCorporateAccount.creditLimit ? 'OVER_LIMIT' : validatedCorporateAccount.status;
+
+        await tx.corporateCreditAccount.update({
+          where: { id: validatedCorporateAccount.id },
+          data: {
+            currentBalance: newBalance,
+            availableCredit: newAvailable,
+            status: newStatus,
+          },
+        });
+
+        await tx.paymentTransaction.create({
+          data: {
+            orderId: newOrder.id,
+            brandId: activeBrandId,
+            gateway: 'CORPORATE_CREDIT',
+            status: 'SUCCESS',
+            amount: total,
+            method: 'CORPORATE_CREDIT',
+            payerName: corporateSignedBy || customerName,
+            notes: `Cargo a crédito corporativo [${validatedCorporateAccount.accountNumber}] Folio Vale: ${voucherFolio}`,
           },
         });
       }
