@@ -115,6 +115,7 @@ model Brand {
   deliveryIncidents   SupplierDeliveryIncident[]
   kitchenEquipment    KitchenEquipment[]
   maintenanceWorkOrders MaintenanceWorkOrder[]
+  dishReturns         DishReturnLog[]
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
   walletTransactions  CustomerWalletTransaction[]
@@ -390,6 +391,9 @@ model Order {
   corporateAccountId   String?
   corporateAccount     CorporateCreditAccount?     @relation(fields: [corporateAccountId], references: [id], onDelete: SetNull)
   corporateCreditVoucher CorporateCreditVoucher?
+  hasDishReturns       Boolean      @default(false)
+  dishReturnsCount     Int          @default(0)
+  dishReturns          DishReturnLog[]
   items        OrderItem[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -424,6 +428,9 @@ model OrderItem {
   promoBadge         String?
   paidQuantity       Int       @default(0)
   isPaid             Boolean   @default(false)
+  isReturned         Boolean   @default(false)
+  returnReason       String?
+  dishReturns        DishReturnLog[]
 }
 
 model Purchase {
@@ -2212,5 +2219,38 @@ model MaintenanceWorkOrder {
   @@index([brandId, status])
   @@index([brandId, orderType])
 }
+
+model DishReturnLog {
+  id                 String     @id @default(uuid())
+  brandId            String
+  brand              Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderId            String
+  order              Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId        String?
+  orderItem          OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  productName        String
+  tableNumber        String?
+  waiterName         String?
+  returnReason       String     // UNDERCOOKED_OVERCOOKED, COLD_FOOD, WRONG_ITEM_ORDERED, WRONG_ITEM_DELIVERED, ALLERGEN_MODIFIER_ERROR, FOREIGN_OBJECT, EXCESSIVE_DELAY, CUSTOMER_CHANGED_MIND, SPOILED_OFF_TASTE, OTHER
+  attribution        String     @default("KITCHEN") // KITCHEN, SERVICE_WAITER, CUSTOMER_PREFERENCE, UNKNOWN
+  resolution         String     @default("RECOOK") // RECOOK, REMOVE_FROM_BILL, DISCOUNT_APPLIED, COMPLIMENTARY_RECOVERY, REPLACE_WITH_DIFFERENT_ITEM, NO_ACTION
+  quantity           Int        @default(1)
+  price              Float      @default(0)
+  estimatedFoodCost  Float      @default(0)
+  wasteLogged        Boolean    @default(true)
+  wasteLogId         String?
+  guestCompType      String?    @default("NONE") // NONE, WALLET_CASHBACK, COUPON_DISCOUNT, FREE_DESSERT_DRINK, PERCENTAGE_OFF_BILL
+  guestCompAmount    Float?     @default(0)
+  recookTriggered    Boolean    @default(false)
+  supervisorName     String?
+  notes              String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([brandId, returnReason])
+  @@index([brandId, attribution])
+  @@index([orderId])
+}
+
 
 

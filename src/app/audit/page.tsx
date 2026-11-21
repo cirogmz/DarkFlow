@@ -26,8 +26,10 @@ import {
   CheckCircle,
   Ban,
   TrendingDown,
-  Layers
+  Layers,
+  RotateCcw
 } from 'lucide-react';
+import DishReturnAuditTab from '@/components/audit/DishReturnAuditTab';
 
 interface AuditLogItem {
   id: string;
@@ -103,7 +105,7 @@ interface LossPreventionMetrics {
 export default function AuditPage() {
   const { activeBrand } = useAppStore();
   const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'loss_prevention' | 'logs'>('loss_prevention');
+  const [activeTab, setActiveTab] = useState<'loss_prevention' | 'logs' | 'dish_returns'>('loss_prevention');
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<AuditSummary>({
@@ -415,6 +417,18 @@ export default function AuditPage() {
             <Terminal className="w-4 h-4" />
             Bitácora de Eventos del Sistema
           </button>
+
+          <button
+            onClick={() => setActiveTab('dish_returns')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+              activeTab === 'dish_returns'
+                ? 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/20'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+            }`}
+          >
+            <RotateCcw className="w-4 h-4" />
+            Devoluciones & Merma de Mesa
+          </button>
         </div>
 
         {!isAuthorized ? (
@@ -704,6 +718,8 @@ export default function AuditPage() {
               </div>
             </div>
           </div>
+        ) : activeTab === 'dish_returns' ? (
+          <DishReturnAuditTab />
         ) : (
           /* ============================================================ */
           /* RAW EVENT LOGS VIEW                                          */
