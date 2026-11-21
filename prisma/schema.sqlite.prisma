@@ -113,6 +113,8 @@ model Brand {
   barLiquorAudits     BarLiquorAudit[]
   corporateCreditAccounts CorporateCreditAccount[]
   deliveryIncidents   SupplierDeliveryIncident[]
+  kitchenEquipment    KitchenEquipment[]
+  maintenanceWorkOrders MaintenanceWorkOrder[]
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
   walletTransactions  CustomerWalletTransaction[]
@@ -2146,3 +2148,74 @@ model SupplierDeliveryIncident {
   @@index([brandId, supplierId])
   @@index([purchaseOrderId])
 }
+
+model KitchenEquipment {
+  id                       String                 @id @default(uuid())
+  brandId                  String
+  brand                    Brand                  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name                     String
+  code                     String
+  category                 String                 @default("COOKING") // COOKING, REFRIGERATION, EXTRACTION_VENTILATION, BEVERAGE_COFFEE, FOOD_PREPARATION, DISHWASHING, OTHER
+  location                 String?                @default("Cocina Principal")
+  brandModel               String?
+  serialNumber             String?
+  vendorName               String?
+  vendorContact            String?
+  status                   String                 @default("OPERATIONAL") // OPERATIONAL, MAINTENANCE_REQUIRED, UNDER_REPAIR, DECOMMISSIONED
+  criticality              String                 @default("HIGH") // LOW, MEDIUM, HIGH, CRITICAL
+  purchaseDate             DateTime?
+  purchaseCost             Float?                 @default(0)
+  warrantyExpiration       DateTime?
+  lastMaintenanceDate      DateTime?
+  nextMaintenanceDate      DateTime?
+  maintenanceFrequencyDays Int?                   @default(90)
+  qrCode                   String?
+  notes                    String?
+  workOrders               MaintenanceWorkOrder[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@unique([brandId, code])
+  @@index([brandId, category])
+  @@index([brandId, status])
+}
+
+model MaintenanceWorkOrder {
+  id                String            @id @default(uuid())
+  brandId           String
+  brand             Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  equipmentId       String
+  equipment         KitchenEquipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  folio             String            // e.g. "OT-2026-0001"
+  orderType         String            @default("PREVENTIVE") // PREVENTIVE, CORRECTIVE, EMERGENCY_BREAKDOWN, CALIBRATION, INSPECTION
+  priority          String            @default("MEDIUM") // LOW, MEDIUM, HIGH, EMERGENCY
+  status            String            @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, WAITING_PARTS, COMPLETED, CANCELLED
+  title             String
+  description       String
+  symptomsOrFailure String?
+  rootCause         String?
+  actionTaken       String?
+  technicianName    String?
+  serviceCompany    String?
+  laborCost         Float?            @default(0)
+  partsCost         Float?            @default(0)
+  totalCost         Float?            @default(0)
+  downtimeHours     Float?            @default(0)
+  partsReplaced     String?
+  checklistJson     String?
+  scheduledDate     DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  invoiceRef        String?
+  warrantyClaimed   Boolean           @default(false)
+  reportedById      String?
+  reportedByName    String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([brandId, folio])
+  @@index([brandId, equipmentId])
+  @@index([brandId, status])
+  @@index([brandId, orderType])
+}
+
