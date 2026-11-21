@@ -112,6 +112,7 @@ model Brand {
   barBottles          BarBottle[]
   barLiquorAudits     BarLiquorAudit[]
   corporateCreditAccounts CorporateCreditAccount[]
+  deliveryIncidents   SupplierDeliveryIncident[]
   franchiseContracts  FranchiseContract[]
   royaltyStatements   RoyaltyStatement[]
   walletTransactions  CustomerWalletTransaction[]
@@ -1314,9 +1315,18 @@ model Supplier {
   leadTimeDays    Int?                 @default(1)
   notes           String?
   isActive        Boolean              @default(true)
+  overallScore        Float?               @default(100)
+  ratingTier          String?              @default("A") // A, B, C, D
+  totalOrdersDelivered Int?                @default(0)
+  onTimeDeliveries    Int?                 @default(0)
+  inFullDeliveries    Int?                 @default(0)
+  otifDeliveries      Int?                 @default(0)
+  otifRatePct         Float?               @default(100)
+  avgPriceVariancePct Float?               @default(0)
   ingredients     IngredientSupplier[]
   purchaseOrders  PurchaseOrder[]
   batches         IngredientBatch[]
+  incidents       SupplierDeliveryIncident[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -1364,6 +1374,15 @@ model PurchaseOrder {
   invoiceRef      String?
   notes           String?
   rejectionReason String?
+  isOnTime            Boolean?
+  isInFull            Boolean?
+  isOtif              Boolean?
+  delayDays           Int?                 @default(0)
+  fulfillmentRatePct  Float?               @default(100)
+  priceVarianceAmount Float?               @default(0)
+  priceVariancePct    Float?               @default(0)
+  qualityScore        Float?               @default(100)
+  deliveryIncidents   SupplierDeliveryIncident[]
   items           PurchaseOrderItem[]
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
@@ -1383,6 +1402,11 @@ model PurchaseOrderItem {
   quantityOrdered Float
   quantityReceived Float        @default(0)
   unitCost        Float         @default(0)
+  billedUnitCost      Float?
+  priceVariance       Float?               @default(0)
+  priceVariancePct    Float?               @default(0)
+  rejectedQuantity    Float?               @default(0)
+  rejectionReason     String?
   totalCost       Float         @default(0)
   notes           String?
   createdAt       DateTime      @default(now())
@@ -2100,4 +2124,26 @@ model CorporateAccountStatement {
   updatedAt             DateTime          @updatedAt
 
   @@index([accountId, status])
+}
+
+model SupplierDeliveryIncident {
+  id               String         @id @default(uuid())
+  brandId          String
+  brand            Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  supplierId       String
+  supplier         Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseOrderId  String?
+  purchaseOrder    PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  incidentType     String         // DAMAGED_GOODS, TEMP_BREACH, SHORT_EXPIRY, POOR_QUALITY, WRONG_ITEM, MISSING_DOCUMENTATION, LATE_DELIVERY, OTHER
+  severity         String         @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  description      String
+  quantityAffected Float?         @default(0)
+  financialImpact  Float?         @default(0)
+  resolution       String?        @default("PENDING") // PENDING, CREDIT_NOTE, REPLACEMENT, ACCEPTED_WITH_CONCESSION, REJECTED
+  reportedByName   String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([brandId, supplierId])
+  @@index([purchaseOrderId])
 }

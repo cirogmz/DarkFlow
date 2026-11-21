@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { recordAuditLog } from '@/lib/audit';
+import { calculateOtifAndVariance, calculateSupplierRating } from '@/lib/vendorScorecard';
 
 export async function POST(
   req: NextRequest,
@@ -46,6 +47,10 @@ export async function POST(
       return NextResponse.json({ error: 'No se puede recibir mercancía de una orden cancelada' }, { status: 400 });
     }
 
+    // Evaluate OTIF, fulfillment and price variances
+    const otifAudit = calculateOtifAndVariance(po, receivedItems, new Date());
+    const auditItemMap = new Map(otifAudit.items.map((it) => [it.itemId, it]));
+
     // Atomic transaction for receiving items and updating inventory & PPP
     const result = await prisma.$transaction(async (tx) => {
       const itemMap = new Map(po.items.map((it) => [it.id, it]));
@@ -85,14 +90,20 @@ export async function POST(
           },
         });
 
-        // Update purchase order item
+        // Update purchase order item with OTIF & price variance audit
         const newTotalReceived = item.quantityReceived + qtyReceivedNow;
+        const itemAudit = auditItemMap.get(item.id);
+
         await tx.purchaseOrderItem.update({
           where: { id: item.id },
           data: {
             quantityReceived: newTotalReceived,
-            unitCost: actualUnitCost,
-            totalCost: item.quantityOrdered * actualUnitCost,
+            billedUnitCost: actualUnitCost,
+            priceVariance: itemAudit?.priceVariance ?? 0,
+            priceVariancePct: itemAudit?.priceVariancePct ?? 0,
+            rejectedQuantity: itemAudit?.rejectedQuantity ?? 0,
+            rejectionReason: itemAudit?.rejectionReason ?? null,
+            totalCost: newTotalReceived * actualUnitCost,
           },
         });
 
@@ -150,6 +161,14 @@ export async function POST(
           status: nextStatus,
           receivedDate: new Date(),
           receivedById: session.userId,
+          isOnTime: otifAudit.isOnTime,
+          isInFull: otifAudit.isInFull,
+          isOtif: otifAudit.isOtif,
+          delayDays: otifAudit.delayDays,
+          fulfillmentRatePct: otifAudit.fulfillmentRatePct,
+          priceVarianceAmount: otifAudit.priceVarianceAmount,
+          priceVariancePct: otifAudit.priceVariancePct,
+          qualityScore: otifAudit.qualityScore,
           invoiceRef: invoiceRef ? String(invoiceRef).trim() : po.invoiceRef,
           notes: notes ? `${po.notes ? po.notes + ' | ' : ''}Recepción: ${notes}` : po.notes,
         },
@@ -160,6 +179,63 @@ export async function POST(
           items: {
             include: { ingredient: true },
           },
+        },
+      });
+
+      // Recalculate Supplier's global metrics and Scorecard
+      const allSupplierReceivedPOs = await tx.purchaseOrder.findMany({
+        where: {
+          brandId: activeBrandId,
+          supplierId: po.supplierId,
+          status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] },
+        },
+        select: {
+          isOnTime: true,
+          isInFull: true,
+          isOtif: true,
+          priceVariancePct: true,
+        },
+      });
+
+      const totalDelivered = allSupplierReceivedPOs.length;
+      const onTimeCount = allSupplierReceivedPOs.filter((p) => p.isOnTime === true).length;
+      const inFullCount = allSupplierReceivedPOs.filter((p) => p.isInFull === true).length;
+      const otifCount = allSupplierReceivedPOs.filter((p) => p.isOtif === true).length;
+      const otifRate = totalDelivered > 0 ? (otifCount / totalDelivered) * 100 : 100;
+
+      const sumVariance = allSupplierReceivedPOs.reduce((acc, p) => acc + (p.priceVariancePct || 0), 0);
+      const avgVariance = totalDelivered > 0 ? sumVariance / totalDelivered : 0;
+
+      const incidents = await tx.supplierDeliveryIncident.findMany({
+        where: {
+          brandId: activeBrandId,
+          supplierId: po.supplierId,
+        },
+        select: { severity: true },
+      });
+
+      const totalIncidents = incidents.length;
+      const criticalIncidents = incidents.filter((i) => i.severity === 'CRITICAL' || i.severity === 'HIGH').length;
+
+      const rating = calculateSupplierRating({
+        totalOrders: totalDelivered,
+        otifRatePct: otifRate,
+        avgPriceVariancePct: avgVariance,
+        incidentCount: totalIncidents,
+        criticalIncidents,
+      });
+
+      await tx.supplier.update({
+        where: { id: po.supplierId },
+        data: {
+          totalOrdersDelivered: totalDelivered,
+          onTimeDeliveries: onTimeCount,
+          inFullDeliveries: inFullCount,
+          otifDeliveries: otifCount,
+          otifRatePct: Math.round(otifRate * 100) / 100,
+          avgPriceVariancePct: Math.round(avgVariance * 100) / 100,
+          overallScore: rating.score,
+          ratingTier: rating.tier,
         },
       });
 
@@ -175,6 +251,9 @@ export async function POST(
         supplierName: result.supplier.name,
         invoiceRef: result.invoiceRef,
         status: result.status,
+        isOtif: otifAudit.isOtif,
+        fulfillmentRatePct: otifAudit.fulfillmentRatePct,
+        priceVarianceAmount: otifAudit.priceVarianceAmount,
       },
       severity: 'INFO',
       brandId: activeBrandId,
@@ -182,7 +261,7 @@ export async function POST(
       req,
     });
 
-    return NextResponse.json({ success: true, purchaseOrder: result });
+    return NextResponse.json({ success: true, purchaseOrder: result, otifAudit });
   } catch (error: unknown) {
     console.error('Error receiving purchase order items:', error);
     return NextResponse.json({ error: 'Error al procesar la recepción de mercancía' }, { status: 500 });

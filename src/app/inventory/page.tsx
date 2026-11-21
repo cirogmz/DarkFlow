@@ -22,12 +22,14 @@ import {
   Boxes,
   ThermometerSnowflake,
   Scan,
-  Wine
+  Wine,
+  Award
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import FoodCostAuditTab from '@/components/inventory/FoodCostAuditTab';
 import RequisitionsTab from '@/components/inventory/RequisitionsTab';
 import PurchaseOrdersTab from '@/components/inventory/PurchaseOrdersTab';
+import VendorScorecardTab from '@/components/inventory/VendorScorecardTab';
 import { BatchTrackingTab } from '@/components/inventory/BatchTrackingTab';
 import DailyPrepStationView from '@/components/kitchen/DailyPrepStationView';
 import WasteManagementHubTab from '@/components/inventory/WasteManagementHubTab';
@@ -184,7 +186,7 @@ export default function InventoryPage() {
     reasonBreakdown: Record<string, { count: number; cost: number }>;
   }>({ totalWasteCost: 0, totalEvents: 0, reasonBreakdown: {} });
 
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain' | 'aivision' | 'bar'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'batches' | 'subrecipes' | 'waste' | 'warehouses' | 'purchases' | 'scorecard' | 'recipes' | 'audit' | 'requisitions' | 'prep' | 'coldchain' | 'aivision' | 'bar'>('ingredients');
   const [ingredientFilter, setIngredientFilter] = useState<'ALL' | 'RAW' | 'PREPARED'>('ALL');
   const [loading, setLoading] = useState(true);
 
@@ -768,6 +770,14 @@ export default function InventoryPage() {
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Compras & Auto-PO
+          </button>
+          <button
+            onClick={() => setActiveTab('scorecard')}
+            className={`pb-3 font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'scorecard' ? 'border-brand-primary text-brand-primary' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Award className="h-4 w-4" /> Scorecard Proveedores (OTIF)
           </button>
           <button
             onClick={() => setActiveTab('recipes')}
@@ -1388,6 +1398,11 @@ export default function InventoryPage() {
               </div>
             </details>
           </div>
+        )}
+
+        {/* TAB 5.5: VENDOR SCORECARD & OTIF AUDIT */}
+        {activeTab === 'scorecard' && (
+          <VendorScorecardTab />
         )}
 
         {/* TAB 6: RECIPES FOR PRODUCTS */}
